@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import {
   Users, Heart, Share2, CheckCircle2, BookOpen, Plus, Sparkles,
   Check, Copy, Edit2, UserMinus, ShieldCheck, Clock, MessageCircle,
-  AlertCircle, RotateCcw, UserCheck, Calendar, X, AlertTriangle, ExternalLink
+  AlertCircle, RotateCcw, UserCheck, Calendar, X, AlertTriangle, ExternalLink,
+  Lock, Key, Eye, EyeOff
 } from 'lucide-react';
 
 export interface PartClaim {
@@ -58,6 +59,22 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
   const [creatorName, setCreatorName] = useState('فاعل خير');
   const [deadlineDays, setDeadlineDays] = useState<number>(3);
   const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
+  
+  // Supervisor PIN Security State
+  const [adminPin, setAdminPin] = useState<string>(() => {
+    return localStorage.getItem('bayan_khatma_admin_pin') || '1234';
+  });
+  const [isPinUnlockModalOpen, setIsPinUnlockModalOpen] = useState<boolean>(false);
+  const [pinUnlockInput, setPinUnlockInput] = useState<string>('');
+  const [pinUnlockError, setPinUnlockError] = useState<string | null>(null);
+  const [showPinUnlockPassword, setShowPinUnlockPassword] = useState<boolean>(false);
+
+  // Change PIN modal state
+  const [isChangePinModalOpen, setIsChangePinModalOpen] = useState<boolean>(false);
+  const [newPinInput, setNewPinInput] = useState<string>('');
+  const [confirmNewPinInput, setConfirmNewPinInput] = useState<string>('');
+  const [changePinError, setChangePinError] = useState<string | null>(null);
+
   const [copiedLink, setCopiedLink] = useState(false);
   const [filter, setFilter] = useState<'all' | 'available' | 'claimed' | 'completed'>('all');
   
@@ -276,6 +293,46 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
     showToast(`تم تحديث اسم القارئ للجزء ${juzNumber} إلى: ${trimmed}`);
   };
 
+  // Supervisor PIN Authentication Handlers
+  const handleOpenAdminToggle = () => {
+    if (isAdminMode) {
+      setIsAdminMode(false);
+      showToast('تم الخروج من وضع المشرف وإغلاق الصلاحيات بنجاح');
+    } else {
+      setPinUnlockInput('');
+      setPinUnlockError(null);
+      setIsPinUnlockModalOpen(true);
+    }
+  };
+
+  const handleVerifyPin = () => {
+    if (pinUnlockInput.trim() === adminPin.trim()) {
+      setIsAdminMode(true);
+      setIsPinUnlockModalOpen(false);
+      setPinUnlockError(null);
+      showToast('تم التحقق بنجاح! تم تفعيل وضع المشرف 🛡️');
+    } else {
+      setPinUnlockError('رمز المشرف السري غير صحيح. يرجى التأكد وإعادة المحاولة (الرمز الافتراضي: 1234)');
+    }
+  };
+
+  const handleSaveNewPin = () => {
+    const trimmed = newPinInput.trim();
+    if (!trimmed || trimmed.length < 3) {
+      setChangePinError('يجب أن يتكون الرمز السري من 3 أرقام أو حروف على الأقل');
+      return;
+    }
+    if (trimmed !== confirmNewPinInput.trim()) {
+      setChangePinError('الرمزان غير متطابقين، يرجى كتابة الرمز وتأكيده بشكل مطابق');
+      return;
+    }
+
+    setAdminPin(trimmed);
+    localStorage.setItem('bayan_khatma_admin_pin', trimmed);
+    setIsChangePinModalOpen(false);
+    showToast(`تم تعيين رمز المشرف الجديد بنجاح (${trimmed}) 🔑`);
+  };
+
   // Open in-app Confirm Modal (Withdraw / Admin release / Reset)
   const handleOpenConfirmModal = (actionType: 'withdraw' | 'admin-release' | 'reset-all', targetJuz?: number) => {
     if (actionType === 'withdraw') {
@@ -476,23 +533,25 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
         {/* Admin Mode Toggle */}
         <div className="flex items-center gap-3">
           <button
-            onClick={() => {
-              setIsAdminMode(!isAdminMode);
-              showToast(!isAdminMode ? 'تم تفعيل وضع المشرف: يمكنك الآن إدارة الأجزاء وإعادة ضبطها' : 'تم الخروج من وضع المشرف');
-            }}
+            onClick={handleOpenAdminToggle}
             className={`py-1.5 px-3 rounded-xl font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
               isAdminMode
                 ? 'bg-amber-500/20 border border-amber-500 text-amber-300 ring-1 ring-amber-500/40'
                 : 'bg-slate-800 border border-slate-700 text-slate-300 hover:text-white'
             }`}
+            title={isAdminMode ? 'انقر للخروج من وضع المشرف وقفل الصلاحيات' : 'دخول وضع المشرف عبر إدخال رمز الحماية السري (PIN)'}
           >
-            <ShieldCheck className="w-4 h-4 text-amber-400" />
-            <span>{isAdminMode ? 'وضع المشرف: مفعّل' : 'دخول وضع المشرف'}</span>
+            {isAdminMode ? <ShieldCheck className="w-4 h-4 text-amber-400" /> : <Lock className="w-4 h-4 text-emerald-400" />}
+            <span>{isAdminMode ? 'وضع المشرف: مفعّل (انقر للخروج)' : 'دخول وضع المشرف (محمي برمز 🛡️)'}</span>
           </button>
 
-          {isAdminMode && (
-            <span className="text-slate-400 hidden sm:inline">
-              (تستطيع تعديل أي اسم، تحرير أي جزء اعتذر قارئه، أو ضبط المهلة)
+          {isAdminMode ? (
+            <span className="text-emerald-400 hidden sm:inline font-medium">
+              ✓ تم التحقق بنجاح: يمكنك تعديل الأسماء أو إخلاء الأجزاء أو ضبط الختمة.
+            </span>
+          ) : (
+            <span className="text-slate-400 hidden sm:inline text-[11px]">
+              (محمي برمز سري لمنع عبث المشاركين أو تغيير الأسماء بالخطأ)
             </span>
           )}
         </div>
@@ -501,6 +560,20 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
         <div className="flex items-center gap-2">
           {isAdminMode && (
             <>
+              {/* Change Supervisor PIN Button */}
+              <button
+                onClick={() => {
+                  setNewPinInput('');
+                  setConfirmNewPinInput('');
+                  setChangePinError(null);
+                  setIsChangePinModalOpen(true);
+                }}
+                className="py-1.5 px-2.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-300 hover:text-white hover:border-amber-500/50 transition-colors flex items-center gap-1.5 cursor-pointer text-xs"
+                title="تغيير رمز المرور السري للمشرف"
+              >
+                <Key className="w-3.5 h-3.5 text-amber-400" />
+                <span>تغيير رمز المشرف</span>
+              </button>
               {/* Set Deadline selector */}
               <div className="flex items-center gap-1.5 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
                 <Calendar className="w-3.5 h-3.5 text-slate-400" />
@@ -969,6 +1042,196 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
                 <ExternalLink className="w-4 h-4" />
                 <span>فتح في واتساب الآن</span>
               </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. Supervisor PIN Unlock Modal */}
+      {isPinUnlockModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="relative w-full max-w-md bg-slate-900 border border-amber-500/40 rounded-2xl shadow-2xl p-5 sm:p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2 text-amber-400 font-bold">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                  <ShieldCheck className="w-4 h-4" />
+                </div>
+                <h3 className="text-base text-white">التحقق من هوية المشرف</h3>
+              </div>
+              <button
+                onClick={() => {
+                  setIsPinUnlockModalOpen(false);
+                  setPinUnlockError(null);
+                }}
+                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              يرجى إدخال رمز المشرف السري (PIN) لتفعيل صلاحيات إدارة أسماء القراء وضبط الختمة.
+            </p>
+
+            {/* Error banner if invalid PIN */}
+            {pinUnlockError && (
+              <div className="p-3 rounded-xl bg-rose-950/60 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2 animate-in fade-in duration-150">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>{pinUnlockError}</span>
+              </div>
+            )}
+
+            {/* PIN Input with Eye Toggle */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-300 block">
+                رمز المشرف السري:
+              </label>
+              <div className="relative">
+                <input
+                  type={showPinUnlockPassword ? 'text' : 'password'}
+                  value={pinUnlockInput}
+                  onChange={(e) => {
+                    setPinUnlockInput(e.target.value);
+                    if (pinUnlockError) setPinUnlockError(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleVerifyPin();
+                    if (e.key === 'Escape') setIsPinUnlockModalOpen(false);
+                  }}
+                  placeholder="أدخل الرمز السري هنا..."
+                  className="w-full pr-4 pl-10 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-amber-500 text-sm text-white outline-none font-mono"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPinUnlockPassword(!showPinUnlockPassword)}
+                  className="absolute left-3 top-2.5 text-slate-400 hover:text-white"
+                  title={showPinUnlockPassword ? 'إخفاء الرمز' : 'إظهار الرمز'}
+                >
+                  {showPinUnlockPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Default hint notice */}
+            <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
+              <span>💡 الرمز الافتراضي الحالي:</span>
+              <span className="font-mono text-amber-300 font-bold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                {adminPin}
+              </span>
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-2">
+              <button
+                onClick={() => {
+                  setIsPinUnlockModalOpen(false);
+                  setPinUnlockError(null);
+                }}
+                className="py-2 px-4 rounded-xl text-xs text-slate-400 hover:text-white"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={handleVerifyPin}
+                className="py-2.5 px-6 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-900/40 transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Check className="w-4 h-4" />
+                <span>تأكيد ودخول المشرف</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 6. Change Supervisor PIN Modal */}
+      {isChangePinModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="relative w-full max-w-md bg-slate-900 border border-amber-500/40 rounded-2xl shadow-2xl p-5 sm:p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2 text-amber-400 font-bold">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                  <Key className="w-4 h-4" />
+                </div>
+                <h3 className="text-base text-white">تعيين رمز سري جديد للمشرف</h3>
+              </div>
+              <button
+                onClick={() => {
+                  setIsChangePinModalOpen(false);
+                  setChangePinError(null);
+                }}
+                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              اختر رمزاً سرياً خاصاً بك (مثلاً: 4 أرقام مثل 2026 أو كلمة سرية) لحماية إدارة الختمة ومنع غيرك من تغيير الأسماء.
+            </p>
+
+            {/* Error message */}
+            {changePinError && (
+              <div className="p-3 rounded-xl bg-rose-950/60 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>{changePinError}</span>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-bold text-slate-300 block mb-1">
+                  الرمز السري الجديد:
+                </label>
+                <input
+                  type="text"
+                  value={newPinInput}
+                  onChange={(e) => {
+                    setNewPinInput(e.target.value);
+                    if (changePinError) setChangePinError(null);
+                  }}
+                  placeholder="مثال: 5544 أو كود خاص..."
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-amber-500 text-sm text-white font-mono outline-none"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-300 block mb-1">
+                  تأكيد الرمز السري الجديد:
+                </label>
+                <input
+                  type="text"
+                  value={confirmNewPinInput}
+                  onChange={(e) => {
+                    setConfirmNewPinInput(e.target.value);
+                    if (changePinError) setChangePinError(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveNewPin();
+                  }}
+                  placeholder="أعد كتابة الرمز الجديد لتأكيده..."
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-amber-500 text-sm text-white font-mono outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-2">
+              <button
+                onClick={() => {
+                  setIsChangePinModalOpen(false);
+                  setChangePinError(null);
+                }}
+                className="py-2 px-4 rounded-xl text-xs text-slate-400 hover:text-white"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={handleSaveNewPin}
+                className="py-2.5 px-6 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-900/40 transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Check className="w-4 h-4" />
+                <span>حفظ الرمز السري الجديد</span>
+              </button>
             </div>
           </div>
         </div>

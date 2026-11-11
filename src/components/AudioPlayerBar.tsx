@@ -13,6 +13,9 @@ interface AudioPlayerBarProps {
   isSmartScrollEnabled: boolean;
   onToggleSmartScroll: () => void;
   onPlaybackProgress?: (currentTime: number, duration: number) => void;
+  isFullScreen?: boolean;
+  selectedReciter?: Reciter;
+  onSelectReciter?: (reciter: Reciter) => void;
 }
 
 export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
@@ -26,8 +29,14 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
   isSmartScrollEnabled,
   onToggleSmartScroll,
   onPlaybackProgress,
+  isFullScreen = false,
+  selectedReciter: propSelectedReciter,
+  onSelectReciter: propOnSelectReciter,
 }) => {
-  const [selectedReciter, setSelectedReciter] = useState<Reciter>(RECITERS_LIST[0]);
+  const [internalReciter, setInternalReciter] = useState<Reciter>(RECITERS_LIST[0]);
+  const selectedReciter = propSelectedReciter || internalReciter;
+  const setSelectedReciter = propOnSelectReciter || setInternalReciter;
+
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0);
   const [repeatMode, setRepeatMode] = useState<'none' | '3-times' | 'loop'>('none');
   const [repeatCounter, setRepeatCounter] = useState<number>(1);
@@ -36,6 +45,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [isDownloaded, setIsDownloaded] = useState<boolean>(false);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
+  const [isMinimizedInFullScreen, setIsMinimizedInFullScreen] = useState<boolean>(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [audioProgress, setAudioProgress] = useState(0);
@@ -137,8 +147,8 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
   };
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 border-t border-slate-800 backdrop-blur-md shadow-2xl transition-all">
-      {/* Hidden Audio Element */}
+    <>
+      {/* Hidden Persistent Audio Element - Always mounted so recitation never cuts off */}
       <audio
         ref={audioRef}
         src={audioUrl}
@@ -146,16 +156,209 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
         onTimeUpdate={handleTimeUpdate}
       />
 
-      {/* Progress line */}
-      <div
-        onClick={handleSeek}
-        className="w-full h-1 bg-slate-800 hover:h-2 cursor-pointer transition-all relative"
-      >
-        <div
-          className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all"
-          style={{ width: `${audioProgress}%` }}
-        />
-      </div>
+      {/* FULL-SCREEN FLOATING MODE */}
+      {isFullScreen ? (
+        isMinimizedInFullScreen ? (
+          /* Minimized Floating Audio Pill in Bottom Corner */
+          <div className="fixed bottom-4 right-4 z-[60] flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2">
+            <button
+              onClick={() => setIsMinimizedInFullScreen(false)}
+              className={`flex items-center gap-2 py-2 px-3.5 rounded-full shadow-2xl backdrop-blur-xl border transition-all hover:scale-105 cursor-pointer ${
+                isPlaying
+                  ? 'bg-emerald-950/95 border-emerald-500/50 text-emerald-300 shadow-emerald-950/50'
+                  : 'bg-slate-900/95 border-slate-700/80 text-slate-300 hover:text-white'
+              }`}
+              title="إظهار مشغل التلاوة الكامل"
+            >
+              <div className="relative flex items-center justify-center">
+                <Volume2 className="w-4 h-4 text-emerald-400" />
+                {isPlaying && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                )}
+              </div>
+              <span className="text-xs font-bold font-kufi">{selectedReciter.name.split(' ')[0]}</span>
+              <span className="text-[10px] text-slate-400 font-mono">({currentAyahNumber})</span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPlayPauseToggle(!isPlaying);
+                }}
+                className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/40 flex items-center justify-center cursor-pointer"
+                title={isPlaying ? 'إيقاف مؤقت' : 'تشغيل التلاوة'}
+              >
+                {isPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3 ml-0.5" />}
+              </button>
+            </button>
+          </div>
+        ) : (
+          /* Floating Audio Capsule in Full-Screen */
+          <div className="fixed bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 z-[60] w-[95vw] sm:w-auto min-w-[320px] sm:min-w-[480px] max-w-xl bg-slate-900/95 border border-slate-700/80 shadow-2xl backdrop-blur-xl rounded-2xl p-2.5 sm:p-3 animate-in fade-in slide-in-from-bottom-3 space-y-2">
+            {/* Top Interactive Progress Line */}
+            <div
+              onClick={handleSeek}
+              className="w-full h-1 bg-slate-800 hover:h-1.5 rounded-full cursor-pointer transition-all relative overflow-hidden"
+              title="تقديم وتأخير التلاوة"
+            >
+              <div
+                className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all rounded-full"
+                style={{ width: `${audioProgress}%` }}
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-2 sm:gap-3">
+              {/* Reciter Selector & Info */}
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                  <Volume2 className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <select
+                    value={selectedReciter.id}
+                    onChange={(e) => {
+                      const found = RECITERS_LIST.find(r => r.id === e.target.value);
+                      if (found) setSelectedReciter(found);
+                    }}
+                    className="bg-slate-950/80 border border-slate-700/80 rounded-lg text-xs font-bold text-slate-200 py-1 px-1.5 outline-none max-w-[130px] sm:max-w-[155px] cursor-pointer"
+                    title="اختيار القارئ"
+                  >
+                    {RECITERS_LIST.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Prev, Play/Pause, Next Controls */}
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <button
+                  onClick={() => onAyahChange(Math.max(1, currentAyahNumber - 1))}
+                  disabled={currentAyahNumber <= 1}
+                  title="الآية السابقة"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <SkipForward className="w-4 h-4" />
+                </button>
+
+                <button
+                  onClick={() => onPlayPauseToggle(!isPlaying)}
+                  className="w-9 h-9 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-900/50 transition-transform active:scale-95 cursor-pointer"
+                  title={isPlaying ? 'إيقاف مؤقت' : 'تشغيل التلاوة'}
+                >
+                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+                </button>
+
+                <button
+                  onClick={() => onAyahChange(Math.min(totalAyahs, currentAyahNumber + 1))}
+                  disabled={currentAyahNumber >= totalAyahs}
+                  title="الآية التالية"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <SkipBack className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Ayah Badge, Options & Minimize */}
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-slate-950 border border-slate-800 text-emerald-400 shrink-0">
+                  {currentAyahNumber} / {totalAyahs}
+                </span>
+
+                <button
+                  onClick={() => setIsExpanded(!isExpanded)}
+                  className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                  title="خيارات إضافية (تكرار، سرعة الصوت)"
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                </button>
+
+                <button
+                  onClick={() => setIsMinimizedInFullScreen(true)}
+                  className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                  title="تصغير شريط الصوت ليصبح أيقونة عائمة"
+                >
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Expanded Options in Full-Screen Mode */}
+            {isExpanded && (
+              <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+                {/* Repeat Mode */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-slate-400 text-[11px]">التكرار:</span>
+                  <button
+                    onClick={() => {
+                      if (repeatMode === 'none') setRepeatMode('3-times');
+                      else if (repeatMode === '3-times') setRepeatMode('loop');
+                      else setRepeatMode('none');
+                    }}
+                    className={`py-0.5 px-2 rounded-md font-medium border text-[11px] flex items-center gap-1 cursor-pointer ${
+                      repeatMode !== 'none'
+                        ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+                        : 'bg-slate-950 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>
+                      {repeatMode === 'none' ? 'بدون' : (repeatMode === '3-times' ? `3x (${repeatCounter})` : 'مستمر')}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Audio Speed */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-slate-400 text-[11px]">السرعة:</span>
+                  <div className="flex gap-1">
+                    {[0.75, 1.0, 1.25].map((speed) => (
+                      <button
+                        key={speed}
+                        onClick={() => setPlaybackSpeed(speed)}
+                        className={`py-0.5 px-1.5 rounded font-semibold text-[10px] cursor-pointer ${
+                          playbackSpeed === speed
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-slate-950 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {speed}x
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Smart scroll toggle */}
+                <button
+                  onClick={onToggleSmartScroll}
+                  className={`py-0.5 px-2 rounded-md font-medium border text-[11px] flex items-center gap-1 cursor-pointer ${
+                    isSmartScrollEnabled
+                      ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
+                      : 'bg-slate-950 border-slate-800 text-slate-400'
+                  }`}
+                  title="مزامنة نزول الصفحة مع تلاوة الشيخ"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  <span>مزامنة التمرير</span>
+                </button>
+              </div>
+            )}
+          </div>
+        )
+      ) : (
+        /* STANDARD DOCKED BOTTOM BAR (Normal View) */
+        <div className="fixed bottom-16 lg:bottom-0 left-0 right-0 z-30 bg-slate-950/95 border-t border-slate-800 backdrop-blur-md shadow-2xl transition-all">
+          {/* Progress line */}
+          <div
+            onClick={handleSeek}
+            className="w-full h-1 bg-slate-800 hover:h-2 cursor-pointer transition-all relative"
+          >
+            <div
+              className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all"
+              style={{ width: `${audioProgress}%` }}
+            />
+          </div>
 
       <div className="max-w-6xl mx-auto px-4 py-2.5 sm:py-3 flex flex-col gap-2">
         {/* Main Player Row */}
@@ -346,5 +549,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
         )}
       </div>
     </div>
-  );
+  )}
+</>
+);
 };

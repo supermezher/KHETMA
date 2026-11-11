@@ -4,7 +4,7 @@ export interface TajweedRule {
   nameEn: string;
   colorHex: string;
   cssClass: string;
-  category: 'ghunnah' | 'ikhfa' | 'idgham' | 'qalqalah' | 'madd' | 'tafkheem';
+  category: 'ghunnah' | 'ikhfa' | 'idgham' | 'qalqalah' | 'madd' | 'tafkheem' | 'silent';
   definition: string;
   letters: string[];
   mizan: string; // e.g. "حركتان", "4-5 حركات"
@@ -111,6 +111,20 @@ export const TAJWEED_RULES: TajweedRule[] = [
     exampleQuran: 'خَالِدِينَ / ٱلصِّرَاطَ / ٱلظَّالِمِينَ / قَالَ',
     exampleExplanation: 'رفع أقصى اللسان إلى الحنك الأعلى وتوجيه الهواء للأعلى.',
     benefit: 'فخامة الجرس اللغوي القرآني وتمييز الحروف القوية من الضعيفة.'
+  },
+  {
+    id: 'silent',
+    name: 'الحروف التي لا تُلفظ (الرمادي)',
+    nameEn: 'Silent / Unpronounced Letters',
+    colorHex: '#94a3b8',
+    cssClass: 'tajweed-silent',
+    category: 'silent',
+    definition: 'حروف تُكتب في الرسم العثماني ولكن تسقط وصلاً أو لا يُنطق بها أصلاً؛ كاللام الشمسية المدغمة، همزة الوصل، الألف الفارقة، والواو والياء الزائدتين رسماً.',
+    letters: ['ٱ (همزة الوصل)', 'ل (اللام الشمسية)', 'ا۟ (الألف الفارقة)', 'و۟ (الواو ذات السكون المستدير)', 'ي۟'],
+    mizan: 'تسقط في النطق (لا تُلفظ)',
+    exampleQuran: 'وَٱلَّذِينَ / كَفَرُوا۟ / أُو۟لَـٰٓئِكَ / ٱلرَّحْمَـٰنِ / ٱلْحَمْدُ',
+    exampleExplanation: 'تُلوّن بالرمادي الخافت لتنبيه القارئ إلى تجاوزها وعدم نطقها أثناء التلاوة.',
+    benefit: 'صيانة اللسان عن اللحن الجلي بتنبيه القارئ إلى الحروف الساقطة في درج الكلام.'
   }
 ];
 

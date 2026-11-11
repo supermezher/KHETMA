@@ -381,6 +381,18 @@ export const PRELOADED_SURAHS: Record<number, SurahData> = {
 };
 
 /**
+ * Sanitizes Ayah text to prevent Bismillah duplication when APIs prepend it
+ * Uses diacritic-flexible regex to handle any tashkeel variations, tatweel, and dagger alefs.
+ */
+export function sanitizeAyahText(text: string, surahNumber: number, ayahNumber: number): string {
+  if (surahNumber !== 1 && ayahNumber === 1 && text) {
+    const bismillahRegex = /^ب[\u064B-\u065F\u0670\u0640]*س[\u064B-\u065F\u0670\u0640]*م[\u064B-\u065F\u0670\u0640]*\s+[ٱا]لل[\u064B-\u065F\u0670\u0640]*ه[\u064B-\u065F\u0670\u0640]*\s+[ٱا]لر[\u064B-\u065F\u0670\u0640]*ح[\u064B-\u065F\u0670\u0640]*م[\u064B-\u065F\u0670\u0640]*ن[\u064B-\u065F\u0670\u0640]*\s+[ٱا]لر[\u064B-\u065F\u0670\u0640]*ح[\u064B-\u065F\u0670\u0640]*ي[\u064B-\u065F\u0670\u0640]*م[\u064B-\u065F\u0670\u0640]*\s*/u;
+    return text.replace(bismillahRegex, '').trim();
+  }
+  return text;
+}
+
+/**
  * Fetcher with LocalStorage Offline-first Cache
  */
 export async function getSurahData(surahNumber: number): Promise<SurahData> {
@@ -394,7 +406,10 @@ export async function getSurahData(surahNumber: number): Promise<SurahData> {
   const cached = localStorage.getItem(cacheKey);
   if (cached) {
     try {
-      const parsed = JSON.parse(cached);
+      const parsed: SurahData = JSON.parse(cached);
+      if (parsed.ayahs && parsed.ayahs.length > 0 && surahNumber !== 1) {
+        parsed.ayahs[0].text = sanitizeAyahText(parsed.ayahs[0].text, surahNumber, 1);
+      }
       return parsed;
     } catch {
       // ignore cache error
@@ -416,10 +431,13 @@ export async function getSurahData(surahNumber: number): Promise<SurahData> {
 
       const ayahs: Ayah[] = uthmaniData.ayahs.map((a: any, idx: number) => {
         const tafsirItem = tafsirData.ayahs[idx];
+        const rawText: string = a.text || '';
+        const cleanedText = sanitizeAyahText(rawText, surahNumber, a.numberInSurah);
+
         return {
           numberInSurah: a.numberInSurah,
           overallNumber: a.number,
-          text: a.text,
+          text: cleanedText,
           tafsir: tafsirItem ? tafsirItem.text : 'تفسير ميسر للآية الكريمة يوضح المعنى الإجمالي والأحكام المستفادة.',
           irabHint: 'إعراب مفردات وجمل الآية الكريمة لبيان الدلالات النحوية والبلاغية.',
           reflectionQuestion: 'ما الحكمة البلاغية والدرس الإيماني العظيم الذي تخاطب به الآية فؤادك اليوم؟',
