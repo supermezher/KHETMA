@@ -10,10 +10,12 @@ import {
   Reciter,
   getAyahAudioUrl
 } from '../data/reciters';
+import { SURAHS_LIST, SurahMeta } from '../data/quranMetadata';
 import {
-  ShieldCheck, Sparkles, BookOpen, Heart, Volume2, VolumeX, Copy, Check,
-  RotateCcw, Info, Compass, CheckCircle2, Play, Pause, Square,
-  SkipForward, ChevronDown, User, RefreshCw, Zap
+  ShieldCheck, Sparkles, BookOpen, Heart, Volume2, Copy, Check,
+  RotateCcw, Info, Compass, CheckCircle2, Pause, Square,
+  SkipForward, ChevronDown, User, RefreshCw, Plus, Trash2, X,
+  AlertCircle
 } from 'lucide-react';
 
 interface RuqyahSectionProps {
@@ -21,7 +23,7 @@ interface RuqyahSectionProps {
   onPlayAyahAudio?: (ayahNumber: number, surahNumber?: number) => void;
 }
 
-type TabType = 'all' | 'quranic' | 'prophetic' | 'sakina' | 'etiquette';
+type TabType = 'all' | 'quranic' | 'prophetic' | 'sakina' | 'custom' | 'etiquette';
 
 export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
   onNavigateToAyah,
@@ -29,6 +31,32 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [counters, setCounters] = useState<Record<string, number>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Custom User/Developer added Ruqyah items (stored in localStorage)
+  const [customItems, setCustomItems] = useState<RuqyahItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('bayan_custom_ruqyah_items');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Modal state for adding a new item
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [newItemCategory, setNewItemCategory] = useState<'quranic' | 'prophetic' | 'sakina'>('quranic');
+  const [newItemTitle, setNewItemTitle] = useState('');
+  const [newItemSource, setNewItemSource] = useState('');
+  const [newItemArabicText, setNewItemArabicText] = useState('');
+  const [newItemRepeatTarget, setNewItemRepeatTarget] = useState(3);
+  const [newItemVirtue, setNewItemVirtue] = useState('');
+  const [newItemInstruction, setNewItemInstruction] = useState('');
+  
+  // Quranic specific form state
+  const [selectedSurahNumber, setSelectedSurahNumber] = useState(1);
+  const [fromAyah, setFromAyah] = useState(1);
+  const [toAyah, setToAyah] = useState(7);
+  const [formError, setFormError] = useState<string | null>(null);
 
   // Reciter & Audio state
   const [selectedReciter, setSelectedReciter] = useState<Reciter>(RECITERS_LIST[0]); // Default: Mishary Alafasy
@@ -51,9 +79,41 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
   // Audio element ref
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Combine default items and custom items
+  const allItems: RuqyahItem[] = [...customItems, ...RUQYAH_ITEMS];
+
+  // Save custom items whenever updated
+  const saveCustomItems = (items: RuqyahItem[]) => {
+    setCustomItems(items);
+    try {
+      localStorage.setItem('bayan_custom_ruqyah_items', JSON.stringify(items));
+    } catch (err) {
+      console.warn('Failed to save custom ruqyah items:', err);
+    }
+  };
+
+  // Delete a single custom item
+  const handleDeleteCustomItem = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (playingItemId === id) {
+      stopAllAudio();
+    }
+    const updated = customItems.filter((i) => i.id !== id);
+    saveCustomItems(updated);
+  };
+
+  // Clear all custom items (revert to default)
+  const handleRestoreDefaults = () => {
+    if (window.confirm('هل تريد حذف جميع الأوراد المضافة واستعادة الأوراد الافتراضية فقط؟')) {
+      stopAllAudio();
+      saveCustomItems([]);
+    }
+  };
+
   // Filter items based on active tab
-  const filteredItems = RUQYAH_ITEMS.filter((item) => {
+  const filteredItems = allItems.filter((item) => {
     if (activeTab === 'all') return true;
+    if (activeTab === 'custom') return item.isCustom;
     if (activeTab === 'quranic') return item.category === 'quranic';
     if (activeTab === 'prophetic') return item.category === 'prophetic';
     if (activeTab === 'sakina') return item.category === 'sakina';
@@ -61,14 +121,11 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
   });
 
   // Calculate completed count
-  const completedCount = RUQYAH_ITEMS.filter(
+  const completedCount = allItems.filter(
     (item) => (counters[item.id] || 0) >= item.repeatTarget
   ).length;
 
-  // Active item being played
-  const activePlayingItem = RUQYAH_ITEMS.find((i) => i.id === playingItemId);
-
-  // Handle repetition increment
+  // Repetition counters
   const handleIncrement = (item: RuqyahItem) => {
     setCounters((prev) => {
       const current = prev[item.id] || 0;
@@ -127,9 +184,7 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
     setAudioProgress(0);
   };
 
-  // Start or toggle Quran recitation for an item
   const handleToggleQuranAudio = (item: RuqyahItem) => {
-    // If this item is currently playing, toggle pause/play
     if (playingItemId === item.id) {
       if (isPlayingAudio) {
         audioRef.current?.pause();
@@ -140,11 +195,9 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
       return;
     }
 
-    // Stop existing audio
     stopAllAudio();
 
     if (!item.audioSequence || item.audioSequence.length === 0) {
-      // Single fallback
       if (item.surahNumber && item.ayahNumber) {
         playAyah(item.id, [{ surah: item.surahNumber, ayah: item.ayahNumber }], 0);
       }
@@ -154,7 +207,6 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
     playAyah(item.id, item.audioSequence, 0);
   };
 
-  // Play specific ayah in item's sequence
   const playAyah = (itemId: string, sequence: AudioAyahRef[], index: number) => {
     if (!sequence[index]) return;
     const { surah, ayah } = sequence[index];
@@ -183,7 +235,6 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
       });
   };
 
-  // Audio event listeners
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -195,26 +246,22 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
 
     const onEnded = () => {
       if (!playingItemId) return;
-      const item = RUQYAH_ITEMS.find((i) => i.id === playingItemId);
+      const item = allItems.find((i) => i.id === playingItemId);
       if (!item || !item.audioSequence) {
         stopAllAudio();
         return;
       }
 
-      // Check if there are more ayahs in sequence
       const nextIndex = playingAyahIndex + 1;
       if (nextIndex < item.audioSequence.length) {
         playAyah(item.id, item.audioSequence, nextIndex);
       } else {
-        // Sequence completed! Increment counter
         handleIncrement(item);
 
         const currentCount = (counters[item.id] || 0) + 1;
         if (autoLoopUntilTarget && currentCount < item.repeatTarget) {
-          // Restart sequence from start
           playAyah(item.id, item.audioSequence, 0);
         } else {
-          // Stop audio
           setIsPlayingAudio(false);
           setPlayingAyahIndex(0);
           setAudioProgress(0);
@@ -229,16 +276,14 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
       audio.removeEventListener('timeupdate', onTimeUpdate);
       audio.removeEventListener('ended', onEnded);
     };
-  }, [playingItemId, playingAyahIndex, autoLoopUntilTarget, counters, selectedReciter, playbackSpeed]);
+  }, [playingItemId, playingAyahIndex, autoLoopUntilTarget, counters, selectedReciter, playbackSpeed, allItems]);
 
-  // Update playback speed if user changes it
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.playbackRate = playbackSpeed;
     }
   }, [playbackSpeed]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (audioRef.current) {
@@ -251,7 +296,6 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
     };
   }, []);
 
-  // Handle Prophetic Dua speech
   const handleTogglePropheticAudio = (item: RuqyahItem) => {
     if (playingItemId === item.id && isSpeakingDua) {
       if ('speechSynthesis' in window) {
@@ -269,11 +313,10 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
       return;
     }
 
-    // Clean diacritics / quotes if needed, or speak full text clearly
     const textToSpeak = item.arabicText.replace(/[«»]/g, '').trim();
     const utterance = new SpeechSynthesisUtterance(textToSpeak);
     utterance.lang = 'ar-SA';
-    utterance.rate = 0.85; // Reverent, gentle pace
+    utterance.rate = 0.85;
     utterance.pitch = 1.0;
 
     utterance.onstart = () => {
@@ -296,6 +339,94 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
     window.speechSynthesis.speak(utterance);
   };
 
+  // -------------------------------------------------------------
+  // CUSTOM ITEM MODAL HANDLER
+  // -------------------------------------------------------------
+  const handleOpenAddModal = () => {
+    setNewItemCategory('quranic');
+    setNewItemTitle('');
+    setSelectedSurahNumber(1);
+    setFromAyah(1);
+    setToAyah(7);
+    setNewItemSource('سورة الفاتحة: 1 - 7');
+    setNewItemArabicText('');
+    setNewItemRepeatTarget(3);
+    setNewItemVirtue('');
+    setNewItemInstruction('');
+    setFormError(null);
+    setIsAddModalOpen(true);
+  };
+
+  const handleSurahChange = (surahNum: number) => {
+    setSelectedSurahNumber(surahNum);
+    const surah = SURAHS_LIST.find((s) => s.number === surahNum);
+    if (surah) {
+      setFromAyah(1);
+      const defaultTo = Math.min(surah.numberOfAyahs, 5);
+      setToAyah(defaultTo);
+      setNewItemSource(`سورة ${surah.name}: 1${defaultTo > 1 ? ` - ${defaultTo}` : ''}`);
+    }
+  };
+
+  const handleAyahRangeChange = (from: number, to: number) => {
+    const surah = SURAHS_LIST.find((s) => s.number === selectedSurahNumber);
+    const maxAyahs = surah?.numberOfAyahs || 1;
+    const safeFrom = Math.max(1, Math.min(from, maxAyahs));
+    const safeTo = Math.max(safeFrom, Math.min(to, maxAyahs));
+    setFromAyah(safeFrom);
+    setToAyah(safeTo);
+    if (surah) {
+      setNewItemSource(`سورة ${surah.name}: ${safeFrom}${safeTo > safeFrom ? ` - ${safeTo}` : ''}`);
+    }
+  };
+
+  const handleSubmitNewItem = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newItemTitle.trim()) {
+      setFormError('يرجى إدخال عنوان الورد المبارك');
+      return;
+    }
+    if (!newItemArabicText.trim()) {
+      setFormError('يرجى إدخال نص الآية أو الدعاء باللغة العربية');
+      return;
+    }
+
+    const surah = SURAHS_LIST.find((s) => s.number === selectedSurahNumber);
+    let sequence: AudioAyahRef[] | undefined = undefined;
+
+    if (newItemCategory === 'quranic') {
+      sequence = [];
+      for (let a = fromAyah; a <= toAyah; a++) {
+        sequence.push({
+          surah: selectedSurahNumber,
+          ayah: a,
+          label: `${surah?.name || 'سورة'}: ${a}`
+        });
+      }
+    }
+
+    const finalItem: RuqyahItem = {
+      id: `custom-${Date.now()}`,
+      category: newItemCategory,
+      title: newItemTitle.trim(),
+      source: newItemSource.trim() || (newItemCategory === 'quranic' ? `سورة ${surah?.name}` : 'مأثور'),
+      arabicText: newItemArabicText.trim(),
+      repeatTarget: Math.max(1, newItemRepeatTarget),
+      virtueAndFadl: newItemVirtue.trim() || 'آية / دعاء مبارك للشفاء والتحصين ودفع البلاء بإذن الله.',
+      instruction: newItemInstruction.trim() || undefined,
+      surahNumber: newItemCategory === 'quranic' ? selectedSurahNumber : undefined,
+      ayahNumber: newItemCategory === 'quranic' ? fromAyah : undefined,
+      audioSequence: sequence,
+      isCustom: true,
+      createdAt: new Date().toLocaleDateString('ar-SA')
+    };
+
+    saveCustomItems([finalItem, ...customItems]);
+    setIsAddModalOpen(false);
+  };
+
+  const currentSelectedSurah = SURAHS_LIST.find((s) => s.number === selectedSurahNumber);
+
   return (
     <div className="space-y-6 pb-24 animate-in fade-in duration-200">
       
@@ -311,36 +442,46 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
               وَنُنَزِّلُ مِنَ الْقُرْآنِ مَا هُوَ شِفَاءٌ وَرَحْمَةٌ
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-              حصن المسلم الجامع لآيات الشفاء والتحصين من العين والسحر، مع الاستماع المباشر بصوت كبار القراء، وعداد تكرار تفاعلي وتوجيه نبوي مسند.
+              حصن المسلم الجامع لآيات الشفاء والتحصين من العين والسحر، مع الاستماع المباشر بصوت كبار القراء، وعداد تكرار تفاعلي، وإمكانية إضافة أوراد مخصصة.
             </p>
           </div>
 
-          {/* Daily Progress Card */}
-          <div className="w-full md:w-auto shrink-0 bg-slate-950/80 border border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col items-center justify-center min-w-[200px] shadow-lg">
+          {/* Daily Progress Card & Add Button */}
+          <div className="w-full md:w-auto shrink-0 bg-slate-950/80 border border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col items-center justify-center min-w-[210px] shadow-lg">
             <div className="text-[11px] text-slate-400 font-semibold mb-1">إنجاز رقية اليوم</div>
             <div className="flex items-baseline gap-1">
               <span className="text-3xl font-black text-emerald-400 font-mono">{completedCount}</span>
-              <span className="text-xs text-slate-400">من {RUQYAH_ITEMS.length} أوراد</span>
+              <span className="text-xs text-slate-400">من {allItems.length} أوراد</span>
             </div>
             
             {/* Progress bar */}
             <div className="w-full h-1.5 bg-slate-800 rounded-full mt-2.5 overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300 rounded-full"
-                style={{ width: `${(completedCount / RUQYAH_ITEMS.length) * 100}%` }}
+                style={{ width: `${(completedCount / allItems.length) * 100}%` }}
               />
             </div>
 
-            {completedCount > 0 && (
+            <div className="flex items-center gap-2 mt-3">
               <button
-                onClick={handleResetAll}
-                className="mt-3 text-[10px] text-slate-400 hover:text-rose-400 flex items-center gap-1 transition-colors cursor-pointer"
-                title="إعادة تصفير عدادات الأوراد"
+                onClick={handleOpenAddModal}
+                className="py-1 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-950 transition-all cursor-pointer"
+                title="إضافة ورد جديد للرقية الشرعية"
               >
-                <RotateCcw className="w-3 h-3" />
-                <span>إعادة ضبط العدادات</span>
+                <Plus className="w-3.5 h-3.5" />
+                <span>إضافة ورد جديد</span>
               </button>
-            )}
+
+              {completedCount > 0 && (
+                <button
+                  onClick={handleResetAll}
+                  className="p-1 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-slate-900 transition-colors cursor-pointer"
+                  title="إعادة تصفير عدادات الأوراد"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -348,7 +489,7 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
         <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
       </div>
 
-      {/* Ruqyah Audio Settings Strip */}
+      {/* Ruqyah Audio & Controls Strip */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3 sm:p-4 flex flex-wrap items-center justify-between gap-3 shadow-md">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
@@ -383,9 +524,8 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                     onClick={() => {
                       setSelectedReciter(r);
                       setIsReciterMenuOpen(false);
-                      // If something is playing, update audio
                       if (playingItemId) {
-                        const item = RUQYAH_ITEMS.find(i => i.id === playingItemId);
+                        const item = allItems.find(i => i.id === playingItemId);
                         if (item && item.audioSequence) {
                           playAyah(item.id, item.audioSequence, playingAyahIndex);
                         }
@@ -436,6 +576,18 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
             ))}
           </div>
 
+          {/* Restore Defaults button if custom items exist */}
+          {customItems.length > 0 && (
+            <button
+              onClick={handleRestoreDefaults}
+              className="py-1.5 px-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-medium flex items-center gap-1 hover:bg-amber-500/20 transition-colors cursor-pointer"
+              title="حذف جميع الأوراد المضافة واسترجاع القائمة الافتراضية"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>استعادة الأصل ({customItems.length} مضاف)</span>
+            </button>
+          )}
+
           {/* Stop Audio Button if playing */}
           {(isPlayingAudio || isSpeakingDua) && (
             <button
@@ -452,10 +604,11 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
       {/* Tabs Filter Bar */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-none select-none">
         {[
-          { id: 'all', label: 'الرقية الشاملة', count: RUQYAH_ITEMS.length, icon: Sparkles },
-          { id: 'quranic', label: 'آيات الشفاء والحفظ', count: RUQYAH_ITEMS.filter(i => i.category === 'quranic').length, icon: BookOpen },
-          { id: 'prophetic', label: 'الأدعية النبوية', count: RUQYAH_ITEMS.filter(i => i.category === 'prophetic').length, icon: ShieldCheck },
-          { id: 'sakina', label: 'سكينة وطرد القلق', count: RUQYAH_ITEMS.filter(i => i.category === 'sakina').length, icon: Heart },
+          { id: 'all', label: 'الرقية الشاملة', count: allItems.length, icon: Sparkles },
+          ...(customItems.length > 0 ? [{ id: 'custom', label: 'أورادي المضافة', count: customItems.length, icon: Plus }] : []),
+          { id: 'quranic', label: 'آيات الشفاء والحفظ', count: allItems.filter(i => i.category === 'quranic').length, icon: BookOpen },
+          { id: 'prophetic', label: 'الأدعية النبوية', count: allItems.filter(i => i.category === 'prophetic').length, icon: ShieldCheck },
+          { id: 'sakina', label: 'سكينة وطرد القلق', count: allItems.filter(i => i.category === 'sakina').length, icon: Heart },
           { id: 'etiquette', label: 'آداب وسنن الرقية', count: RUQYAH_ETIQUETTES.length, icon: Compass },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -550,8 +703,13 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                       {index + 1}
                     </span>
                     <div>
-                      <h3 className="font-bold text-white text-sm sm:text-base font-kufi flex items-center gap-2">
+                      <h3 className="font-bold text-white text-sm sm:text-base font-kufi flex items-center gap-2 flex-wrap">
                         <span>{item.title}</span>
+                        {item.isCustom && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-300 border border-teal-500/30 font-sans">
+                            ورد مضاف يدوياً
+                          </span>
+                        )}
                         {isThisItemActive && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-sans border border-emerald-500/40 animate-pulse">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
@@ -565,7 +723,7 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                     </div>
                   </div>
 
-                  {/* Actions: Audio, Navigate, Copy */}
+                  {/* Actions: Audio, Navigate, Copy, Delete */}
                   <div className="flex items-center gap-1.5">
                     
                     {/* Quran Audio Button */}
@@ -644,6 +802,17 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                         <Copy className="w-3.5 h-3.5" />
                       )}
                     </button>
+
+                    {/* Delete Custom Item Button */}
+                    {item.isCustom && (
+                      <button
+                        onClick={(e) => handleDeleteCustomItem(item.id, e)}
+                        className="p-1.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-rose-500/50 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+                        title="حذف هذا الورد المضاف يدوياً"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -757,6 +926,252 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: ADD CUSTOM RUQYAH ITEM                                            */}
+      {/* ========================================================================= */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-xl w-full p-6 shadow-2xl relative space-y-4 my-8">
+            
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <Plus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-base font-kufi">إضافة ورد أو آية جديدة للرقية</h3>
+                  <p className="text-[11px] text-slate-400">ستُحفظ في التطبيق وتعمل بكامل خصائص الصوت والعداد والتنقل</p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsAddModalOpen(false)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {formError && (
+              <div className="p-3 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>{formError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmitNewItem} className="space-y-4">
+              
+              {/* Category selector */}
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1.5">نوع الورد:</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'quranic', label: 'آية قرآنية', icon: BookOpen },
+                    { id: 'prophetic', label: 'دعاء نبوي', icon: ShieldCheck },
+                    { id: 'sakina', label: 'دعاء سكينة وكرب', icon: Heart }
+                  ].map((cat) => {
+                    const Icon = cat.icon;
+                    const isSelected = newItemCategory === cat.id;
+                    return (
+                      <button
+                        type="button"
+                        key={cat.id}
+                        onClick={() => {
+                          setNewItemCategory(cat.id as any);
+                          if (cat.id !== 'quranic' && newItemSource.includes('سورة')) {
+                            setNewItemSource('');
+                          }
+                        }}
+                        className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-emerald-600 text-white border-emerald-400 shadow-md'
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        <Icon className="w-3.5 h-3.5" />
+                        <span>{cat.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Title Input */}
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">
+                  عنوان الورد <span className="text-rose-400">*</span>:
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="مثال: آيات إحياء العظام والشفاء، أو دعاء الحفظ"
+                  value={newItemTitle}
+                  onChange={(e) => setNewItemTitle(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              {/* Quranic Specific: Surah Picker & Ayah Range */}
+              {newItemCategory === 'quranic' && (
+                <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between text-xs font-bold text-emerald-400">
+                    <span>تحديد السورة والآيات لتشغيل الصوت والتنقل:</span>
+                    <span>{currentSelectedSurah?.numberOfAyahs} آية</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {/* Surah Dropdown */}
+                    <div className="sm:col-span-1">
+                      <label className="block text-[11px] text-slate-400 mb-1">السورة:</label>
+                      <select
+                        value={selectedSurahNumber}
+                        onChange={(e) => handleSurahChange(Number(e.target.value))}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                      >
+                        {SURAHS_LIST.map((s) => (
+                          <option key={s.number} value={s.number}>
+                            {s.number}. {s.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* From Ayah */}
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">من آية:</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={currentSelectedSurah?.numberOfAyahs || 1}
+                        value={fromAyah}
+                        onChange={(e) => handleAyahRangeChange(Number(e.target.value), toAyah)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white text-center focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+
+                    {/* To Ayah */}
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">إلى آية:</label>
+                      <input
+                        type="number"
+                        min={fromAyah}
+                        max={currentSelectedSurah?.numberOfAyahs || 1}
+                        value={toAyah}
+                        onChange={(e) => handleAyahRangeChange(fromAyah, Number(e.target.value))}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white text-center focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="text-[11px] text-slate-400 flex items-center justify-between">
+                    <span>المصدر المقترح:</span>
+                    <strong className="text-emerald-300 font-mono">{newItemSource}</strong>
+                  </div>
+                </div>
+              )}
+
+              {/* Source Input for Prophetic / Sakina */}
+              {newItemCategory !== 'quranic' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">المصدر / التخريج:</label>
+                  <input
+                    type="text"
+                    placeholder="مثال: صحيح مسلم عن عثمان بن أبي العاص"
+                    value={newItemSource}
+                    onChange={(e) => setNewItemSource(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              )}
+
+              {/* Arabic Text Area */}
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">
+                  نص الآية أو الدعاء باللغة العربية <span className="text-rose-400">*</span>:
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  placeholder="اكتب أو الصق نص الآيات المباركة بالرسم العثماني أو المشكول..."
+                  value={newItemArabicText}
+                  onChange={(e) => setNewItemArabicText(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm font-quran text-emerald-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 leading-relaxed text-right"
+                />
+              </div>
+
+              {/* Repeat Target & Quick selector */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-slate-300">التكرار المسنون للورد:</label>
+                  <span className="text-xs text-emerald-400 font-mono font-bold">{newItemRepeatTarget} مرات</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {[1, 3, 7, 10].map((num) => (
+                    <button
+                      type="button"
+                      key={num}
+                      onClick={() => setNewItemRepeatTarget(num)}
+                      className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        newItemRepeatTarget === num
+                          ? 'bg-emerald-600 text-white font-mono'
+                          : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {num} {num === 1 ? 'مرة' : 'مرات'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Virtue and Fadl */}
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">فضله وأثره في الشفاء:</label>
+                <input
+                  type="text"
+                  placeholder="مثال: من قرأها صباحاً ومساءً كفاه الله كل سوء"
+                  value={newItemVirtue}
+                  onChange={(e) => setNewItemVirtue(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              {/* Instruction */}
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">طريقة التطبيق والنفث (اختياري):</label>
+                <input
+                  type="text"
+                  placeholder="مثال: ينفث في يديه ويمسح بهما موضع الألم"
+                  value={newItemInstruction}
+                  onChange={(e) => setNewItemInstruction(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              {/* Modal Actions */}
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsAddModalOpen(false)}
+                  className="py-2 px-4 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  className="py-2 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-950 transition-all cursor-pointer"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>حفظ الورد وإضافته للرقية</span>
+                </button>
+              </div>
+
+            </form>
+
+          </div>
         </div>
       )}
 

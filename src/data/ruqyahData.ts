@@ -16,6 +16,8 @@ export interface RuqyahItem {
   surahNumber?: number;
   ayahNumber?: number;
   audioSequence?: AudioAyahRef[]; // Exact audio sequence for high-quality Quran recitation
+  isCustom?: boolean; // Flag if added manually by developer/user
+  createdAt?: string;
 }
 
 export const RUQYAH_ITEMS: RuqyahItem[] = [
