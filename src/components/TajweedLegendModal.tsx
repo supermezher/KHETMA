@@ -8,15 +8,33 @@ interface TajweedLegendModalProps {
 }
 
 export const TajweedLegendModal: React.FC<TajweedLegendModalProps> = ({ isOpen, onClose }) => {
+  // Keyboard accessibility: close on Escape
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="tajweed-legend-title"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
+    >
       <div className="relative w-full max-w-xl bg-slate-900 border border-emerald-800/40 rounded-2xl shadow-2xl p-5 sm:p-6 space-y-4 max-h-[85vh] overflow-y-auto">
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
           <div className="flex items-center gap-2.5 text-emerald-400 font-bold">
             <Sparkles className="w-5 h-5" />
-            <h3 className="text-base sm:text-lg text-white">دليل ألوان التجويد القياسي</h3>
+            <h3 id="tajweed-legend-title" className="text-base sm:text-lg text-white">دليل ألوان التجويد القياسي</h3>
           </div>
           <button
             onClick={onClose}

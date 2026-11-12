@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { SurahData, Ayah, sanitizeAyahText } from '../data/quranService';
 import { renderTajweedText } from '../utils/tajweedParser';
+import { safeLocalStorage } from '../utils/safeStorage';
 import {
   BookOpen, Sparkles, Eye, Share2, Columns, Smartphone,
   ZoomIn, ZoomOut, Palette, Maximize2, Minimize2,
@@ -33,6 +34,71 @@ interface QuranReaderProps {
 
 type ReaderTheme = 'dark' | 'sepia' | 'emerald' | 'high-contrast';
 
+interface AyahSpanProps {
+  ayah: Ayah;
+  surahNumber: number;
+  isActive: boolean;
+  isBookmarked: boolean;
+  isPlayingAudio?: boolean;
+  fontSize: number;
+  isTajweedActive: boolean;
+  activeWordIndex?: number;
+  onOpenTadabburModal: (ayah: Ayah) => void;
+  setRef: (el: HTMLSpanElement | null) => void;
+}
+
+const AyahSpan = React.memo<AyahSpanProps>(({
+  ayah,
+  surahNumber,
+  isActive,
+  isBookmarked,
+  isPlayingAudio,
+  fontSize,
+  isTajweedActive,
+  activeWordIndex,
+  onOpenTadabburModal,
+  setRef
+}) => {
+  const cleanText = sanitizeAyahText(ayah.text, surahNumber, ayah.numberInSurah);
+  const cleanTajweed = ayah.tajweedText ? sanitizeAyahText(ayah.tajweedText, surahNumber, ayah.numberInSurah) : undefined;
+
+  return (
+    <span
+      ref={setRef}
+      className={`relative inline transition-colors duration-200 rounded px-1 ${
+        isActive ? 'bg-emerald-500/10' : 'hover:bg-emerald-500/5'
+      }`}
+      style={{ fontSize: `${fontSize}px` }}
+    >
+      {renderTajweedText(
+        cleanText,
+        isTajweedActive,
+        () => onOpenTadabburModal({ ...ayah, text: cleanText }),
+        activeWordIndex,
+        cleanTajweed
+      )}
+      <span
+        onClick={() => onOpenTadabburModal({ ...ayah, text: cleanText })}
+        className="ayah-end-symbol mx-1.5 inline-flex items-center justify-center cursor-pointer group"
+        title={`الآية ${ayah.numberInSurah} - انقر للتدبر والتفسير`}
+      >
+        <span
+          className={`font-bold transition-all text-xl ${
+            isActive && isPlayingAudio
+              ? 'text-emerald-400 scale-110 drop-shadow-sm'
+              : 'text-emerald-500 group-hover:scale-125'
+          }`}
+        >
+          ﴿{ayah.numberInSurah}﴾
+        </span>
+      </span>
+      {isBookmarked && (
+        <Bookmark className="inline w-4 h-4 text-amber-400 fill-amber-400 align-middle ml-1" />
+      )}
+    </span>
+  );
+});
+
 export const QuranReader: React.FC<QuranReaderProps> = ({
   surahData,
   activeAyahNumber,
@@ -62,6 +128,14 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const ayahRefs = useRef<Record<number, HTMLElement | null>>({});
 
+  // Keep latest audio timing in refs so 60fps auto-scroll engine doesn't re-mount 4 times/sec
+  const currentTimeRef = useRef(currentTime);
+  const durationRef = useRef(duration);
+  useEffect(() => {
+    currentTimeRef.current = currentTime;
+    durationRef.current = duration;
+  }, [currentTime, duration]);
+
   // Unified Auto-Scroll Engine state (Dual-Mode: Reciter-Adaptive Sync OR Manual Self-Reading)
   const [isAutoScrolling, setIsAutoScrolling] = useState<boolean>(false);
   const [isAutoScrollPaused, setIsAutoScrollPaused] = useState<boolean>(false);
@@ -79,8 +153,8 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
 
   // Touch & Gesture Guard (stops scroller from fighting user's thumb or mouse wheel)
   const [isUserInteracting, setIsUserInteracting] = useState<boolean>(false);
-  const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const pauseAyahTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const interactionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pauseAyahTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Clean up timers on unmount
   useEffect(() => {
@@ -161,16 +235,19 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
     setPausedAyahNumber(null);
   }, [surahData.meta.number, isAutoScrolling]);
 
-  // Synchronize reciter mode when audio starts or stops
+  // Synchronize reciter mode when audio starts or stops (without trapping manual mode changes)
+  const prevIsPlayingAudioRef = useRef(isPlayingAudio);
   useEffect(() => {
-    if (isPlayingAudio) {
+    const wasPlaying = prevIsPlayingAudioRef.current;
+    prevIsPlayingAudioRef.current = isPlayingAudio;
+
+    if (!wasPlaying && isPlayingAudio) {
       if (isSmartScrollActive) {
         setIsAutoScrolling(true);
       }
       setScrollMode('reciter-sync');
       setIsAutoScrollPaused(false);
-    } else {
-      // When audio is stopped or paused, turn off auto-scroll if it was following the reciter
+    } else if (wasPlaying && !isPlayingAudio) {
       if (scrollMode === 'reciter-sync') {
         setIsAutoScrolling(false);
       }
@@ -210,6 +287,7 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
 
       // MODE 1: VOICE RECITATION TRACKER (المزامنة الذكية مع صوت وتلاوة الشيخ)
       if (isPlayingAudio && scrollMode === 'reciter-sync') {
+
         const el = ayahRefs.current[activeAyahNumber];
         if (el) {
           const containerRect = container.getBoundingClientRect();
@@ -219,8 +297,10 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
           const elRelativeTop = elRect.top - containerRect.top + container.scrollTop;
 
           // Intra-ayah progression through words/lines
-          const progress = (duration && duration > 0)
-            ? Math.max(0, Math.min(1, (currentTime || 0) / duration))
+          const curDur = durationRef.current;
+          const curTime = currentTimeRef.current;
+          const progress = (curDur && curDur > 0)
+            ? Math.max(0, Math.min(1, (curTime || 0) / curDur))
             : 0;
 
           // Progressively shift focal line down long multi-line verses
@@ -307,28 +387,28 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
     isPausedAtAyah,
     isUserInteracting,
     activeAyahNumber,
-    currentTime,
-    duration,
     autoScrollSpeed,
     pauseAtAyahEnds,
     surahData.ayahs
   ]);
 
-  // Load saved bookmark
+  // Load saved bookmark (resets state if new surah has no saved bookmark)
   useEffect(() => {
-    const saved = localStorage.getItem(`bayan_bookmark_${surahData.meta.number}`);
+    const saved = safeLocalStorage.getItem(`bayan_bookmark_${surahData.meta.number}`);
     if (saved) {
       setBookmarkedAyah(Number(saved));
+    } else {
+      setBookmarkedAyah(null);
     }
   }, [surahData.meta.number]);
 
   const handleToggleBookmark = (ayahNum: number) => {
     if (bookmarkedAyah === ayahNum) {
       setBookmarkedAyah(null);
-      localStorage.removeItem(`bayan_bookmark_${surahData.meta.number}`);
+      safeLocalStorage.removeItem(`bayan_bookmark_${surahData.meta.number}`);
     } else {
       setBookmarkedAyah(ayahNum);
-      localStorage.setItem(`bayan_bookmark_${surahData.meta.number}`, String(ayahNum));
+      safeLocalStorage.setItem(`bayan_bookmark_${surahData.meta.number}`, String(ayahNum));
     }
   };
 
@@ -865,51 +945,30 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
             {rightPageAyahs.map((ayah) => {
               const isActive = activeAyahNumber === ayah.numberInSurah;
               const isBookmarked = bookmarkedAyah === ayah.numberInSurah;
-
-              const cleanText = sanitizeAyahText(ayah.text, surahData.meta.number, ayah.numberInSurah);
-              const words = cleanText.trim().split(/\s+/);
               let activeWordIndex: number | undefined = undefined;
               if (isActive && isPlayingAudio && duration && duration > 0) {
+                const cleanText = sanitizeAyahText(ayah.text, surahData.meta.number, ayah.numberInSurah);
+                const words = cleanText.trim().split(/\s+/);
                 const progress = Math.max(0, Math.min(0.99, (currentTime || 0) / duration));
                 activeWordIndex = Math.floor(progress * words.length);
               }
 
               return (
-                <span
+                <AyahSpan
                   key={ayah.numberInSurah}
-                  ref={(el) => {
+                  ayah={ayah}
+                  surahNumber={surahData.meta.number}
+                  isActive={isActive}
+                  isBookmarked={isBookmarked}
+                  isPlayingAudio={isPlayingAudio}
+                  fontSize={fontSize}
+                  isTajweedActive={isTajweedActive}
+                  activeWordIndex={activeWordIndex}
+                  onOpenTadabburModal={onOpenTadabburModal}
+                  setRef={(el) => {
                     ayahRefs.current[ayah.numberInSurah] = el;
                   }}
-                  className={`relative inline transition-colors duration-200 rounded px-1 ${
-                    isActive
-                      ? 'bg-emerald-500/10'
-                      : 'hover:bg-emerald-500/5'
-                  }`}
-                  style={{ fontSize: `${fontSize}px` }}
-                >
-                  {/* Ayah Text with Tajweed and synchronized Word-by-Word highlighting */}
-                  {renderTajweedText(cleanText, isTajweedActive, () => onOpenTadabburModal({ ...ayah, text: cleanText }), activeWordIndex)}
-
-                  {/* Ayah End Ornament & Number ﴿١﴾ */}
-                  <span
-                    onClick={() => onOpenTadabburModal({ ...ayah, text: cleanText })}
-                    className="ayah-end-symbol mx-1.5 inline-flex items-center justify-center cursor-pointer group"
-                    title={`الآية ${ayah.numberInSurah} - انقر للتدبر والتفسير`}
-                  >
-                    <span className={`font-bold transition-all text-xl ${
-                      isActive && isPlayingAudio
-                        ? 'text-emerald-400 scale-110 drop-shadow-sm'
-                        : 'text-emerald-500 group-hover:scale-125'
-                    }`}>
-                      ﴿{ayah.numberInSurah}﴾
-                    </span>
-                  </span>
-
-                  {/* Bookmark badge if set */}
-                  {isBookmarked && (
-                    <Bookmark className="inline w-4 h-4 text-amber-400 fill-amber-400 align-middle ml-1" />
-                  )}
-                </span>
+                />
               );
             })}
           </div>
@@ -920,48 +979,30 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
               {leftPageAyahs.map((ayah) => {
                 const isActive = activeAyahNumber === ayah.numberInSurah;
                 const isBookmarked = bookmarkedAyah === ayah.numberInSurah;
-
-                const cleanText = sanitizeAyahText(ayah.text, surahData.meta.number, ayah.numberInSurah);
-                const words = cleanText.trim().split(/\s+/);
                 let activeWordIndex: number | undefined = undefined;
                 if (isActive && isPlayingAudio && duration && duration > 0) {
+                  const cleanText = sanitizeAyahText(ayah.text, surahData.meta.number, ayah.numberInSurah);
+                  const words = cleanText.trim().split(/\s+/);
                   const progress = Math.max(0, Math.min(0.99, (currentTime || 0) / duration));
                   activeWordIndex = Math.floor(progress * words.length);
                 }
 
                 return (
-                  <span
+                  <AyahSpan
                     key={ayah.numberInSurah}
-                    ref={(el) => {
+                    ayah={ayah}
+                    surahNumber={surahData.meta.number}
+                    isActive={isActive}
+                    isBookmarked={isBookmarked}
+                    isPlayingAudio={isPlayingAudio}
+                    fontSize={fontSize}
+                    isTajweedActive={isTajweedActive}
+                    activeWordIndex={activeWordIndex}
+                    onOpenTadabburModal={onOpenTadabburModal}
+                    setRef={(el) => {
                       ayahRefs.current[ayah.numberInSurah] = el;
                     }}
-                    className={`relative inline transition-colors duration-200 rounded px-1 ${
-                      isActive
-                        ? 'bg-emerald-500/10'
-                        : 'hover:bg-emerald-500/5'
-                    }`}
-                    style={{ fontSize: `${fontSize}px` }}
-                  >
-                    {renderTajweedText(cleanText, isTajweedActive, () => onOpenTadabburModal({ ...ayah, text: cleanText }), activeWordIndex)}
-
-                    <span
-                      onClick={() => onOpenTadabburModal({ ...ayah, text: cleanText })}
-                      className="ayah-end-symbol mx-1.5 inline-flex items-center justify-center cursor-pointer group"
-                      title={`الآية ${ayah.numberInSurah} - انقر للتدبر والتفسير`}
-                    >
-                      <span className={`font-bold transition-all text-xl ${
-                        isActive && isPlayingAudio
-                          ? 'text-emerald-400 scale-110 drop-shadow-sm'
-                          : 'text-emerald-500 group-hover:scale-125'
-                      }`}>
-                        ﴿{ayah.numberInSurah}﴾
-                      </span>
-                    </span>
-
-                    {isBookmarked && (
-                      <Bookmark className="inline w-4 h-4 text-amber-400 fill-amber-400 align-middle ml-1" />
-                    )}
-                  </span>
+                  />
                 );
               })}
             </div>

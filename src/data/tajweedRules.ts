@@ -57,6 +57,20 @@ export const TAJWEED_RULES: TajweedRule[] = [
     benefit: 'التخفيف والانسجام اللساني الفصيح.'
   },
   {
+    id: 'iqlab',
+    name: 'الإقلاب',
+    nameEn: 'Iqlab (Conversion to Meem)',
+    colorHex: '#c084fc',
+    cssClass: 'tajweed-iqlab',
+    category: 'idgham',
+    definition: 'قلب النون الساكنة أو التنوين ميماً مخفاة بغنة حركتين عند ملاقاة حرف الباء.',
+    letters: ['ب (مع ميم صغيرة ۢ)'],
+    mizan: 'حركتان بغنة',
+    exampleQuran: 'مِۢن بَعْدِ / أَنۢبِئْهُم / سَمِيعٌۢ بَصِيرٌ',
+    exampleExplanation: 'تُنطق النون ميماً مع تقليل انطباق الشفتين وإظهار الغنة رقيقة.',
+    benefit: 'سهولة النطق وتجانس الأصوات بين النون والباء.'
+  },
+  {
     id: 'qalqalah',
     name: 'القلقلة (صغرى وكبرى)',
     nameEn: 'Qalqalah (Echoing)',
@@ -97,6 +111,34 @@ export const TAJWEED_RULES: TajweedRule[] = [
     exampleQuran: 'وَلَا ٱلضَّآلِّينَ / ٱلصَّآخَّةُ / الٓمٓ / قٓ',
     exampleExplanation: 'أطول المدود في القرآن، يُمد 6 حركات كاملة دون تسرع.',
     benefit: 'هيبة الكلمة وجلال معناها في مواقف الفصل والإنذار وفواتح السور.'
+  },
+  {
+    id: 'madd-badal',
+    name: 'مد البدل',
+    nameEn: 'Madd Badal (2 Counts)',
+    colorHex: '#facc15',
+    cssClass: 'tajweed-madd-badal',
+    category: 'madd',
+    definition: 'أن يتقدم الهمز على حرف المد في كلمة واحدة دون أن يليه همز أو سكون.',
+    letters: ['آ (ءَا)', 'إِي', 'أُو'],
+    mizan: 'حركتان (كالمد الطبيعي في رواية حفص)',
+    exampleQuran: 'آمَنُوا۟ / أُوتُوا۟ / إِيمَـٰنًا / آتَيْنَا',
+    exampleExplanation: 'إطالة خفيفة بمقدار حركتين فقط، وهو أصل إبدال الهمزة الثانية الساكنة حرف مد.',
+    benefit: 'صحة التلاوة بعدم إطالته فوق حركتين في رواية حفص عن عاصم.'
+  },
+  {
+    id: 'madd-arid',
+    name: 'المد العارض للسكون',
+    nameEn: 'Madd Arid lis-Sukoon',
+    colorHex: '#fb923c',
+    cssClass: 'tajweed-madd-arid',
+    category: 'madd',
+    definition: 'أن يقع بعد حرف المد سكون عارض لأجل الوقف على أواخر الكلمات والآيات.',
+    letters: ['ا', 'و', 'ي'],
+    mizan: '2 أو 4 أو 6 حركات (جوازاً عند الوقف)',
+    exampleQuran: 'ٱلْعَـٰلَمِينَ ﴿٢﴾ / ٱلرَّحِيمِ ﴿٣﴾ / نَسْتَعِينُ ﴿٥﴾',
+    exampleExplanation: 'يمد حركتين كالقصر أو أربعاً كتوسط أو ستاً كطول عند الوقوف على رأس الآية.',
+    benefit: 'تنسيق أزمنة القراءة وإعطاء فواصل الآيات جمالها وهدوءها.'
   },
   {
     id: 'tafkheem',

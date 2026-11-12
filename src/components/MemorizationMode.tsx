@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Ayah } from '../data/quranService';
+import { safeLocalStorage } from '../utils/safeStorage';
 import { Eye, EyeOff, RotateCcw, CheckCircle2, Award, ChevronLeft, ChevronRight, Shuffle, Volume2, Sparkles } from 'lucide-react';
 
 interface MemorizationModeProps {
@@ -22,7 +23,9 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
   const [revealedWordIndices, setRevealedWordIndices] = useState<Set<number>>(new Set());
   const [repeatCount, setRepeatCount] = useState(3);
   const [currentRepeat, setCurrentRepeat] = useState(1);
-  const [spacedRepetitionStatus, setSpacedRepetitionStatus] = useState<Record<number, 'needs-review' | 'good' | 'mastered'>>({});
+  const [spacedRepetitionStatus, setSpacedRepetitionStatus] = useState<Record<number, 'needs-review' | 'good' | 'mastered'>>(() => {
+    return safeLocalStorage.getJSON<Record<number, 'needs-review' | 'good' | 'mastered'>>('bayan_memorization_progress', {});
+  });
 
   const currentAyah = ayahs[currentIdx] || ayahs[0];
   const words = currentAyah ? currentAyah.text.split(' ') : [];
@@ -64,10 +67,14 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
   };
 
   const setAyahMastery = (status: 'needs-review' | 'good' | 'mastered') => {
-    setSpacedRepetitionStatus(prev => ({
-      ...prev,
-      [currentAyah.numberInSurah]: status
-    }));
+    setSpacedRepetitionStatus((prev) => {
+      const updated = {
+        ...prev,
+        [currentAyah.numberInSurah]: status,
+      };
+      safeLocalStorage.setJSON('bayan_memorization_progress', updated);
+      return updated;
+    });
     // move to next ayah
     if (currentIdx < ayahs.length - 1) {
       handleNextAyah();

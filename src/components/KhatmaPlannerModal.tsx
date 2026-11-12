@@ -1,10 +1,18 @@
 import React, { useState } from 'react';
 import { X, Calendar, Clock, Sparkles, Check, BookOpen, Flame, Compass } from 'lucide-react';
 
+export interface KhatmaPlan {
+  targetDays: number;
+  availableMinutesPerDay: number;
+  pagesPerDay: number;
+  pagesPerPrayer: number;
+  createdAt: string;
+}
+
 interface KhatmaPlannerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onApplyPlan: (plan: { targetDays: number; pagesPerDay: number; pagesPerPrayer: number }) => void;
+  onApplyPlan: (plan: KhatmaPlan) => void;
 }
 
 export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
@@ -13,31 +21,53 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
   onApplyPlan,
 }) => {
   const [selectedDays, setSelectedDays] = useState<number>(30); // default 1 month
-  const [availableTime, setAvailableTime] = useState<number>(20); // 20 mins/day
+  const [availableTime, setAvailableTime] = useState<number>(20); // mins/day
+
+  // Keyboard accessibility: close on Escape
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
   // 604 total pages in standard Medina Mushaf
   const pagesPerDay = Math.ceil(604 / selectedDays);
   const pagesPerPrayer = Math.ceil(pagesPerDay / 5);
+  const estimatedMinutesNeeded = Math.round(pagesPerDay * 1.5);
+  const isTimeAdequate = availableTime >= estimatedMinutesNeeded;
 
   const handleSave = () => {
     onApplyPlan({
       targetDays: selectedDays,
+      availableMinutesPerDay: availableTime,
       pagesPerDay,
       pagesPerPrayer,
+      createdAt: new Date().toISOString()
     });
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="khatma-planner-title"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
+    >
       <div className="relative w-full max-w-lg bg-slate-900 border border-emerald-800/40 rounded-2xl shadow-2xl p-5 sm:p-6 space-y-5">
         
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
           <div className="flex items-center gap-2.5 text-emerald-400 font-bold">
             <Sparkles className="w-5 h-5" />
-            <h3 className="text-base sm:text-lg text-white">مخطط الورد والختمة الذكية</h3>
+            <h3 id="khatma-planner-title" className="text-base sm:text-lg text-white">مخطط الورد والختمة الذكية</h3>
           </div>
           <button
             onClick={onClose}
@@ -66,13 +96,40 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
               <button
                 key={d.days}
                 onClick={() => setSelectedDays(d.days)}
-                className={`py-2 px-2 text-xs rounded-xl font-bold border transition-all text-center ${
+                className={`py-2 px-2 text-xs rounded-xl font-bold border transition-all text-center cursor-pointer ${
                   selectedDays === d.days
                     ? 'bg-emerald-600 border-emerald-500 text-white shadow-md'
                     : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
                 }`}
               >
                 {d.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Question 2: Daily Available Time */}
+        <div>
+          <label className="text-xs font-bold text-slate-300 block mb-2">
+            2. كم من الوقت تستطيع تخصيصه يومياً للقراءة والتدبر؟
+          </label>
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { mins: 15, label: '15 دقيقة' },
+              { mins: 20, label: '20 دقيقة' },
+              { mins: 30, label: '30 دقيقة' },
+              { mins: 45, label: '45 دقيقة' },
+            ].map((t) => (
+              <button
+                key={t.mins}
+                onClick={() => setAvailableTime(t.mins)}
+                className={`py-2 px-1 text-xs rounded-xl font-bold border transition-all text-center cursor-pointer ${
+                  availableTime === t.mins
+                    ? 'bg-teal-600 border-teal-500 text-white shadow-md'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {t.label}
               </button>
             ))}
           </div>
@@ -95,9 +152,11 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
             </div>
 
             <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-center">
-              <span className="text-[11px] text-slate-400 block mb-1">الوقت التقريبي</span>
-              <strong className="text-base text-white">~{Math.round(pagesPerDay * 1.5)} دقيقة</strong>
-              <span className="text-[10px] text-slate-500 block">قراءة متأنية مع تدبر</span>
+              <span className="text-[11px] text-slate-400 block mb-1">الوقت المطلوب</span>
+              <strong className="text-base text-white">~{estimatedMinutesNeeded} دقيقة</strong>
+              <span className="text-[10px] text-slate-500 block">
+                {isTimeAdequate ? 'يتناسب تماماً مع وقتك ✓' : `متاح لديك ${availableTime} د`}
+              </span>
             </div>
           </div>
 
@@ -110,13 +169,13 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
         <div className="pt-2 flex items-center justify-end gap-2">
           <button
             onClick={onClose}
-            className="py-2 px-4 rounded-xl text-xs text-slate-400 hover:text-slate-200 transition-colors"
+            className="py-2 px-4 rounded-xl text-xs text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
           >
             إلغاء
           </button>
           <button
             onClick={handleSave}
-            className="py-2.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-900/40 transition-all flex items-center gap-1.5"
+            className="py-2.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-900/40 transition-all flex items-center gap-1.5 cursor-pointer"
           >
             <Check className="w-4 h-4" />
             <span>اعتماد هذه الخطة للورد اليومي</span>

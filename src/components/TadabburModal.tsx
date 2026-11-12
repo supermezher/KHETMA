@@ -2,12 +2,21 @@ import React, { useState } from 'react';
 import { X, BookOpen, Sparkles, Compass, Lightbulb, PenLine, Bookmark, Check, Share2, Volume2 } from 'lucide-react';
 import { Ayah } from '../data/quranService';
 
+export interface JournalNotePayload {
+  ayahId: number;
+  surahName: string;
+  ayahNumber: number;
+  text: string;
+  note: string;
+  date: string;
+}
+
 interface TadabburModalProps {
   isOpen: boolean;
   onClose: () => void;
   ayah: Ayah | null;
   surahName: string;
-  onSaveJournalNote: (note: { ayahId: number; text: string; date: string }) => void;
+  onSaveJournalNote: (payload: JournalNotePayload) => void;
   savedNote?: string;
   onPlayAyah?: (ayahNumber: number) => void;
   onOpenShareModal?: (ayah: Ayah) => void;
@@ -32,12 +41,28 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
     setJournalInput(savedNote);
   }, [savedNote, ayah]);
 
+  // Keyboard accessibility: close on Escape
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [isOpen, onClose]);
+
   if (!isOpen || !ayah) return null;
 
   const handleSaveNote = () => {
     onSaveJournalNote({
       ayahId: ayah.overallNumber,
-      text: journalInput,
+      surahName,
+      ayahNumber: ayah.numberInSurah,
+      text: ayah.text,
+      note: journalInput,
       date: new Date().toLocaleDateString('ar-SA')
     });
     setIsSavedAlert(true);
@@ -45,7 +70,12 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="tadabbur-modal-title"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
+    >
       <div className="relative w-full max-w-2xl max-h-[90vh] bg-slate-900 border border-emerald-900/40 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
         
         {/* Header with Ayah Badge */}
@@ -55,7 +85,7 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-white text-base sm:text-lg flex items-center gap-2">
+              <h3 id="tadabbur-modal-title" className="font-bold text-white text-base sm:text-lg flex items-center gap-2">
                 <span>سورة {surahName}</span>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-normal">
                   الآية {ayah.numberInSurah}
@@ -138,14 +168,15 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
         <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-4">
           {activeTab === 'tadabbur' && (
             <div className="space-y-4 animate-in fade-in duration-200">
-              {/* Rhetorical Question */}
+              {/* Rhetorical Question / Reflection prompt */}
               <div className="p-4 rounded-xl bg-gradient-to-br from-amber-500/10 to-amber-950/20 border border-amber-500/20">
                 <div className="flex items-center gap-2 text-amber-400 text-xs font-bold mb-2">
                   <Lightbulb className="w-4 h-4" />
-                  <span>سؤال التدبر واللمحة البلاغية</span>
+                  <span>سؤال التدبر واللمحة الإيمانية</span>
                 </div>
                 <p className="text-slate-200 text-sm sm:text-base leading-relaxed">
-                  {ayah.reflectionQuestion}
+                  {ayah.reflectionQuestion ||
+                    'تأمل في دلالات هذه الآية الكريمة العظيمة: كيف تخاطب واقعك اليوم، وما الهداية القلبية التي تستنبطها من هذا البيان الإلهي؟'}
                 </p>
               </div>
 
@@ -156,7 +187,8 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
                   <span>الواجب العملي المعاش (كيف أطبق الآية اليوم؟)</span>
                 </div>
                 <p className="text-slate-200 text-sm sm:text-base leading-relaxed">
-                  {ayah.practicalAction}
+                  {ayah.practicalAction ||
+                    'اعمل بمقتضى التفسير الميسر للآية، وحوّل فهمك لها إلى نية صالحة أو خلق حميد تطبقه في تعاملك مع نفسك والناس اليوم.'}
                 </p>
               </div>
 
@@ -194,7 +226,8 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
                   <span>اللمحة النحوية والإعراب</span>
                 </div>
                 <p className="text-slate-200 text-sm sm:text-base leading-relaxed">
-                  {ayah.irabHint}
+                  {ayah.irabHint ||
+                    'الإعراب التفصيلي الكامل لكلمات هذه الآية الكريمة متاح في طبعة المصحف الإعرابي. يمكنك الاسترشاد بالتفسير الميسر لاستجلاء وجوه الإعراب والمعاني.'}
                 </p>
               </div>
             </div>

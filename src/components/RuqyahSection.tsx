@@ -64,6 +64,19 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0);
   const [autoLoopUntilTarget, setAutoLoopUntilTarget] = useState<boolean>(true);
 
+  // Close add modal on Escape key for keyboard accessibility
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isAddModalOpen) {
+        setIsAddModalOpen(false);
+      }
+    };
+    if (isAddModalOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [isAddModalOpen]);
+
   // Active playing card state
   const [playingItemId, setPlayingItemId] = useState<string | null>(null);
   const [playingAyahIndex, setPlayingAyahIndex] = useState<number>(0);
@@ -489,6 +502,17 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
         <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
       </div>
 
+      {/* Sharia & Medical Disclaimer Banner */}
+      <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs leading-relaxed flex items-start sm:items-center gap-3 shadow-sm">
+        <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5 sm:mt-0" />
+        <div>
+          <strong className="font-bold text-amber-300 block sm:inline sm:ml-1">تنبيه شرعي وطبي هام:</strong>
+          <span>
+            الرقية الشرعية والدعاء سببان شرعيان مباركان للشفاء واستجلاب البركة، ولا يُغنيان عن مراجعة الطبيب المختص والأخذ بالأسباب الطبية المادية وتناول العلاج الموصوف؛ عملاً بالحديث الشريف الصحيح: «تَدَاوَوْا فَإِنَّ اللَّهَ لَمْ يَضَعْ دَاءً إِلَّا وَضَعَ لَهُ شِفَاءً» (رواه الإمام أحمد وأصحاب السنن).
+          </span>
+        </div>
+      </div>
+
       {/* Ruqyah Audio & Controls Strip */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3 sm:p-4 flex flex-wrap items-center justify-between gap-3 shadow-md">
         <div className="flex items-center gap-2">
@@ -717,9 +741,16 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                           </span>
                         )}
                       </h3>
-                      <span className="text-[11px] text-emerald-400 font-medium">
-                        {item.source}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                        <span className="text-[11px] text-emerald-400 font-medium">
+                          {item.source}
+                        </span>
+                        {item.hadithGrade && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold font-sans">
+                            {item.hadithGrade}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -933,7 +964,12 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
       {/* MODAL: ADD CUSTOM RUQYAH ITEM                                            */}
       {/* ========================================================================= */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-in fade-in">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="add-ruqyah-title"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-in fade-in"
+        >
           <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-xl w-full p-6 shadow-2xl relative space-y-4 my-8">
             
             {/* Modal Header */}
@@ -943,7 +979,7 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                   <Plus className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-white text-base font-kufi">إضافة ورد أو آية جديدة للرقية</h3>
+                  <h3 id="add-ruqyah-title" className="font-bold text-white text-base font-kufi">إضافة ورد أو آية جديدة للرقية</h3>
                   <p className="text-[11px] text-slate-400">ستُحفظ في التطبيق وتعمل بكامل خصائص الصوت والعداد والتنقل</p>
                 </div>
               </div>

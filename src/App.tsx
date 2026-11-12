@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import {
   BookOpen, Sparkles, Award, Heart, Calendar, HelpCircle,
-  PenLine, Cpu, Search, ChevronDown, Check, Volume2, Share2,
-  SlidersHorizontal, ShieldCheck, Flame, Compass, Maximize2, Minimize2,
-  Menu, X
+  PenLine, Cpu, Search, ChevronDown,
+  ShieldCheck, Flame, Maximize2, Minimize2,
+  Menu, X, AlertCircle, RefreshCw
 } from 'lucide-react';
-import { SURAHS_LIST, SurahMeta } from './data/quranMetadata';
+import { SURAHS_LIST } from './data/quranMetadata';
 import { SurahData, Ayah, getSurahData } from './data/quranService';
 import { QuranReader } from './components/QuranReader';
 import { AudioPlayerBar } from './components/AudioPlayerBar';
-import { TadabburModal } from './components/TadabburModal';
+import { TadabburModal, JournalNotePayload } from './components/TadabburModal';
 import { SocialShareModal } from './components/SocialShareModal';
 import { MemorizationMode } from './components/MemorizationMode';
 import { FaithAnalytics } from './components/FaithAnalytics';
@@ -19,10 +19,11 @@ import { MoodVersesExplorer } from './components/MoodVersesExplorer';
 import { QuranJournal, JournalNote } from './components/QuranJournal';
 import { FlutterArchitectureDoc } from './components/FlutterArchitectureDoc';
 import { TajweedLegendModal } from './components/TajweedLegendModal';
-import { KhatmaPlannerModal } from './components/KhatmaPlannerModal';
+import { KhatmaPlannerModal, KhatmaPlan } from './components/KhatmaPlannerModal';
 import { AmbientAudioBar } from './components/AmbientAudioBar';
 import { RuqyahSection } from './components/RuqyahSection';
 import { Reciter, RECITERS_LIST } from './data/reciters';
+import { safeLocalStorage } from './utils/safeStorage';
 
 type ActiveView =
   | 'mushaf'
@@ -36,7 +37,16 @@ type ActiveView =
   | 'flutter-arch';
 
 export default function App() {
-  const [activeView, setActiveView] = useState<ActiveView>('mushaf');
+  const [activeView, setActiveView] = useState<ActiveView>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab') as ActiveView;
+      if (tab && ['mushaf', 'memorization', 'ruqyah', 'mood', 'analytics', 'khatma', 'tajweed', 'journal', 'flutter-arch'].includes(tab)) {
+        return tab;
+      }
+    }
+    return 'mushaf';
+  });
   const [currentSurahNumber, setCurrentSurahNumber] = useState<number>(1);
   const [surahData, setSurahData] = useState<SurahData | null>(null);
   const [activeAyahNumber, setActiveAyahNumber] = useState<number>(1);
@@ -60,73 +70,70 @@ export default function App() {
   const [isSurahPickerOpen, setIsSurahPickerOpen] = useState<boolean>(false);
   const [surahSearchTerm, setSurahSearchTerm] = useState<string>('');
 
-  // Journal notes stored locally
+  // Journal notes stored locally (no hardcoded fake notes)
   const [journalNotes, setJournalNotes] = useState<JournalNote[]>(() => {
-    const saved = localStorage.getItem('bayan_journal_notes');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        return [];
-      }
-    }
-    return [
-      {
-        ayahId: 1,
-        surahName: 'الفاتحة',
-        ayahNumber: 1,
-        text: 'استحضار البسملة في بداية كل أمر يطرد التشتت ويبارك في كل دقيقة من يومي.',
-        date: '2026-11-08'
-      }
-    ];
+    return safeLocalStorage.getJSON<JournalNote[]>('bayan_journal_notes', []);
   });
 
   // Pending target ayah when switching surah
   const [pendingTargetAyah, setPendingTargetAyah] = useState<number | null>(null);
 
-  // Load Surah data when number changes
+  const [surahError, setSurahError] = useState<string | null>(null);
+  const [plannerToast, setPlannerToast] = useState<string | null>(null);
+
+  // Load Surah data when number changes or when navigating to target ayah
   useEffect(() => {
     let isCancelled = false;
     setIsLoadingSurah(true);
+    setSurahError(null);
 
-    getSurahData(currentSurahNumber).then((data) => {
-      if (!isCancelled) {
-        setSurahData(data);
-        if (pendingTargetAyah) {
-          setActiveAyahNumber(pendingTargetAyah);
-          setPendingTargetAyah(null);
-        } else {
-          setActiveAyahNumber(1);
+    getSurahData(currentSurahNumber)
+      .then((data) => {
+        if (!isCancelled) {
+          setSurahData(data);
+          if (pendingTargetAyah) {
+            setActiveAyahNumber(pendingTargetAyah);
+            setPendingTargetAyah(null);
+          } else {
+            setActiveAyahNumber(1);
+          }
+          setIsLoadingSurah(false);
+          setSurahError(null);
         }
-        setIsLoadingSurah(false);
-      }
-    });
+      })
+      .catch((err) => {
+        if (!isCancelled) {
+          console.error('Failed loading surah:', err);
+          setIsLoadingSurah(false);
+          setSurahError(err.message || 'تعذر تحميل السورة الكريمة من الخادم');
+        }
+      });
 
     return () => {
       isCancelled = true;
     };
-  }, [currentSurahNumber]);
+  }, [currentSurahNumber, pendingTargetAyah]);
 
-  // Handle saving journal note
-  const handleSaveJournalNote = (note: { ayahId: number; text: string; date: string }) => {
-    const updated = [
+  // Handle saving journal note with direct self-contained payload
+  const handleSaveJournalNote = (payload: JournalNotePayload) => {
+    const updated: JournalNote[] = [
       {
-        ayahId: note.ayahId,
-        surahName: surahData?.meta.name,
-        ayahNumber: tadabburAyah?.numberInSurah,
-        text: note.text,
-        date: note.date
+        ayahId: payload.ayahId,
+        surahName: payload.surahName,
+        ayahNumber: payload.ayahNumber,
+        text: payload.note,
+        date: payload.date
       },
-      ...journalNotes.filter(n => n.ayahId !== note.ayahId)
+      ...journalNotes.filter(n => n.ayahId !== payload.ayahId)
     ];
     setJournalNotes(updated);
-    localStorage.setItem('bayan_journal_notes', JSON.stringify(updated));
+    safeLocalStorage.setJSON('bayan_journal_notes', updated);
   };
 
   const handleDeleteJournalNote = (ayahId: number) => {
     const updated = journalNotes.filter(n => n.ayahId !== ayahId);
     setJournalNotes(updated);
-    localStorage.setItem('bayan_journal_notes', JSON.stringify(updated));
+    safeLocalStorage.setJSON('bayan_journal_notes', updated);
   };
 
   const handleNavigateToAyah = (surahNum: number, ayahNum: number) => {
@@ -268,12 +275,41 @@ export default function App() {
       }`}>
         {activeView === 'mushaf' && (
           <div>
-            {isLoadingSurah || !surahData ? (
+            {isLoadingSurah ? (
               <div className="p-16 text-center rounded-2xl bg-slate-900/40 border border-slate-800 flex flex-col items-center justify-center space-y-3">
                 <div className="w-10 h-10 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
                 <p className="text-xs text-slate-400 font-medium">جارٍ تحميل آيات السورة الكريمة بالرسم العثماني المعتمد...</p>
               </div>
-            ) : (
+            ) : surahError ? (
+              <div className="p-10 text-center rounded-2xl bg-rose-950/20 border border-rose-500/30 flex flex-col items-center justify-center space-y-4 max-w-lg mx-auto my-12 shadow-2xl">
+                <div className="w-12 h-12 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center">
+                  <AlertCircle className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-base font-bold text-white">تعذر تحميل السورة الكريمة</h3>
+                  <p className="text-xs text-slate-300 leading-relaxed">{surahError}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setSurahError(null);
+                    setIsLoadingSurah(true);
+                    getSurahData(currentSurahNumber)
+                      .then((data) => {
+                        setSurahData(data);
+                        setIsLoadingSurah(false);
+                      })
+                      .catch((err) => {
+                        setIsLoadingSurah(false);
+                        setSurahError(err.message || 'تعذر تحميل السورة');
+                      });
+                  }}
+                  className="py-2.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-950 transition-all cursor-pointer"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  <span>إعادة المحاولة الآن</span>
+                </button>
+              </div>
+            ) : surahData ? (
               <QuranReader
                 surahData={surahData}
                 activeAyahNumber={activeAyahNumber}
@@ -294,7 +330,7 @@ export default function App() {
                 selectedReciter={selectedReciter}
                 onTogglePlayAudio={() => setIsPlayingAudio(prev => !prev)}
               />
-            )}
+            ) : null}
           </div>
         )}
 
@@ -654,10 +690,21 @@ export default function App() {
       <KhatmaPlannerModal
         isOpen={isKhatmaPlannerOpen}
         onClose={() => setIsKhatmaPlannerOpen(false)}
-        onApplyPlan={() => {
-          // Success toast or confirmation
+        onApplyPlan={(plan) => {
+          safeLocalStorage.setJSON('bayan_khatma_plan', plan);
+          setIsKhatmaPlannerOpen(false);
+          setPlannerToast(`تم اعتماد خطة الختمة المباركة: ${plan.pagesPerDay} صفحات يومياً لإنهاء الختمة في ${plan.targetDays} يوماً ✨`);
+          setTimeout(() => setPlannerToast(null), 4000);
         }}
       />
+
+      {/* Planner Success Toast */}
+      {plannerToast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900 border border-emerald-500/50 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 text-xs sm:text-sm animate-in fade-in slide-in-from-top-2">
+          <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{plannerToast}</span>
+        </div>
+      )}
 
     </div>
   );

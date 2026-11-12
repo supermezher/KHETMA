@@ -26,6 +26,19 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
   const [isCopied, setIsCopied] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
 
+  // Close on Escape key for keyboard accessibility
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [isOpen, onClose]);
+
   useEffect(() => {
     if (isOpen && ayah) {
       renderCanvas();
@@ -34,7 +47,16 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
 
   if (!isOpen || !ayah) return null;
 
-  const renderCanvas = () => {
+  const renderCanvas = async () => {
+    // Ensure all custom Quran and Arabic fonts are fully loaded before painting
+    if (typeof document !== 'undefined' && 'fonts' in document) {
+      try {
+        await document.fonts.ready;
+      } catch {
+        // Continue if fonts API unavailable
+      }
+    }
+
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -243,13 +265,18 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="social-share-title"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+    >
       <div className="relative w-full max-w-4xl max-h-[92vh] bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl flex flex-col md:flex-row overflow-hidden">
         
         {/* Controls Sidebar */}
         <div className="w-full md:w-80 p-5 border-b md:border-b-0 md:border-l border-slate-800 bg-slate-950/80 flex flex-col gap-4 overflow-y-auto">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-emerald-400 font-bold">
+            <div id="social-share-title" className="flex items-center gap-2 text-emerald-400 font-bold">
               <Sparkles className="w-5 h-5" />
               <span>مصمم بطاقات الآيات</span>
             </div>
