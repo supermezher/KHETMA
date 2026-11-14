@@ -83,9 +83,27 @@ export default function App() {
     }
     return 'mushaf';
   });
-  const [currentSurahNumber, setCurrentSurahNumber] = useState<number>(1);
+  const [currentSurahNumber, setCurrentSurahNumber] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const rawSurah = Number(params.get('surah'));
+      if (Number.isInteger(rawSurah) && rawSurah >= 1 && rawSurah <= 114) {
+        return rawSurah;
+      }
+    }
+    return 1;
+  });
   const [surahData, setSurahData] = useState<SurahData | null>(null);
-  const [activeAyahNumber, setActiveAyahNumber] = useState<number>(1);
+  const [activeAyahNumber, setActiveAyahNumber] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const rawAyah = Number(params.get('ayah'));
+      if (Number.isInteger(rawAyah) && rawAyah >= 1) {
+        return rawAyah;
+      }
+    }
+    return 1;
+  });
   const [isLoadingSurah, setIsLoadingSurah] = useState<boolean>(true);
 
   // Audio & Tajweed state
@@ -110,6 +128,7 @@ export default function App() {
   const [tadabburSurahContext, setTadabburSurahContext] = useState<{ number: number; name: string } | null>(null);
   const [shareAyah, setShareAyah] = useState<Ayah | null>(null);
   const [shareSurahName, setShareSurahName] = useState<string | null>(null);
+  const [shareSurahNumber, setShareSurahNumber] = useState<number | null>(null);
   const [isTajweedLegendOpen, setIsTajweedLegendOpen] = useState<boolean>(false);
   const [isKhatmaPlannerOpen, setIsKhatmaPlannerOpen] = useState<boolean>(false);
   const [isSurahPickerOpen, setIsSurahPickerOpen] = useState<boolean>(false);
@@ -125,7 +144,14 @@ export default function App() {
   });
 
   // Pending target ayah when switching surah (stored in ref so clearing it never retriggers load effect)
-  const pendingTargetAyahRef = useRef<number | null>(null);
+  const pendingTargetAyahRef = useRef<number | null>(
+    typeof window !== 'undefined'
+      ? (() => {
+          const rawAyah = Number(new URLSearchParams(window.location.search).get('ayah'));
+          return Number.isInteger(rawAyah) && rawAyah >= 1 ? rawAyah : null;
+        })()
+      : null
+  );
   const [surahReloadTrigger, setSurahReloadTrigger] = useState<number>(0);
 
   const [surahError, setSurahError] = useState<string | null>(null);
@@ -541,6 +567,7 @@ export default function App() {
                 }}
                 onAyahAudioSelect={handlePlayAyahAudio}
                 onOpenShareModal={(a) => {
+                  setShareSurahNumber(surahData.meta.number);
                   setShareSurahName(surahData.meta.name);
                   setShareAyah(a);
                 }}
@@ -1044,9 +1071,11 @@ export default function App() {
           handlePlayAyahAudio(num, tadabburSurahContext?.number);
         }}
         onOpenShareModal={(a) => {
+          const sNumber = tadabburSurahContext?.number || surahData?.meta.number || currentSurahNumber;
           const sName = tadabburSurahContext?.name || surahData?.meta.name || '';
           setTadabburAyah(null);
           setTadabburSurahContext(null);
+          setShareSurahNumber(sNumber);
           setShareSurahName(sName);
           setShareAyah(a);
         }}
@@ -1058,9 +1087,12 @@ export default function App() {
         onClose={() => {
           setShareAyah(null);
           setShareSurahName(null);
+          setShareSurahNumber(null);
         }}
         ayah={shareAyah}
         surahName={shareSurahName || surahData?.meta.name || ''}
+        surahNumber={shareSurahNumber || surahData?.meta.number || currentSurahNumber}
+        selectedReciter={selectedReciter}
       />
 
       {/* Tajweed Legend Modal */}
