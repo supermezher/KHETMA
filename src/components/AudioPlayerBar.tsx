@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Volume2, RotateCcw, FastForward, Clock, Download, Check, Sparkles, SlidersHorizontal, ChevronUp, ChevronDown, CheckCircle2 } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, RotateCcw, Clock, Download, Sparkles, SlidersHorizontal, ChevronUp, ChevronDown, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Reciter, RECITERS_LIST, getAyahAudioUrl } from '../data/reciters';
 import { isSurahCached, cacheSurahAudio, getCachedAudioBlobUrl } from '../utils/audioOfflineCache';
 
@@ -14,6 +14,7 @@ interface AudioPlayerBarProps {
   isSmartScrollEnabled: boolean;
   onToggleSmartScroll: () => void;
   onPlaybackProgress?: (currentTime: number, duration: number) => void;
+  onAyahComplete?: (ayahNumber: number, durationSeconds: number) => void;
   isFullScreen?: boolean;
   selectedReciter?: Reciter;
   onSelectReciter?: (reciter: Reciter) => void;
@@ -30,6 +31,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
   isSmartScrollEnabled,
   onToggleSmartScroll,
   onPlaybackProgress,
+  onAyahComplete,
   isFullScreen = false,
   selectedReciter: propSelectedReciter,
   onSelectReciter: propOnSelectReciter,
@@ -47,12 +49,13 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
   const [isDownloaded, setIsDownloaded] = useState<boolean>(false);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const [downloadProgress, setDownloadProgress] = useState<{ completed: number; total: number } | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const [cachedBlobSrc, setCachedBlobSrc] = useState<string | null>(null);
   const [isMinimizedInFullScreen, setIsMinimizedInFullScreen] = useState<boolean>(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const activeBlobUrlRef = useRef<string | null>(null);
   const [audioProgress, setAudioProgress] = useState(0);
-  const [duration, setDuration] = useState(0);
 
   // Audio source URL
   const audioUrl = getAyahAudioUrl(selectedReciter.serverKey, surahNumber, currentAyahNumber);
@@ -60,6 +63,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
   // Check if current surah is already cached offline
   useEffect(() => {
     let isMounted = true;
+    setDownloadError(null);
     isSurahCached(selectedReciter.serverKey, surahNumber, totalAyahs).then((cached) => {
       if (isMounted) setIsDownloaded(cached);
     });
@@ -68,18 +72,33 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
     };
   }, [selectedReciter.serverKey, surahNumber, totalAyahs]);
 
-  // Attempt to load from offline cache first (so playback works completely offline)
+  // Attempt to load from offline cache first (and cleanly revoke previous ObjectURL)
   useEffect(() => {
     let isMounted = true;
     getCachedAudioBlobUrl(audioUrl).then((blobUrl) => {
-      if (isMounted) {
-        setCachedBlobSrc(blobUrl);
+      if (!isMounted) {
+        if (blobUrl) URL.revokeObjectURL(blobUrl);
+        return;
       }
+      if (activeBlobUrlRef.current && activeBlobUrlRef.current !== blobUrl) {
+        URL.revokeObjectURL(activeBlobUrlRef.current);
+      }
+      activeBlobUrlRef.current = blobUrl;
+      setCachedBlobSrc(blobUrl);
     });
     return () => {
       isMounted = false;
     };
   }, [audioUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (activeBlobUrlRef.current) {
+        URL.revokeObjectURL(activeBlobUrlRef.current);
+        activeBlobUrlRef.current = null;
+      }
+    };
+  }, []);
 
   // Handle Play/Pause
   useEffect(() => {
@@ -130,10 +149,13 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
   }, [currentAyahNumber, surahNumber]);
 
   const handleAudioEnded = () => {
+    const finishedDuration = audioRef.current?.duration || 0;
+    onAyahComplete?.(currentAyahNumber, Number.isFinite(finishedDuration) ? finishedDuration : 0);
+
     if (repeatMode === 'loop') {
       if (audioRef.current) {
         audioRef.current.currentTime = 0;
-        audioRef.current.play();
+        audioRef.current.play().catch(() => onPlayPauseToggle(false));
       }
       return;
     }
@@ -143,7 +165,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
         setRepeatCounter(prev => prev + 1);
         if (audioRef.current) {
           audioRef.current.currentTime = 0;
-          audioRef.current.play();
+          audioRef.current.play().catch(() => onPlayPauseToggle(false));
         }
         return;
       } else {
@@ -164,23 +186,23 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
       const cur = audioRef.current.currentTime;
       const dur = audioRef.current.duration || 1;
       setAudioProgress((cur / dur) * 100);
-      setDuration(dur);
       onPlaybackProgress?.(cur, dur);
     }
   };
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!audioRef.current) return;
+    if (!audioRef.current || !audioRef.current.duration || !Number.isFinite(audioRef.current.duration)) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
-    const percent = clickX / rect.width;
-    audioRef.current.currentTime = percent * (audioRef.current.duration || 0);
+    const percent = Math.max(0, Math.min(1, clickX / rect.width));
+    audioRef.current.currentTime = percent * audioRef.current.duration;
   };
 
   const handleDownloadSurah = async () => {
     if (isDownloading || isDownloaded) return;
     try {
       setIsDownloading(true);
+      setDownloadError(null);
       setDownloadProgress({ completed: 0, total: totalAyahs });
       await cacheSurahAudio(
         selectedReciter.serverKey,
@@ -192,9 +214,17 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
       );
       setIsDownloaded(true);
       const blobUrl = await getCachedAudioBlobUrl(audioUrl);
-      if (blobUrl) setCachedBlobSrc(blobUrl);
-    } catch (err) {
+      if (blobUrl) {
+        if (activeBlobUrlRef.current) {
+          URL.revokeObjectURL(activeBlobUrlRef.current);
+        }
+        activeBlobUrlRef.current = blobUrl;
+        setCachedBlobSrc(blobUrl);
+      }
+    } catch (err: any) {
       console.error('Audio download caching failed:', err);
+      setDownloadError(err?.message || 'تعذر تحميل التلاوات');
+      setIsDownloaded(false);
     } finally {
       setIsDownloading(false);
       setDownloadProgress(null);
@@ -222,41 +252,44 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
         isMinimizedInFullScreen ? (
           /* Minimized Floating Audio Pill in Bottom Corner */
           <div className="fixed bottom-4 right-4 z-[60] flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2">
-            <button
-              onClick={() => setIsMinimizedInFullScreen(false)}
-              className={`flex items-center gap-2 py-2 px-3.5 rounded-full shadow-2xl backdrop-blur-xl border transition-all hover:scale-105 cursor-pointer ${
+            <div
+              className={`flex items-center gap-2 py-2 px-3.5 rounded-full shadow-2xl backdrop-blur-xl border transition-all ${
                 isPlaying
                   ? 'bg-emerald-950/95 border-emerald-500/50 text-emerald-300 shadow-emerald-950/50'
-                  : 'bg-slate-900/95 border-slate-700/80 text-slate-300 hover:text-white'
+                  : 'bg-slate-900/95 border-slate-700/80 text-slate-300'
               }`}
-              title="إظهار مشغل التلاوة الكامل"
             >
-              <div className="relative flex items-center justify-center">
-                <Volume2 className="w-4 h-4 text-emerald-400" />
-                {isPlaying && (
-                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                )}
-              </div>
-              <span className="text-xs font-bold font-kufi">{selectedReciter.name.split(' ')[0]}</span>
-              <span className="text-[10px] text-slate-400 font-mono">({currentAyahNumber})</span>
               <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onPlayPauseToggle(!isPlaying);
-                }}
+                onClick={() => setIsMinimizedInFullScreen(false)}
+                className="flex items-center gap-2 hover:text-white cursor-pointer"
+                title="إظهار مشغل التلاوة الكامل"
+              >
+                <div className="relative flex items-center justify-center">
+                  <Volume2 className="w-4 h-4 text-emerald-400" />
+                  {isPlaying && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  )}
+                </div>
+                <span className="text-xs font-bold font-kufi">{selectedReciter.name.split(' ')[0]}</span>
+                <span className="text-[10px] text-slate-400 font-mono">({currentAyahNumber})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onPlayPauseToggle(!isPlaying)}
                 className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/40 flex items-center justify-center cursor-pointer"
                 title={isPlaying ? 'إيقاف مؤقت' : 'تشغيل التلاوة'}
               >
                 {isPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3 ml-0.5" />}
               </button>
-            </button>
+            </div>
           </div>
         ) : (
           /* Floating Audio Capsule in Full-Screen */
           <div className="fixed bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 z-[60] w-[95vw] sm:w-auto min-w-[320px] sm:min-w-[480px] max-w-xl bg-slate-900/95 border border-slate-700/80 shadow-2xl backdrop-blur-xl rounded-2xl p-2.5 sm:p-3 animate-in fade-in slide-in-from-bottom-3 space-y-2">
-            {/* Top Interactive Progress Line */}
+            {/* Top Interactive Progress Line (LTR for accurate scrub positioning) */}
             <div
+              dir="ltr"
               onClick={handleSeek}
               className="w-full h-1 bg-slate-800 hover:h-1.5 rounded-full cursor-pointer transition-all relative overflow-hidden"
               title="تقديم وتأخير التلاوة"
@@ -410,8 +443,9 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
       ) : (
         /* STANDARD DOCKED BOTTOM BAR (Normal View) */
         <div className="fixed bottom-16 lg:bottom-0 left-0 right-0 z-30 bg-slate-950/95 border-t border-slate-800 backdrop-blur-md shadow-2xl transition-all">
-          {/* Progress line */}
+          {/* Progress line (LTR for accurate scrub positioning) */}
           <div
+            dir="ltr"
             onClick={handleSeek}
             className="w-full h-1 bg-slate-800 hover:h-2 cursor-pointer transition-all relative"
           >
@@ -583,16 +617,22 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             </div>
 
             {/* Real Offline Audio Cache Download */}
-            <div className="flex items-center justify-end">
+            <div className="flex flex-col items-end justify-center gap-1">
               <button
                 onClick={handleDownloadSurah}
                 disabled={isDownloaded || isDownloading}
                 className={`py-1 px-2.5 rounded-lg font-medium border flex items-center gap-1.5 transition-colors cursor-pointer ${
                   isDownloaded
                     ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                    : downloadError
+                    ? 'bg-rose-950/40 border-rose-500/40 text-rose-300 hover:bg-rose-950/60'
                     : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
                 }`}
-                title={isDownloaded ? 'السورة محفوظة بالكامل في ذاكرة المتصفح للاستماع دون إنترنت' : 'تخزين تلاوات هذه السورة للعمل دون اتصال بالإنترنت'}
+                title={
+                  isDownloaded
+                    ? 'السورة محفوظة بالكامل في ذاكرة المتصفح للاستماع دون إنترنت'
+                    : downloadError || 'تخزين تلاوات هذه السورة للعمل دون اتصال بالإنترنت'
+                }
               >
                 {isDownloaded ? (
                   <>
@@ -607,6 +647,11 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                         ? `جارِ الحفظ (${downloadProgress.completed}/${downloadProgress.total})...`
                         : 'جارِ التخزين...'}
                     </span>
+                  </>
+                ) : downloadError ? (
+                  <>
+                    <AlertCircle className="w-3 h-3 text-rose-400" />
+                    <span>تعذر التحميل • أعد المحاولة</span>
                   </>
                 ) : (
                   <>

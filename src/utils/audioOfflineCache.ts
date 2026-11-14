@@ -10,17 +10,15 @@ export async function isSurahCached(
   surahNumber: number,
   totalAyahs: number
 ): Promise<boolean> {
-  if (typeof window === 'undefined' || !('caches' in window)) return false;
+  if (typeof window === 'undefined' || !('caches' in window) || totalAyahs <= 0) return false;
   try {
     const cache = await caches.open(CACHE_NAME);
-    // Spot check first, middle, and last ayah
-    const checkAyahs = [1, Math.ceil(totalAyahs / 2), totalAyahs];
-    for (const num of checkAyahs) {
-      const url = getAyahAudioUrl(reciterKey, surahNumber, num);
-      const match = await cache.match(url);
-      if (!match) return false;
-    }
-    return true;
+    const checks = Array.from({ length: totalAyahs }, (_, idx) => {
+      const url = getAyahAudioUrl(reciterKey, surahNumber, idx + 1);
+      return cache.match(url);
+    });
+    const matches = await Promise.all(checks);
+    return matches.every(Boolean);
   } catch (err) {
     console.warn('Failed to check audio cache:', err);
     return false;
@@ -42,6 +40,7 @@ export async function cacheSurahAudio(
 
   const cache = await caches.open(CACHE_NAME);
   let completed = 0;
+  let failedCount = 0;
   const CHUNK_SIZE = 4;
 
   for (let i = 1; i <= totalAyahs; i += CHUNK_SIZE) {
@@ -59,9 +58,12 @@ export async function cacheSurahAudio(
             const res = await fetch(url, { mode: 'cors' });
             if (res.ok) {
               await cache.put(url, res.clone());
+            } else {
+              failedCount++;
             }
           }
         } catch (fetchErr) {
+          failedCount++;
           console.warn(`Failed to cache ayah ${ayahNum} of surah ${surahNumber}:`, fetchErr);
         } finally {
           completed++;
@@ -69,6 +71,10 @@ export async function cacheSurahAudio(
         }
       })
     );
+  }
+
+  if (failedCount > 0) {
+    throw new Error(`تعذر تحميل ${failedCount} آية. يرجى التحقق من اتصال الإنترنت والمحاولة مجدداً.`);
   }
 
   return true;

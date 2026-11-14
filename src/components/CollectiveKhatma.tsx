@@ -1,13 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
-  Users, Heart, Share2, CheckCircle2, BookOpen, Plus, Sparkles,
+  Users, Heart, CheckCircle2, BookOpen, Plus, Sparkles,
   Check, Copy, Edit2, UserMinus, ShieldCheck, Clock, MessageCircle,
-  AlertCircle, RotateCcw, UserCheck, Calendar, X, AlertTriangle, ExternalLink,
-  Lock, Key, Eye, EyeOff, RefreshCw, Wifi, WifiOff
+  AlertCircle, AlertTriangle, RotateCcw, UserCheck, Calendar, X, ExternalLink,
+  Lock, Key, Eye, EyeOff
 } from 'lucide-react';
 import {
   PartClaim,
+  KhatmaRoomSummary,
   fetchKhatmaState,
+  fetchKhatmaRooms,
+  createKhatmaRoomApi,
   claimJuzApi,
   completeJuzApi,
   releaseJuzApi,
@@ -76,7 +79,25 @@ interface CollectiveKhatmaProps {
 }
 
 export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateToJuz }) => {
-  const STORAGE_KEY = 'bayan_collective_khatma_v2';
+  const [activeRoomId, setActiveRoomId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const r = params.get('khatma');
+      if (r && /^[a-zA-Z0-9_-]{2,40}$/.test(r)) return r.toLowerCase();
+    }
+    return 'public';
+  });
+  const STORAGE_KEY = `bayan_collective_khatma_v2_${activeRoomId}`;
+
+  const [roomsList, setRoomsList] = useState<KhatmaRoomSummary[]>([]);
+  const [isCreateRoomOpen, setIsCreateRoomOpen] = useState<boolean>(false);
+  const [newRoomTitle, setNewRoomTitle] = useState<string>('');
+  const [newRoomCreator, setNewRoomCreator] = useState<string>('');
+  const [newRoomDays, setNewRoomDays] = useState<number>(7);
+  const [newRoomSlug, setNewRoomSlug] = useState<string>('');
+  const [newRoomPin, setNewRoomPin] = useState<string>('');
+  const [createRoomError, setCreateRoomError] = useState<string | null>(null);
+  const [isCreatingRoom, setIsCreatingRoom] = useState<boolean>(false);
 
   const [dedicationTitle, setDedicationTitle] = useState('ختمة البر والصدقة الجارية لجميع موتى المسلمين');
   const [creatorName, setCreatorName] = useState('فاعل خير');
@@ -88,7 +109,6 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
   // Live Cloud Synchronization State
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [isOnline, setIsOnline] = useState<boolean>(true);
-  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   
   // Supervisor PIN Security State
   const [isPinUnlockModalOpen, setIsPinUnlockModalOpen] = useState<boolean>(false);
@@ -130,6 +150,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
   const [isDedicationModalOpen, setIsDedicationModalOpen] = useState(false);
   const [tempTitleInput, setTempTitleInput] = useState(dedicationTitle);
   const [tempCreatorInput, setTempCreatorInput] = useState(creatorName);
+  const [tempDeadlineInput, setTempDeadlineInput] = useState<number>(deadlineDays);
 
   const [whatsAppModalConfig, setWhatsAppModalConfig] = useState<{
     isOpen: boolean;
@@ -144,11 +165,19 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
   });
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToastMessage(null), 3500);
   };
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
 
   // Keyboard accessibility: close open modals on Escape key
   useEffect(() => {
@@ -160,6 +189,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
         if (whatsAppModalConfig.isOpen) setWhatsAppModalConfig((prev) => ({ ...prev, isOpen: false }));
         if (isPinUnlockModalOpen) setIsPinUnlockModalOpen(false);
         if (isChangePinModalOpen) setIsChangePinModalOpen(false);
+        if (isCreateRoomOpen) setIsCreateRoomOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -170,7 +200,8 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
     isDedicationModalOpen,
     whatsAppModalConfig.isOpen,
     isPinUnlockModalOpen,
-    isChangePinModalOpen
+    isChangePinModalOpen,
+    isCreateRoomOpen
   ]);
 
   // Generate initial fallback parts
@@ -204,10 +235,16 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
   });
 
   // Real Backend Synchronization Engine
-  const syncWithServer = async (silent = true) => {
+  const syncWithServer = async (silent = true, targetRoom = activeRoomId) => {
     try {
       if (!silent) setIsSyncing(true);
-      const data = await fetchKhatmaState();
+      const [data, roomsRes] = await Promise.all([
+        fetchKhatmaState(targetRoom),
+        fetchKhatmaRooms().catch(() => null),
+      ]);
+      if (roomsRes && roomsRes.success && Array.isArray(roomsRes.rooms)) {
+        setRoomsList(roomsRes.rooms);
+      }
       if (data.success && Array.isArray(data.parts)) {
         setParts(data.parts);
         if (data.dedicationTitle) setDedicationTitle(data.dedicationTitle);
@@ -215,11 +252,9 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
         if (data.deadlineDays) setDeadlineDays(data.deadlineDays);
         setIsDefaultPin(data.isDefaultPin);
         setIsOnline(true);
-        setLastSyncTime(new Date());
 
-        // Cache locally for offline resilience safely
         safeLocalStorage.setItem(
-          STORAGE_KEY,
+          `bayan_collective_khatma_v2_${targetRoom}`,
           JSON.stringify({
             parts: data.parts,
             dedicationTitle: data.dedicationTitle,
@@ -229,7 +264,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
           })
         );
       }
-    } catch (err) {
+    } catch {
       setIsOnline(false);
     } finally {
       setIsSyncing(false);
@@ -237,14 +272,55 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
   };
 
   useEffect(() => {
-    syncWithServer(false);
-    // Poll every 4 seconds to synchronize live claims from other users in real time
+    setIsAdminMode(false);
+    setAdminSessionPin('');
+    syncWithServer(false, activeRoomId);
     const pollTimer = setInterval(() => {
-      syncWithServer(true);
+      syncWithServer(true, activeRoomId);
     }, 4000);
 
     return () => clearInterval(pollTimer);
-  }, []);
+  }, [activeRoomId]);
+
+  const handleSelectRoom = (nextRoomId: string) => {
+    setActiveRoomId(nextRoomId);
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', 'khatma');
+      if (nextRoomId === 'public') url.searchParams.delete('khatma');
+      else url.searchParams.set('khatma', nextRoomId);
+      window.history.replaceState({}, '', url.toString());
+    }
+  };
+
+  const handleCreateRoom = async () => {
+    setCreateRoomError(null);
+    setIsCreatingRoom(true);
+    try {
+      const res = await createKhatmaRoomApi({
+        requestedSlug: newRoomSlug.trim() || undefined,
+        dedicationTitle: newRoomTitle.trim(),
+        creatorName: newRoomCreator.trim(),
+        deadlineDays: newRoomDays,
+        pin: newRoomPin.trim(),
+      });
+      if (!res.success || !res.roomId) {
+        setCreateRoomError(res.error || 'تعذر إنشاء الختمة الخاصة');
+        return;
+      }
+      setIsCreateRoomOpen(false);
+      setNewRoomTitle('');
+      setNewRoomCreator('');
+      setNewRoomSlug('');
+      setNewRoomPin('');
+      handleSelectRoom(res.roomId);
+      showToast(`تم إنشاء غرفة الختمة الخاصة بنجاح! المعرف: ${res.roomId}`);
+    } catch {
+      setCreateRoomError('تعذر الاتصال بالخادم لإنشاء الختمة');
+    } finally {
+      setIsCreatingRoom(false);
+    }
+  };
 
   const completedCount = parts.filter(p => p.isCompleted).length;
   const claimedCount = parts.filter(p => p.claimedBy !== null).length;
@@ -285,49 +361,48 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
   // Confirm Claim (Synchronized to Server)
   const handleConfirmClaim = async () => {
     if (!claimModalJuz) return;
+    const targetJuz = claimModalJuz;
     const trimmed = claimNameInput.trim() || 'قارئ محب للخير';
 
-    // Optimistic update
-    setParts(prev =>
-      prev.map(p =>
-        p.juzNumber === claimModalJuz
-          ? { ...p, claimedBy: trimmed, claimedAt: new Date().toISOString(), isCompleted: false }
-          : p
-      )
-    );
     setClaimModalJuz(null);
 
     try {
-      const res = await claimJuzApi(claimModalJuz, trimmed);
+      const res = await claimJuzApi(targetJuz, trimmed, activeRoomId);
       if (res.success && res.parts) {
         setParts(res.parts);
-        showToast(`تم حجز الجزء ${claimModalJuz} بنجاح ومزامنته سحابياً باسم: ${trimmed} 🌿`);
+        showToast(`تم حجز الجزء ${targetJuz} بنجاح ومزامنته سحابياً باسم: ${trimmed}`);
       } else {
-        showToast(res.error || `تم حجز الجزء ${claimModalJuz}`);
+        if (res.parts) setParts(res.parts);
+        showToast(res.error || `تعذر حجز الجزء ${targetJuz}`);
       }
     } catch {
-      showToast(`تم حفظ الحجز محلياً للجزء ${claimModalJuz}`);
+      showToast(`تعذر الاتصال بالخادم لتسجيل الحجز، يرجى المحاولة مرة أخرى`);
     }
   };
 
   // Toggle completion (Synchronized to Server)
   const handleToggleComplete = async (juzNumber: number) => {
+    const previousParts = parts;
     // Optimistic update
     setParts(prev =>
       prev.map(p => (p.juzNumber === juzNumber ? { ...p, isCompleted: !p.isCompleted } : p))
     );
 
     try {
-      const res = await completeJuzApi(juzNumber);
+      const res = await completeJuzApi(juzNumber, activeRoomId);
       if (res.success && res.parts) {
         setParts(res.parts);
         const part = res.parts.find(p => p.juzNumber === juzNumber);
         if (part?.isCompleted) {
-          showToast(`هنيئاً لك! تم إتمام قراءة الجزء ${juzNumber} وتحديثه لجميع المشاركين ✨`);
+          showToast(`هنيئاً لك! تم إتمام قراءة الجزء ${juzNumber} وتحديثه لجميع المشاركين`);
         }
+      } else {
+        setParts(res.parts || previousParts);
+        showToast(res.error || 'تعذر تحديث حالة الجزء');
       }
     } catch {
-      showToast(`تم تحديث الجزء ${juzNumber}`);
+      setParts(previousParts);
+      showToast(`تعذر الاتصال بالخادم لتحديث الجزء ${juzNumber}`);
     }
   };
 
@@ -349,10 +424,12 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
     );
 
     try {
-      const res = await executeAdminActionApi(adminSessionPin, 'edit-name', {
-        targetJuz: juzNumber,
-        newName: trimmed,
-      });
+      const res = await executeAdminActionApi(
+        adminSessionPin,
+        'edit-name',
+        { targetJuz: juzNumber, newName: trimmed },
+        activeRoomId
+      );
       if (res.success && res.parts) {
         setParts(res.parts);
         showToast(`تم تحديث اسم القارئ للجزء ${juzNumber} إلى: ${trimmed}`);
@@ -383,15 +460,15 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
     }
 
     try {
-      const res = await verifyAdminPinApi(pin);
+      const res = await verifyAdminPinApi(pin, activeRoomId);
       if (res.success && res.verified) {
         setIsAdminMode(true);
         setAdminSessionPin(pin);
         setIsPinUnlockModalOpen(false);
         setPinUnlockError(null);
-        showToast('تم التحقق بنجاح! تم تفعيل وضع المشرف 🛡️');
+        showToast('تم التحقق بنجاح! تم تفعيل وضع المشرف');
       } else {
-        setPinUnlockError('رمز المشرف السري غير صحيح. يرجى التأكد وإعادة المحاولة');
+        setPinUnlockError(res.error || 'رمز المشرف السري غير صحيح. يرجى التأكد وإعادة المحاولة');
       }
     } catch {
       setPinUnlockError('تعذر الاتصال بالخادم للتحقق من الرمز');
@@ -400,8 +477,8 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
 
   const handleSaveNewPin = async () => {
     const trimmed = newPinInput.trim();
-    if (!trimmed || trimmed.length < 3) {
-      setChangePinError('يجب أن يتكون الرمز السري من 3 أرقام أو حروف على الأقل');
+    if (!trimmed || trimmed.length < 4) {
+      setChangePinError('يجب أن يتكون الرمز السري من 4 أرقام أو حروف على الأقل');
       return;
     }
     if (trimmed !== confirmNewPinInput.trim()) {
@@ -416,7 +493,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
     }
 
     try {
-      const res = await changeAdminPinApi(currentPin, trimmed);
+      const res = await changeAdminPinApi(currentPin, trimmed, activeRoomId);
       if (res.success) {
         setAdminSessionPin(trimmed);
         setIsDefaultPin(false);
@@ -425,7 +502,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
         setCurrentPinInput('');
         setNewPinInput('');
         setConfirmNewPinInput('');
-        showToast('تم تعيين رمز المشرف الجديد بنجاح وتأمينه سحابياً 🔑');
+        showToast('تم تعيين رمز المشرف الجديد بنجاح وتأمينه سحابياً');
       } else {
         setChangePinError(res.error || 'تعذر تغيير الرمز السري، تأكد من الرمز الحالي');
       }
@@ -477,16 +554,15 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
         )
       );
       try {
-        const res = await releaseJuzApi(targetJuz);
+        const res = await releaseJuzApi(targetJuz, activeRoomId);
         if (res.success && res.parts) setParts(res.parts);
         showToast(`تم الاعتذار عن الجزء ${targetJuz} وإتاحته للجميع`);
       } catch {
         showToast(`تم تحرير الجزء`);
       }
     } else if (actionType === 'admin-release' && targetJuz) {
-      // Supervisor release
       try {
-        const res = await executeAdminActionApi(adminSessionPin, 'release-part', { targetJuz });
+        const res = await executeAdminActionApi(adminSessionPin, 'release-part', { targetJuz }, activeRoomId);
         if (res.success && res.parts) {
           setParts(res.parts);
           showToast(`تم تحرير الجزء ${targetJuz} من قبل المشرف`);
@@ -495,12 +571,11 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
         showToast(`تم تحرير الجزء`);
       }
     } else if (actionType === 'reset-all') {
-      // Supervisor reset
       try {
-        const res = await executeAdminActionApi(adminSessionPin, 'reset-all');
+        const res = await executeAdminActionApi(adminSessionPin, 'reset-all', undefined, activeRoomId);
         if (res.success && res.parts) {
           setParts(res.parts);
-          showToast('تمت إعادة ضبط الختمة بنجاح وبدء دورة جديدة لجميع المشاركين 🌟');
+          showToast('تمت إعادة ضبط الختمة بنجاح وبدء دورة جديدة لجميع المشاركين');
         }
       } catch {
         showToast(`فشلت إعادة الضبط، تحقق من صلاحيات المشرف`);
@@ -508,9 +583,10 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
     }
   };
 
-  // Real Collective Share URL (direct to khatma tab)
+  // Real Collective Share URL (direct to khatma tab and room)
   const getKhatmaShareUrl = () => {
-    return `${window.location.origin}/?tab=khatma`;
+    const base = `${window.location.origin}/?tab=khatma`;
+    return activeRoomId === 'public' ? base : `${base}&khatma=${encodeURIComponent(activeRoomId)}`;
   };
 
   // Open WhatsApp Reminder in-app modal
@@ -557,21 +633,30 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
   const handleSaveDedication = async () => {
     const trimmedTitle = tempTitleInput.trim() || dedicationTitle;
     const trimmedCreator = tempCreatorInput.trim() || creatorName;
+    const safeDays = Math.min(365, Math.max(1, Math.round(Number(tempDeadlineInput) || deadlineDays)));
     setDedicationTitle(trimmedTitle);
     setCreatorName(trimmedCreator);
+    setDeadlineDays(safeDays);
     setIsDedicationModalOpen(false);
 
     try {
-      const res = await executeAdminActionApi(adminSessionPin, 'update-dedication', {
-        dedicationTitle: trimmedTitle,
-        creatorName: trimmedCreator,
-        deadlineDays,
-      });
+      const res = await executeAdminActionApi(
+        adminSessionPin,
+        'update-dedication',
+        {
+          dedicationTitle: trimmedTitle,
+          creatorName: trimmedCreator,
+          deadlineDays: safeDays,
+        },
+        activeRoomId
+      );
       if (res.success) {
-        showToast('تم تحديث نية الختمة واسم المنشئ ومزامنتها لجميع المشاركين ✨');
+        showToast('تم تحديث نية الختمة واسم المنشئ ومزامنتها لجميع المشاركين');
+      } else {
+        showToast(res.error || 'تعذر حفظ التعديلات');
       }
     } catch {
-      showToast('تم حفظ التعديل محلياً');
+      showToast('تعذر الاتصال بالخادم لحفظ التعديل');
     }
   };
 
@@ -592,6 +677,40 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
           <span>{toastMessage}</span>
         </div>
       )}
+
+      {/* Room Switcher & Create Private Khatma Bar */}
+      <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-bold text-slate-400">الغرفة الحالية:</span>
+          <select
+            value={activeRoomId}
+            onChange={(e) => handleSelectRoom(e.target.value)}
+            className="py-1.5 px-3 rounded-xl bg-slate-950 border border-slate-700 text-xs font-bold text-emerald-300 outline-none focus:border-emerald-500 cursor-pointer"
+          >
+            {roomsList.length > 0 ? (
+              roomsList.map((r) => (
+                <option key={r.roomId} value={r.roomId}>
+                  {r.roomId === 'public' ? 'الختمة العامة — ' : 'ختمة خاصة — '}
+                  {r.dedicationTitle.slice(0, 38)} ({r.completedCount}/30)
+                </option>
+              ))
+            ) : (
+              <option value={activeRoomId}>{activeRoomId === 'public' ? 'الختمة العامة' : `ختمة (${activeRoomId})`}</option>
+            )}
+          </select>
+        </div>
+
+        <button
+          onClick={() => {
+            setCreateRoomError(null);
+            setIsCreateRoomOpen(true);
+          }}
+          className="py-2 px-4 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          <span>إنشاء ختمة عائلية برابط مستقل</span>
+        </button>
+      </div>
 
       {/* Top Hero Banner & Dedication Card */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-emerald-950/80 via-slate-900 to-teal-950/80 border border-emerald-500/30 p-6 sm:p-8 shadow-2xl">
@@ -623,7 +742,12 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
               </h1>
               {isAdminMode && (
                 <button
-                  onClick={() => setIsDedicationModalOpen(true)}
+                  onClick={() => {
+                    setTempTitleInput(dedicationTitle);
+                    setTempCreatorInput(creatorName);
+                    setTempDeadlineInput(deadlineDays);
+                    setIsDedicationModalOpen(true);
+                  }}
                   className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
                   title="تعديل نية الختمة واسم المنشئ"
                 >
@@ -1155,6 +1279,20 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-emerald-500 text-sm text-white outline-none"
                 />
               </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-300 block mb-1">
+                  المدة المستهدفة لإتمام الختمة (بالأيام):
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={tempDeadlineInput}
+                  onChange={e => setTempDeadlineInput(Number(e.target.value))}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-emerald-500 text-sm text-white outline-none font-mono"
+                />
+              </div>
             </div>
 
             <div className="pt-2 flex items-center justify-end gap-2">
@@ -1379,6 +1517,110 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
               >
                 <Check className="w-4 h-4" />
                 <span>حفظ الرمز وتأمينه سحابياً</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Private Khatma Room Modal */}
+      {isCreateRoomOpen && (
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="relative w-full max-w-md bg-slate-900 border border-emerald-500/40 rounded-2xl shadow-2xl p-5 sm:p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
+                <Users className="w-4 h-4" />
+                <span>إنشاء ختمة خاصة برابط مستقل</span>
+              </div>
+              <button
+                onClick={() => setIsCreateRoomOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {createRoomError && (
+              <div className="p-3 rounded-xl bg-rose-950/50 border border-rose-500/40 text-xs text-rose-300 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{createRoomError}</span>
+              </div>
+            )}
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-slate-300 block mb-1">نية وعنوان الختمة:</label>
+                <input
+                  type="text"
+                  value={newRoomTitle}
+                  onChange={(e) => setNewRoomTitle(e.target.value)}
+                  placeholder="مثال: ختمة عائلة آل فلان المباركة"
+                  className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-emerald-500 text-white outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="font-bold text-slate-300 block mb-1">اسم المنشئ:</label>
+                  <input
+                    type="text"
+                    value={newRoomCreator}
+                    onChange={(e) => setNewRoomCreator(e.target.value)}
+                    placeholder="أبو عبد الله"
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-emerald-500 text-white outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-slate-300 block mb-1">المدة (أيام):</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={newRoomDays}
+                    onChange={(e) => setNewRoomDays(Number(e.target.value))}
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-emerald-500 text-white font-mono outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-300 block mb-1">رمز المشرف السري للغرفة (إلزامي 4+ خانات):</label>
+                <input
+                  type="password"
+                  value={newRoomPin}
+                  onChange={(e) => setNewRoomPin(e.target.value)}
+                  placeholder="اختر رمزاً خاصاً لإدارة الختمة..."
+                  className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-emerald-500 text-white font-mono outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-400 block mb-1">معرّف الرابط المخصص (اختياري بالإنجليزية):</label>
+                <input
+                  type="text"
+                  dir="ltr"
+                  value={newRoomSlug}
+                  onChange={(e) => setNewRoomSlug(e.target.value)}
+                  placeholder="family-ramadan (أو يُولّد تلقائياً)"
+                  className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-emerald-500 text-white font-mono outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-2">
+              <button
+                onClick={() => setIsCreateRoomOpen(false)}
+                className="py-2 px-4 rounded-xl text-xs text-slate-400 hover:text-white"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={handleCreateRoom}
+                disabled={isCreatingRoom}
+                className="py-2.5 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>{isCreatingRoom ? 'جارٍ الإنشاء...' : 'إنشاء وفتح الغرفة'}</span>
               </button>
             </div>
           </div>

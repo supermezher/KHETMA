@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Code, Database, Shield, Layers, Calendar, CheckCircle2, Copy, Check, Terminal, Cpu } from 'lucide-react';
+import { Code, Database, Layers, Calendar, CheckCircle2, Copy, Check, Cpu } from 'lucide-react';
 
 export const FlutterArchitectureDoc: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'architecture' | 'database' | 'flutter-code' | 'roadmap'>('architecture');

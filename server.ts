@@ -1,121 +1,30 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
-import fs from 'fs';
-import crypto from 'crypto';
+import {
+  createKhatmaDatabase,
+  DEFAULT_ROOM_ID,
+  isValidJuzNumber,
+  hashPin,
+  verifyPinHash,
+  PinRateLimiter,
+  normalizeRoomId,
+} from './src/server/khatmaStore';
 
-interface PartClaim {
-  juzNumber: number;
-  juzName: string;
-  claimedBy: string | null;
-  claimedAt?: string;
-  isCompleted: boolean;
-  surahsCovered?: string;
-}
+const khatmaDb = createKhatmaDatabase();
+const pinRateLimiter = new PinRateLimiter(5, 5 * 60 * 1000);
 
-interface KhatmaData {
-  dedicationTitle: string;
-  creatorName: string;
-  deadlineDays: number;
-  adminPinHash: string;
-  parts: PartClaim[];
-  updatedAt: string;
-}
-
-const DEFAULT_JUZ_SURAS: Record<number, string> = {
-  1: 'من الفاتحة 1 إلى البقرة 141',
-  2: 'من البقرة 142 إلى البقرة 252',
-  3: 'من البقرة 253 إلى آل عمران 92',
-  4: 'من آل عمران 93 إلى النساء 23',
-  5: 'من النساء 24 إلى النساء 147',
-  6: 'من النساء 148 إلى المائدة 81',
-  7: 'من المائدة 82 إلى الأنعام 110',
-  8: 'من الأنعام 111 إلى الأعراف 87',
-  9: 'من الأعراف 88 إلى الأنفال 40',
-  10: 'من الأنفال 41 إلى التوبة 92',
-  11: 'من التوبة 93 إلى هود 5',
-  12: 'من هود 6 إلى يوسف 52',
-  13: 'من يوسف 53 إلى إبراهيم 52',
-  14: 'من الحجر 1 إلى النحل 128',
-  15: 'من الإسراء 1 إلى الكهف 74',
-  16: 'من الكهف 75 إلى طه 135',
-  17: 'من الأنبياء 1 إلى الحج 78',
-  18: 'من المؤمنون 1 إلى الفرقان 20',
-  19: 'من الفرقان 21 إلى النمل 55',
-  20: 'من النمل 56 إلى العنكبوت 45',
-  21: 'من العنكبوت 46 إلى الأحزاب 30',
-  22: 'من الأحزاب 31 إلى يس 27',
-  23: 'من يس 28 إلى الزمر 31',
-  24: 'من الزمر 32 إلى فصلت 46',
-  25: 'من فصلت 47 إلى الجاثية 37',
-  26: 'من الأحقاف 1 إلى الذاريات 30',
-  27: 'من الذاريات 31 إلى الحديد 29',
-  28: 'من المجادلة 1 إلى التحريم 12',
-  29: 'من الملك 1 إلى المرسلات 50',
-  30: 'من النبأ 1 إلى الناس 6 (جزء عم)',
-};
-
-function hashPin(pin: string): string {
-  return crypto.createHash('sha256').update(pin.trim()).digest('hex');
-}
-
-function generateInitialParts(): PartClaim[] {
-  return Array.from({ length: 30 }, (_, i) => {
-    const num = i + 1;
-    return {
-      juzNumber: num,
-      juzName: `الجزء ${num}`,
-      claimedBy: null,
-      claimedAt: undefined,
-      isCompleted: false,
-      surahsCovered: DEFAULT_JUZ_SURAS[num],
-    };
-  });
-}
-
-const DATA_DIR = path.resolve(process.cwd(), 'data');
-const DB_FILE = path.join(DATA_DIR, 'collective_khatma.json');
-
-function loadKhatmaData(): KhatmaData {
-  try {
-    if (fs.existsSync(DB_FILE)) {
-      const raw = fs.readFileSync(DB_FILE, 'utf-8');
-      const parsed = JSON.parse(raw);
-      if (parsed && Array.isArray(parsed.parts) && parsed.parts.length === 30) {
-        return parsed;
-      }
-    }
-  } catch (err) {
-    console.error('Error reading khatma database file:', err);
+function getClientIp(req: express.Request): string {
+  const fwd = req.headers['x-forwarded-for'];
+  if (typeof fwd === 'string' && fwd.trim()) {
+    return fwd.split(',')[0].trim();
   }
-
-  // Initial default state
-  const initialData: KhatmaData = {
-    dedicationTitle: 'ختمة البر والصدقة الجارية لجميع موتى المسلمين',
-    creatorName: 'فاعل خير',
-    deadlineDays: 3,
-    adminPinHash: hashPin('1234'), // Default PIN 1234 securely hashed
-    parts: generateInitialParts(),
-    updatedAt: new Date().toISOString(),
-  };
-
-  saveKhatmaData(initialData);
-  return initialData;
+  return req.ip || 'local';
 }
 
-function saveKhatmaData(data: KhatmaData): void {
-  try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    data.updatedAt = new Date().toISOString();
-    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf-8');
-  } catch (err) {
-    console.error('Error saving khatma database file:', err);
-  }
+function resolveRoomId(req: express.Request): string {
+  return normalizeRoomId((req.body && req.body.roomId) || req.query.roomId || DEFAULT_ROOM_ID);
 }
-
-let khatmaState: KhatmaData = loadKhatmaData();
 
 async function startServer() {
   const app = express();
@@ -125,60 +34,139 @@ async function startServer() {
   app.use(express.json());
 
   // ---------------------------------------------------------------------------
-  // API ROUTES FOR REAL SHARED COLLECTIVE KHATMA
+  // API ROUTES FOR MULTI-ROOM SHARED COLLECTIVE KHATMA
   // ---------------------------------------------------------------------------
 
-  // 1. Get Live Khatma State (Public, sanitized - never returns adminPinHash)
-  app.get('/api/khatma', (req, res) => {
+  // 0. List active Khatma rooms (public metadata only, never returns PIN hashes)
+  app.get('/api/khatma/rooms', (req, res) => {
     res.json({
       success: true,
-      dedicationTitle: khatmaState.dedicationTitle,
-      creatorName: khatmaState.creatorName,
-      deadlineDays: khatmaState.deadlineDays,
-      parts: khatmaState.parts,
-      updatedAt: khatmaState.updatedAt,
-      isDefaultPin: khatmaState.adminPinHash === hashPin('1234'),
+      rooms: khatmaDb.listRoomSummaries(),
+    });
+  });
+
+  // 0b. Create a new private/shared Khatma room with mandatory custom PIN
+  app.post('/api/khatma/rooms', (req, res) => {
+    const { requestedSlug, dedicationTitle, creatorName, deadlineDays, pin } = req.body || {};
+    const result = khatmaDb.createRoom({
+      requestedSlug,
+      dedicationTitle,
+      creatorName,
+      deadlineDays,
+      pin,
+    });
+
+    if (!result.ok) {
+      return res.status(result.status).json({ success: false, error: result.error });
+    }
+
+    const room = result.room;
+    return res.status(201).json({
+      success: true,
+      roomId: room.roomId,
+      dedicationTitle: room.dedicationTitle,
+      creatorName: room.creatorName,
+      deadlineDays: room.deadlineDays,
+      parts: room.parts,
+      updatedAt: room.updatedAt,
+      isDefaultPin: false,
+    });
+  });
+
+  // 1. Get Live Khatma State for a Room
+  app.get('/api/khatma', (req, res) => {
+    const roomId = resolveRoomId(req);
+    const room = khatmaDb.getRoom(roomId);
+    if (!room) {
+      return res.status(404).json({ success: false, error: 'لم يتم العثور على الختمة المطلوبة' });
+    }
+
+    res.json({
+      success: true,
+      roomId: room.roomId,
+      dedicationTitle: room.dedicationTitle,
+      creatorName: room.creatorName,
+      deadlineDays: room.deadlineDays,
+      parts: room.parts,
+      updatedAt: room.updatedAt,
+      isDefaultPin: room.roomId === DEFAULT_ROOM_ID && verifyPinHash('1234', room.adminPinHash),
     });
   });
 
   // 2. Claim a Juz
   app.post('/api/khatma/claim', (req, res) => {
-    const { juzNumber, name } = req.body;
-    if (!juzNumber || juzNumber < 1 || juzNumber > 30) {
+    const roomId = resolveRoomId(req);
+    const room = khatmaDb.getRoom(roomId);
+    if (!room) {
+      return res.status(404).json({ success: false, error: 'الختمة غير موجودة' });
+    }
+
+    const { juzNumber, name } = req.body || {};
+    if (!isValidJuzNumber(juzNumber)) {
       return res.status(400).json({ success: false, error: 'رقم الجزء غير صالح' });
     }
-    const trimmedName = (name || '').trim() || 'قارئ محب للخير';
+    const rawName = typeof name === 'string' ? name.trim() : '';
+    const trimmedName = rawName.slice(0, 60) || 'قارئ محب للخير';
 
-    const part = khatmaState.parts.find((p) => p.juzNumber === juzNumber);
+    const part = room.parts.find((p) => p.juzNumber === juzNumber);
     if (!part) {
       return res.status(404).json({ success: false, error: 'الجزء غير موجود' });
+    }
+
+    if (part.claimedBy !== null) {
+      return res.status(409).json({
+        success: false,
+        error: `عذراً، تم حجز الجزء ${juzNumber} بالفعل باسم (${part.claimedBy})`,
+        parts: room.parts,
+      });
     }
 
     part.claimedBy = trimmedName;
     part.claimedAt = new Date().toISOString();
     part.isCompleted = false;
 
-    saveKhatmaData(khatmaState);
-    return res.json({ success: true, parts: khatmaState.parts, claimedPart: part });
+    khatmaDb.saveRoom(room);
+    return res.json({ success: true, parts: room.parts, claimedPart: part });
   });
 
   // 3. Toggle Part Completion
   app.post('/api/khatma/complete', (req, res) => {
-    const { juzNumber } = req.body;
-    const part = khatmaState.parts.find((p) => p.juzNumber === juzNumber);
+    const roomId = resolveRoomId(req);
+    const room = khatmaDb.getRoom(roomId);
+    if (!room) {
+      return res.status(404).json({ success: false, error: 'الختمة غير موجودة' });
+    }
+
+    const { juzNumber } = req.body || {};
+    if (!isValidJuzNumber(juzNumber)) {
+      return res.status(400).json({ success: false, error: 'رقم الجزء غير صالح' });
+    }
+    const part = room.parts.find((p) => p.juzNumber === juzNumber);
     if (!part) {
       return res.status(404).json({ success: false, error: 'الجزء غير موجود' });
     }
+    if (part.claimedBy === null) {
+      return res.status(400).json({ success: false, error: 'لا يمكن إتمام جزء شاغر قبل حجزه', parts: room.parts });
+    }
 
     part.isCompleted = !part.isCompleted;
-    saveKhatmaData(khatmaState);
-    return res.json({ success: true, parts: khatmaState.parts, updatedPart: part });
+    khatmaDb.saveRoom(room);
+    return res.json({ success: true, parts: room.parts, updatedPart: part });
   });
 
   // 4. Release a Part (Volunteer withdrawal)
   app.post('/api/khatma/release', (req, res) => {
-    const { juzNumber } = req.body;
-    const part = khatmaState.parts.find((p) => p.juzNumber === juzNumber);
+    const roomId = resolveRoomId(req);
+    const room = khatmaDb.getRoom(roomId);
+    if (!room) {
+      return res.status(404).json({ success: false, error: 'الختمة غير موجودة' });
+    }
+
+    const { juzNumber } = req.body || {};
+    if (!isValidJuzNumber(juzNumber)) {
+      return res.status(400).json({ success: false, error: 'رقم الجزء غير صالح' });
+    }
+    const part = room.parts.find((p) => p.juzNumber === juzNumber);
     if (!part) {
       return res.status(404).json({ success: false, error: 'الجزء غير موجود' });
     }
@@ -187,90 +175,157 @@ async function startServer() {
     part.claimedAt = undefined;
     part.isCompleted = false;
 
-    saveKhatmaData(khatmaState);
-    return res.json({ success: true, parts: khatmaState.parts });
+    khatmaDb.saveRoom(room);
+    return res.json({ success: true, parts: room.parts });
   });
 
-  // 5. Verify Supervisor PIN (Secure Server-side Hash Verification)
+  // 5. Verify Supervisor PIN (Rate-Limited Server-side Hash Verification)
   app.post('/api/khatma/verify-pin', (req, res) => {
-    const { pin } = req.body;
-    if (!pin) {
+    const roomId = resolveRoomId(req);
+    const room = khatmaDb.getRoom(roomId);
+    if (!room) {
+      return res.status(404).json({ success: false, error: 'الختمة غير موجودة' });
+    }
+
+    const { pin } = req.body || {};
+    if (typeof pin !== 'string' || !pin.trim()) {
       return res.status(400).json({ success: false, error: 'الرمز مطلوب' });
     }
 
-    const providedHash = hashPin(pin);
-    if (providedHash === khatmaState.adminPinHash) {
+    const rateKey = `${getClientIp(req)}:${room.roomId}`;
+    const limitCheck = pinRateLimiter.check(rateKey);
+    if (!limitCheck.allowed) {
+      return res.status(429).json({
+        success: false,
+        verified: false,
+        error: `تم تجاوز عدد المحاولات المسموح بها. يرجى الانتظار ${limitCheck.retryAfterSec} ثانية ثم المحاولة مجدداً`,
+      });
+    }
+
+    if (verifyPinHash(pin, room.adminPinHash)) {
+      pinRateLimiter.reset(rateKey);
       return res.json({ success: true, verified: true });
     } else {
+      pinRateLimiter.recordFailure(rateKey);
       return res.status(401).json({ success: false, verified: false, error: 'رمز المشرف غير صحيح' });
     }
   });
 
-  // 6. Change Supervisor PIN (Requires Old PIN)
+  // 6. Change Supervisor PIN (Requires Old PIN, Rate-Limited)
   app.post('/api/khatma/change-pin', (req, res) => {
-    const { currentPin, newPin } = req.body;
-    if (!currentPin || !newPin || newPin.trim().length < 3) {
-      return res.status(400).json({ success: false, error: 'الرمز الجديد يجب أن يكون 3 أحرف/أرقام على الأقل' });
+    const roomId = resolveRoomId(req);
+    const room = khatmaDb.getRoom(roomId);
+    if (!room) {
+      return res.status(404).json({ success: false, error: 'الختمة غير موجودة' });
     }
 
-    if (hashPin(currentPin) !== khatmaState.adminPinHash) {
+    const { currentPin, newPin } = req.body || {};
+    if (typeof currentPin !== 'string' || typeof newPin !== 'string' || !currentPin.trim() || newPin.trim().length < 4) {
+      return res.status(400).json({ success: false, error: 'الرمز الجديد يجب أن يكون 4 أحرف/أرقام على الأقل' });
+    }
+
+    const rateKey = `${getClientIp(req)}:${room.roomId}`;
+    const limitCheck = pinRateLimiter.check(rateKey);
+    if (!limitCheck.allowed) {
+      return res.status(429).json({
+        success: false,
+        error: `تم تجاوز عدد المحاولات المسموح بها. يرجى الانتظار ${limitCheck.retryAfterSec} ثانية`,
+      });
+    }
+
+    if (!verifyPinHash(currentPin, room.adminPinHash)) {
+      pinRateLimiter.recordFailure(rateKey);
       return res.status(401).json({ success: false, error: 'رمز المشرف الحالي غير صحيح' });
     }
 
-    khatmaState.adminPinHash = hashPin(newPin);
-    saveKhatmaData(khatmaState);
+    pinRateLimiter.reset(rateKey);
+    room.adminPinHash = hashPin(newPin);
+    khatmaDb.saveRoom(room);
     return res.json({ success: true, message: 'تم تغيير رمز المشرف بنجاح' });
   });
 
-  // 7. Administrative Action (Guarded strictly by PIN hash verification)
+  // 7. Administrative Action (Guarded strictly by Rate-Limited PIN verification)
   app.post('/api/khatma/admin-action', (req, res) => {
-    const { pin, action, targetJuz, newName, dedicationTitle, creatorName, deadlineDays } = req.body;
-
-    if (!pin || hashPin(pin) !== khatmaState.adminPinHash) {
-      return res.status(403).json({ success: false, error: 'غير مصرح: رمز المشرف غير صحيح' });
+    const roomId = resolveRoomId(req);
+    const room = khatmaDb.getRoom(roomId);
+    if (!room) {
+      return res.status(404).json({ success: false, error: 'الختمة غير موجودة' });
     }
 
+    const { pin, action, targetJuz, newName, dedicationTitle, creatorName, deadlineDays } = req.body || {};
+    const rateKey = `${getClientIp(req)}:${room.roomId}`;
+    const limitCheck = pinRateLimiter.check(rateKey);
+    if (!limitCheck.allowed) {
+      return res.status(429).json({
+        success: false,
+        error: `تم تجاوز عدد المحاولات المسموح بها. يرجى الانتظار ${limitCheck.retryAfterSec} ثانية`,
+      });
+    }
+
+    if (typeof pin !== 'string' || !pin.trim() || !verifyPinHash(pin, room.adminPinHash)) {
+      pinRateLimiter.recordFailure(rateKey);
+      return res.status(403).json({ success: false, error: 'غير مصرح: رمز المشرف غير صحيح' });
+    }
+    pinRateLimiter.reset(rateKey);
+
     if (action === 'reset-all') {
-      khatmaState.parts = khatmaState.parts.map((p) => ({
+      room.parts = room.parts.map((p) => ({
         ...p,
         claimedBy: null,
         claimedAt: undefined,
         isCompleted: false,
       }));
-      saveKhatmaData(khatmaState);
-      return res.json({ success: true, parts: khatmaState.parts, message: 'تمت إعادة ضبط الختمة وبدء دورة جديدة' });
+      khatmaDb.saveRoom(room);
+      return res.json({ success: true, parts: room.parts, message: 'تمت إعادة ضبط الختمة وبدء دورة جديدة' });
     }
 
-    if (action === 'release-part' && targetJuz) {
-      const part = khatmaState.parts.find((p) => p.juzNumber === targetJuz);
-      if (part) {
-        part.claimedBy = null;
-        part.claimedAt = undefined;
-        part.isCompleted = false;
-        saveKhatmaData(khatmaState);
+    if (action === 'release-part') {
+      if (!isValidJuzNumber(targetJuz)) {
+        return res.status(400).json({ success: false, error: 'رقم الجزء غير صالح' });
       }
-      return res.json({ success: true, parts: khatmaState.parts });
+      const part = room.parts.find((p) => p.juzNumber === targetJuz);
+      if (!part) {
+        return res.status(404).json({ success: false, error: 'الجزء غير موجود' });
+      }
+      part.claimedBy = null;
+      part.claimedAt = undefined;
+      part.isCompleted = false;
+      khatmaDb.saveRoom(room);
+      return res.json({ success: true, parts: room.parts });
     }
 
-    if (action === 'edit-name' && targetJuz && newName) {
-      const part = khatmaState.parts.find((p) => p.juzNumber === targetJuz);
-      if (part) {
-        part.claimedBy = newName.trim();
-        saveKhatmaData(khatmaState);
+    if (action === 'edit-name') {
+      if (!isValidJuzNumber(targetJuz) || typeof newName !== 'string' || !newName.trim()) {
+        return res.status(400).json({ success: false, error: 'بيانات تعديل الاسم غير صالحة' });
       }
-      return res.json({ success: true, parts: khatmaState.parts });
+      const part = room.parts.find((p) => p.juzNumber === targetJuz);
+      if (!part) {
+        return res.status(404).json({ success: false, error: 'الجزء غير موجود' });
+      }
+      part.claimedBy = newName.trim().slice(0, 60);
+      khatmaDb.saveRoom(room);
+      return res.json({ success: true, parts: room.parts });
     }
 
     if (action === 'update-dedication') {
-      if (dedicationTitle) khatmaState.dedicationTitle = dedicationTitle.trim();
-      if (creatorName) khatmaState.creatorName = creatorName.trim();
-      if (deadlineDays) khatmaState.deadlineDays = Number(deadlineDays);
-      saveKhatmaData(khatmaState);
+      if (typeof dedicationTitle === 'string' && dedicationTitle.trim()) {
+        room.dedicationTitle = dedicationTitle.trim().slice(0, 160);
+      }
+      if (typeof creatorName === 'string' && creatorName.trim()) {
+        room.creatorName = creatorName.trim().slice(0, 80);
+      }
+      if (deadlineDays !== undefined) {
+        const parsedDays = Number(deadlineDays);
+        if (Number.isFinite(parsedDays) && parsedDays >= 1 && parsedDays <= 365) {
+          room.deadlineDays = Math.round(parsedDays);
+        }
+      }
+      khatmaDb.saveRoom(room);
       return res.json({
         success: true,
-        dedicationTitle: khatmaState.dedicationTitle,
-        creatorName: khatmaState.creatorName,
-        deadlineDays: khatmaState.deadlineDays,
+        dedicationTitle: room.dedicationTitle,
+        creatorName: room.creatorName,
+        deadlineDays: room.deadlineDays,
       });
     }
 
@@ -281,13 +336,37 @@ async function startServer() {
   // VITE DEV MIDDLEWARE / STATIC ASSETS
   // ---------------------------------------------------------------------------
   if (!isProduction) {
+    const hmrEnabled = process.env.DISABLE_HMR !== 'true';
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
-        hmr: process.env.DISABLE_HMR !== 'true',
+        hmr: hmrEnabled,
+        ws: hmrEnabled ? undefined : false,
       },
       appType: 'spa',
     });
+
+    if (!hmrEnabled) {
+      // When HMR is disabled (e.g. DISABLE_HMR=true), prevent @vite/client from opening a failing WebSocket to port 24678
+      app.get('/@vite/client', async (_req, res, next) => {
+        try {
+          const result = await vite.transformRequest('/@vite/client');
+          if (result && typeof result.code === 'string') {
+            const safeCode = result.code.replace(
+              /transport\.connect\([^;]*\);/g,
+              '/* HMR disabled: WebSocket connection skipped */'
+            );
+            res.setHeader('Cache-Control', 'no-cache');
+            res.status(200).type('application/javascript').send(safeCode);
+            return;
+          }
+        } catch {
+          // Fall back to default Vite middleware on unexpected errors
+        }
+        next();
+      });
+    }
+
     app.use(vite.middlewares);
   } else {
     app.use(express.static(path.resolve(process.cwd(), 'dist')));

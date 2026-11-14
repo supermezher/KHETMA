@@ -1,11 +1,12 @@
 import React from 'react';
 
 /**
- * Verified Authentic Tajweed Highlighting & Word-by-Word Synchronizer
- * 
- * Supports both:
- * 1. Tanzil / Medina Mus'haf annotated Tajweed tags ([h[...]], [m[...]], [q[...]], [c[...]], [f[...]], etc.)
- * 2. Scholarly corrected rule fallback engine adhering to Hafs 'an 'Asim.
+ * Verified Authentic Tajweed Highlighting & Uthmani Text Synchronizer
+ *
+ * Guarantees 100% spelling & orthographic fidelity to the verified Medina Mus'haf (quran-uthmani)
+ * by projecting annotated Tajweed tags onto exact Uthmani grapheme clusters — eliminating
+ * encoding artifacts such as `ٲ` (U+0672 in `ٱلصَّلَوٲةَ`), dropped hamza alifs (`وَبِٱلْأَخِرَةِ`),
+ * or artificial tatweel splits while preserving intact Arabic cursive ligatures.
  */
 
 export type TajweedRuleType =
@@ -28,30 +29,61 @@ export interface TajweedToken {
   tooltip?: string;
 }
 
-// Tanzil standard Tajweed tag identifiers mapped to scholarly rules and Arabic descriptions
-const TANZIL_RULE_MAP: Record<string, { rule: TajweedRuleType; tooltip: string }> = {
-  h: { rule: 'silent', tooltip: 'همزة وصل تسقط وصلاً' },
-  s: { rule: 'silent', tooltip: 'حرف زائد رسماً لا يلفظ' },
-  l: { rule: 'silent', tooltip: 'لام شمسية مدغمة لا تلفظ' },
+// Complete verified mapping for all 17 AlQuran.cloud / Tanzil Tajweed annotation tags
+export const TANZIL_RULE_MAP: Record<string, { rule: TajweedRuleType; tooltip: string }> = {
+  h: { rule: 'silent', tooltip: 'همزة وصل تسقط في درج الكلام' },
+  s: { rule: 'silent', tooltip: 'حرف زائد رسماً لا يُلفظ' },
+  l: { rule: 'silent', tooltip: 'لام شمسية مدغمة لا تُلفظ' },
+  d: { rule: 'silent', tooltip: 'حرف مُدغَم إدغاماً متجانساً لا يُلفظ' },
+  b: { rule: 'silent', tooltip: 'حرف مُدغَم إدغاماً متقارباً بلا غنة لا يُلفظ' },
+  u: { rule: 'silent', tooltip: 'إدغام كامل بغير غنة (تسقط النون أو التنوين في النطق)' },
   g: { rule: 'ghunnah', tooltip: 'غنة مشددة بمقدار حركتين' },
-  c: { rule: 'ikhfa', tooltip: 'إخفاء حقيقي بغنة حركتين' },
-  f: { rule: 'ikhfa', tooltip: 'إخفاء شفوي / حقيقي بغنة حركتين' },
-  w: { rule: 'idgham', tooltip: 'إدغام بغنة كامل / ناقص' },
-  u: { rule: 'idgham', tooltip: 'إدغام بغير غنة' },
-  i: { rule: 'iqlab', tooltip: 'إقلاب النون إلى ميم مخفاة بغنة حركتين' },
+  c: { rule: 'ikhfa', tooltip: 'إخفاء شفوي بغنة حركتين' },
+  f: { rule: 'ikhfa', tooltip: 'إخفاء حقيقي بغنة حركتين' },
+  a: { rule: 'idgham', tooltip: 'إدغام بغنة بمقدار حركتين (حروف ينمو)' },
+  w: { rule: 'idgham', tooltip: 'إدغام شفوي (مثلين صغير) بغنة حركتين' },
+  i: { rule: 'iqlab', tooltip: 'إقلاب النون الساكنة أو التنوين ميماً مخفاة بغنة حركتين' },
   q: { rule: 'qalqalah', tooltip: 'قلقلة في حروف (قطب جد)' },
   o: { rule: 'madd-wajib', tooltip: 'مد واجب متصل أو جائز منفصل (4 - 5 حركات)' },
-  m: { rule: 'madd-lazim', tooltip: 'مد لازم كلمي أو حرفي مشبع (6 حركات)' },
+  m: { rule: 'madd-lazim', tooltip: 'مد لازم كلمي أو حرفي مشبع (6 حركات وجوباً)' },
   p: { rule: 'madd-arid', tooltip: 'مد عارض للسكون (2 - 4 - 6 حركات عند الوقف)' },
   n: { rule: 'madd-tabeei', tooltip: 'مد طبيعي بمقدار حركتين' },
-  a: { rule: 'madd-badal', tooltip: 'مد بدل بمقدار حركتين' }
 };
+
+const COMBINING_MARK_RE = /[\u064B-\u065F\u0670\u06D6-\u06ED\u200C]/;
+const WAQF_ONLY_RE = /^[\u06D6-\u06ED]+$/;
+
+/**
+ * Splits a single Arabic word into atomic grapheme clusters (base letter + combining diacritics)
+ * so no <span> ever starts with a bare combining mark (preventing dotted-circle rendering bugs).
+ */
+export function splitArabicGraphemeClusters(word: string): string[] {
+  const clusters: string[] = [];
+  for (const ch of word) {
+    if (COMBINING_MARK_RE.test(ch) && clusters.length > 0) {
+      clusters[clusters.length - 1] += ch;
+    } else {
+      clusters.push(ch);
+    }
+  }
+  return clusters;
+}
+
+function normalizeBaseArabicChar(ch: string): string {
+  if (!ch) return '';
+  if ('ٱأإآاٲ'.includes(ch)) return 'ا';
+  if ('ىٮيئ'.includes(ch)) return 'ي';
+  if ('ؤو'.includes(ch)) return 'و';
+  if ('ةه'.includes(ch)) return 'ه';
+  return ch;
+}
 
 /**
  * Stack-based parser for authentic Tanzil / AlQuran Cloud Tajweed annotations.
  * Accurately handles nested tags (e.g. `تَعْتَد[o[ُوٓ[s[اْ]‌ۚ]`) and word segmentation.
  */
 export function parseAnnotatedTajweedAyah(tajweedStr: string): TajweedToken[][] {
+  const cleanedStr = tajweedStr.replace(/\u200C/g, '');
   const stack: string[] = [];
   const words: TajweedToken[][] = [[]];
   let i = 0;
@@ -65,37 +97,38 @@ export function parseAnnotatedTajweedAyah(tajweedStr: string): TajweedToken[][] 
     currentWord.push({
       text: buffer,
       rule: ruleInfo ? ruleInfo.rule : undefined,
-      tooltip: ruleInfo ? ruleInfo.tooltip : undefined
+      tooltip: ruleInfo ? ruleInfo.tooltip : undefined,
     });
     buffer = '';
   };
 
-  while (i < tajweedStr.length) {
-    if (tajweedStr[i] === '[') {
-      const nextOpen = tajweedStr.indexOf('[', i + 1);
-      const nextClose = tajweedStr.indexOf(']', i + 1);
-      // Valid tag opening: e.g. [h:1[ or [m[
+  while (i < cleanedStr.length) {
+    if (cleanedStr[i] === '[') {
+      const nextOpen = cleanedStr.indexOf('[', i + 1);
+      const nextClose = cleanedStr.indexOf(']', i + 1);
       if (nextOpen !== -1 && (nextClose === -1 || nextOpen < nextClose)) {
         flushBuffer();
-        const tagSpec = tajweedStr.slice(i + 1, nextOpen);
+        const tagSpec = cleanedStr.slice(i + 1, nextOpen);
         const tagLetter = tagSpec.split(':')[0];
         stack.push(tagLetter);
         i = nextOpen + 1;
         continue;
       }
-    } else if (tajweedStr[i] === ']') {
+    } else if (cleanedStr[i] === ']') {
       flushBuffer();
       stack.pop();
       i++;
       continue;
-    } else if (tajweedStr[i] === ' ') {
+    } else if (/\s/.test(cleanedStr[i])) {
       flushBuffer();
-      words.push([]);
+      if (words[words.length - 1].length > 0) {
+        words.push([]);
+      }
       i++;
       continue;
     }
 
-    buffer += tajweedStr[i];
+    buffer += cleanedStr[i];
     i++;
   }
   flushBuffer();
@@ -104,32 +137,122 @@ export function parseAnnotatedTajweedAyah(tajweedStr: string): TajweedToken[][] 
 }
 
 /**
- * Scholarly corrected Tajweed rule detection for raw/unannotated Arabic text.
- * Fixes all 5 issues:
- * 1. Madd Lazim: Requires direct shaddah after madd letter, never confuses «السماء» (which is Muttasil 4-5).
- * 2. Madd Badal: Correctly identifies «آ» (آمَنُوا، آتَيْنَا) as 2 counts.
- * 3. Dead conditions: Word-internal and tanween/noon saakinah patterns.
- * 4. Missing rules: Full support for Iqlab, Ghunnah, Qalqalah, and Tafkheem.
- * 5. Hamzat Wasl: Not muted when initial in an Ayah.
+ * Merges consecutive grapheme tokens in a word that share the same rule and tooltip
+ * to minimize <span> boundaries and keep Arabic cursive shaping clean.
+ */
+function mergeWordTokens(tokens: TajweedToken[]): TajweedToken[] {
+  const merged: TajweedToken[] = [];
+  for (const tok of tokens) {
+    const prev = merged[merged.length - 1];
+    if (prev && prev.rule === tok.rule && prev.tooltip === tok.tooltip) {
+      prev.text += tok.text;
+    } else {
+      merged.push({ ...tok });
+    }
+  }
+  return merged;
+}
+
+/**
+ * Aligns 100% spelling-verified Uthmani words with parsed Tajweed annotations.
+ * Rendered output text is guaranteed to equal rawUthmaniText character-for-character.
+ */
+export function alignUthmaniWithTajweed(
+  rawUthmaniText: string,
+  tajweedText: string
+): TajweedToken[][] {
+  const uWords = rawUthmaniText.trim().split(/\s+/).filter(Boolean);
+  const tWords = parseAnnotatedTajweedAyah(tajweedText);
+  let twIdx = 0;
+
+  return uWords.map((uWord) => {
+    if (WAQF_ONLY_RE.test(uWord)) {
+      return [{ text: uWord }];
+    }
+
+    const tWord = tWords[twIdx++] || [];
+    const tStream: { ch: string; rule?: TajweedRuleType; tooltip?: string }[] = [];
+    for (const tok of tWord) {
+      for (const ch of tok.text) {
+        if (/[\u06D6-\u06ED]/.test(ch)) continue;
+        tStream.push({ ch, rule: tok.rule, tooltip: tok.tooltip });
+      }
+    }
+
+    let ti = 0;
+    const clusters = splitArabicGraphemeClusters(uWord);
+    const alignedClusters: TajweedToken[] = clusters.map((cluster) => {
+      const base = cluster[0];
+      if (/[\u06D6-\u06ED]/.test(base)) {
+        return { text: cluster };
+      }
+
+      const uNorm = normalizeBaseArabicChar(base);
+
+      // Handle Uthmani ء + ا vs Tajweed أ (e.g. وَبِٱلْءَاخِرَةِ vs وَبِٱلْأَخِرَةِ)
+      if (base === 'ء' && tStream[ti] && 'أإآ'.includes(tStream[ti].ch)) {
+        return {
+          text: cluster,
+          ...(tStream[ti].rule ? { rule: tStream[ti].rule, tooltip: tStream[ti].tooltip } : {}),
+        };
+      }
+
+      for (let look = 0; look < 4 && ti + look < tStream.length; look++) {
+        const tch = tStream[ti + look].ch;
+        if (/[\u064B-\u065F\u0670ـ]/.test(tch)) continue;
+
+        if (normalizeBaseArabicChar(tch) === uNorm || (tch === 'ـ' && cluster.includes('\u0670'))) {
+          let rule = tStream[ti + look].rule;
+          let tooltip = tStream[ti + look].tooltip;
+
+          let k = ti + look + 1;
+          while (k < tStream.length && /[\u064B-\u065F\u0670ـٲ]/.test(tStream[k].ch)) {
+            const mark = tStream[k];
+            // Only superscript dagger alef (ٰ / ٲ) or madda sign (ٓ) promotes the Madd highlight onto the seat cluster
+            if (mark.rule && (mark.ch === 'ٲ' || mark.ch === '\u0670' || mark.ch === '\u0653')) {
+              rule = mark.rule;
+              tooltip =
+                base === 'و' && cluster.includes('\u0670')
+                  ? 'واو زائدة رسماً وألف خنجرية تُمد حركتين (مد طبيعي)'
+                  : mark.tooltip;
+            }
+            k++;
+          }
+          ti = k;
+          return {
+            text: cluster,
+            ...(rule ? { rule, tooltip } : {}),
+          };
+        }
+      }
+
+      return { text: cluster };
+    });
+
+    return mergeWordTokens(alignedClusters);
+  });
+}
+
+/**
+ * Fallback rule detection when annotated Tajweed text is unavailable.
  */
 function detectFallbackTajweedRule(
   frag: string,
-  isFirstWordInAyah = false,
   isLastWordInAyah = false
 ): { rule: TajweedRuleType; tooltip: string } | null {
-  // 1. Madd Lazim: e.g. الضَّآلِّينَ، الصَّآخَّةُ، الحَآقَّةُ (Madd letter immediately followed by Shaddah)
-  // Must NOT match words with madd followed by hamza like «ٱلسَّمَآءِ» or «جَآءَ»!
-  const hasHamzaAfterMadd = /[آٓ][\u064B-\u065F]*[ءئؤ]/.test(frag) || frag.includes('َآء') || frag.includes('ُوٓء') || frag.includes('ِىٓء');
+  const hasHamzaAfterMadd =
+    /[آٓ][\u064B-\u065F]*[ءئؤ]/.test(frag) ||
+    frag.includes('َآء') ||
+    frag.includes('ُوٓء') ||
+    frag.includes('ِىٓء') ||
+    frag.includes('َآء');
+
   if (!hasHamzaAfterMadd) {
     if (
       frag.includes('آلِّ') ||
       frag.includes('آخَّ') ||
       frag.includes('آفَّ') ||
       frag.includes('آمَّ') ||
-      frag.includes('ضَّآلّ') ||
-      frag.includes('حَآدّ') ||
-      frag.includes('حَآقّ') ||
-      frag.includes('تَأْمُرُوٓنِّ') ||
       /[آٓ][\u064B-\u065F]*[ّ]/.test(frag) ||
       /ٓ[^\sءئؤ]*ّ/.test(frag)
     ) {
@@ -137,7 +260,6 @@ function detectFallbackTajweedRule(
     }
   }
 
-  // 2. Madd Badal: e.g. آمَنُوا۟، آتَيْنَا، آدَمَ، ءَامَنُوا (Alif Maddah followed by regular letters, 2 counts in Hafs)
   if (
     /^آ[^\sّءئؤ]/.test(frag) ||
     frag.includes('آمَنُ') ||
@@ -148,52 +270,20 @@ function detectFallbackTajweedRule(
     return { rule: 'madd-badal', tooltip: 'مد بدل بمقدار حركتين' };
   }
 
-  // 3. Madd Wajib / Jaiz: e.g. جَآءَ، سُوٓءَ، بِمَآ، ٱلسَّمَآءِ، شَآءَ (4 - 5 counts)
-  if (
-    hasHamzaAfterMadd ||
-    frag.includes('َآء') ||
-    frag.includes('ُوٓء') ||
-    frag.includes('ِىٓء') ||
-    frag.includes('َآ') ||
-    frag.includes('ُوٓ') ||
-    frag.includes('ِىٓ') ||
-    frag.includes('ٓ')
-  ) {
+  if (hasHamzaAfterMadd || frag.includes('ٓ')) {
     return { rule: 'madd-wajib', tooltip: 'مد واجب متصل أو جائز منفصل (4 - 5 حركات)' };
   }
 
-  // 4. Ghunnah: Nun and Meem Mushaddadah (e.g. إِنَّ، عَمَّ، ٱلنَّاسِ)
   if (frag.includes('نَّ') || frag.includes('مَّ') || frag.includes('نّ') || frag.includes('مّ')) {
     return { rule: 'ghunnah', tooltip: 'غنة مشددة في النون أو الميم بمقدار حركتين' };
   }
 
-  // 5. Iqlab: Tanween or Nun Saakinah before Ba (e.g. مِۢن بَعْدِ، أَنۢبِئْهُم، سَمِيعٌۢ بَصِيرٌ)
-  if (frag.includes('ۢ') || /نْ?[\s]*ب/.test(frag)) {
+  if (frag.includes('ۢ')) {
     return { rule: 'iqlab', tooltip: 'إقلاب النون إلى ميم مخفاة بغنة حركتين' };
   }
 
-  // 6. Qalqalah: Letters of Qutb Jad (ق، ط، ب، ج، د)
-  // Only when having explicit sukoon, or when stopping (waqf) at the end of the Ayah
   if (/[قطبجد]ْ/.test(frag) || (isLastWordInAyah && /[قطبجد][\u064B-\u065F]*$/.test(frag))) {
     return { rule: 'qalqalah', tooltip: 'قلقلة في حرف من حروف (قطب جد)' };
-  }
-
-  // 7. Internal Ikhfa: e.g. كُنتُمْ، أَنتُمْ، يَنتَهُوا۟، عِندَ
-  if (
-    frag.includes('كُنتُ') ||
-    frag.includes('أَنتُ') ||
-    frag.includes('يَنتَ') ||
-    frag.includes('عِندَ') ||
-    frag.includes('مِنسَ') ||
-    frag.includes('أَنفُسَ') ||
-    frag.includes('يَنظُ')
-  ) {
-    return { rule: 'ikhfa', tooltip: 'إخفاء حقيقي بغنة حركتين' };
-  }
-
-  // 8. Tafkheem (Heavy / Emphatic letters: خص ضغط قظ)
-  if (/[خصضغطقظ]/.test(frag) && !frag.includes('ٱل')) {
-    return { rule: 'tafkheem', tooltip: 'حرف استعلاء مفخم (خص ضغط قظ)' };
   }
 
   return null;
@@ -201,9 +291,6 @@ function detectFallbackTajweedRule(
 
 const wordTajweedCache = new Map<string, TajweedToken[]>();
 
-/**
- * Fallback tokenizer for a single word when Tanzil annotations are unavailable.
- */
 export function parseWordTajweed(
   word: string,
   isFirstWordInAyah = false,
@@ -213,30 +300,13 @@ export function parseWordTajweed(
   const cached = wordTajweedCache.get(cacheKey);
   if (cached) return cached;
 
-  // Regex for silent characters:
-  // 1. Solar Lam + Hamzat Wasl: ٱل before a letter with shaddah (e.g. ٱلرَّحْمَـٰنِ، ٱلصِّرَٰطَ، وَٱلسَّمَاءِ)
-  // 2. Letters with round zero: [اويى]۟ or rectangular zero: [اوي]۠ (e.g. كَفَرُوا۟، آمَنُوا۟)
-  // 3. Hamzat Wasl ٱ in wasl (dropped only when NOT the very start of the Ayah, or when preceded by letters)
-  const silentRegex = /(ٱل(?=[\u0600-\u06ff]*ّ)|ٱلّ|[اويى][۟۠]|(?<!^)ٱ|^[وفبلت]ٱ)/gu;
+  // At start of ayah, initial ٱ is pronounced (only solar ل is silent when followed by shaddah)
+  const silentRegex = isFirstWordInAyah
+    ? /(?:(?<=^ٱ)ل(?=[\u0600-\u06ff]*ّ)|[اويى][۟۠]|(?<!^)ٱ)/gu
+    : /(ٱل(?=[\u0600-\u06ff]*ّ)|[اويى][۟۠]|(?<!^)ٱ|^[وفبلت]ٱ)/gu;
 
-  // At the start of an Ayah, initial «ٱ» (e.g. «ٱلْحَمْدُ»، «ٱهْدِنَا») is PRONOUNCED, never muted!
-  if (isFirstWordInAyah && /^ٱ(?!ل(?=[\u0600-\u06ff]*ّ))/.test(word)) {
-    // Treat the initial Hamzat Wasl as pronounced
-    const directRule = detectFallbackTajweedRule(word, isFirstWordInAyah, isLastWordInAyah);
-    const result: TajweedToken[] = [
-      {
-        text: word,
-        rule: directRule?.rule,
-        tooltip: directRule?.tooltip || 'همزة وصل يُبتدأ بها محركة'
-      }
-    ];
-    wordTajweedCache.set(cacheKey, result);
-    return result;
-  }
-
-  // If no silent letters:
   if (!silentRegex.test(word)) {
-    const directRule = detectFallbackTajweedRule(word, isFirstWordInAyah, isLastWordInAyah);
+    const directRule = detectFallbackTajweedRule(word, isLastWordInAyah);
     const result: TajweedToken[] = directRule
       ? [{ text: word, rule: directRule.rule, tooltip: directRule.tooltip }]
       : [{ text: word }];
@@ -253,48 +323,76 @@ export function parseWordTajweed(
     const start = match.index;
     const end = silentRegex.lastIndex;
 
-    // Preceding part
     if (start > lastIndex) {
       const nonSilentPart = word.slice(lastIndex, start);
-      const rule = detectFallbackTajweedRule(nonSilentPart, isFirstWordInAyah, isLastWordInAyah);
+      const rule = detectFallbackTajweedRule(nonSilentPart, isLastWordInAyah);
       tokens.push({
         text: nonSilentPart,
-        ...(rule ? { rule: rule.rule, tooltip: rule.tooltip } : {})
+        ...(rule ? { rule: rule.rule, tooltip: rule.tooltip } : {}),
       });
     }
 
-    // Silent part
     let tooltip = 'حرف لا يُلفظ (يسقط في درج التلاوة)';
-    if (match[0].includes('ٱل')) tooltip = 'همزة وصل ولام شمسية مدغمة (لا تُلفظ)';
+    if (match[0] === 'ل' || match[0].includes('ٱل')) tooltip = 'لام شمسية مدغمة لا تُلفظ';
     else if (match[0].includes('ٱ')) tooltip = 'همزة وصل تسقط وصلاً';
     else if (match[0].includes('۟') || match[0].includes('۠')) tooltip = 'حرف زائد رسماً عليه سكون مستدير (لا يُلفظ)';
 
     tokens.push({
       text: match[0],
       rule: 'silent',
-      tooltip
+      tooltip,
     });
 
     lastIndex = end;
   }
 
-  // Trailing part
   if (lastIndex < word.length) {
     const trailingPart = word.slice(lastIndex);
-    const rule = detectFallbackTajweedRule(trailingPart, isFirstWordInAyah, isLastWordInAyah);
+    const rule = detectFallbackTajweedRule(trailingPart, isLastWordInAyah);
     tokens.push({
       text: trailingPart,
-      ...(rule ? { rule: rule.rule, tooltip: rule.tooltip } : {})
+      ...(rule ? { rule: rule.rule, tooltip: rule.tooltip } : {}),
     });
   }
 
-  const result = tokens.length > 0 ? tokens : [{ text: word }];
+  const result = mergeWordTokens(tokens.length > 0 ? tokens : [{ text: word }]);
   wordTajweedCache.set(cacheKey, result);
   return result;
 }
 
+function getRuleClass(rule?: TajweedRuleType): string {
+  switch (rule) {
+    case 'silent':
+      return 'tajweed-silent';
+    case 'ghunnah':
+      return 'tajweed-ghunnah';
+    case 'ikhfa':
+      return 'tajweed-ikhfa';
+    case 'idgham':
+      return 'tajweed-idgham';
+    case 'iqlab':
+      return 'tajweed-iqlab';
+    case 'qalqalah':
+      return 'tajweed-qalqalah';
+    case 'madd-wajib':
+      return 'tajweed-madd-wajib';
+    case 'madd-lazim':
+      return 'tajweed-madd-lazim';
+    case 'madd-badal':
+      return 'tajweed-madd-badal';
+    case 'madd-arid':
+      return 'tajweed-madd-arid';
+    case 'madd-tabeei':
+      return 'tajweed-madd-tabeei';
+    case 'tafkheem':
+      return 'tajweed-tafkheem';
+    default:
+      return '';
+  }
+}
+
 /**
- * Main Tajweed renderer component supporting verified Medina Mus'haf annotations
+ * Main Tajweed renderer supporting 100% spelling-exact Uthmani script + approved Tajweed colors
  * and synchronized word-by-word active highlighting.
  */
 export function renderTajweedText(
@@ -304,7 +402,6 @@ export function renderTajweedText(
   activeWordIndex?: number,
   tajweedText?: string
 ): React.ReactNode {
-  // If Tajweed toggle is OFF, render plain words with audio highlight
   if (!isTajweedActive) {
     const words = rawText.trim().split(/\s+/);
     return (
@@ -315,9 +412,9 @@ export function renderTajweedText(
             <React.Fragment key={wIdx}>
               <span
                 onClick={() => onWordClick?.(word)}
-                className={`transition-all duration-150 cursor-pointer rounded px-0.5 inline-block ${
+                className={`transition-colors duration-150 cursor-pointer rounded px-0.5 ${
                   isCurrentActiveWord
-                    ? 'bg-emerald-500/35 text-emerald-100 ring-1 ring-emerald-400 shadow-sm scale-105 font-bold'
+                    ? 'bg-emerald-500/35 text-emerald-100 ring-1 ring-emerald-400 shadow-sm'
                     : 'hover:bg-emerald-500/10'
                 }`}
               >
@@ -331,12 +428,10 @@ export function renderTajweedText(
     );
   }
 
-  // If authentic annotated Tajweed text is present, use the stack-based tokenizer
   let parsedWords: TajweedToken[][];
   if (tajweedText && tajweedText.includes('[')) {
-    parsedWords = parseAnnotatedTajweedAyah(tajweedText);
+    parsedWords = alignUthmaniWithTajweed(rawText, tajweedText);
   } else {
-    // Fallback to scholarly rule detector
     const rawWords = rawText.trim().split(/\s+/);
     parsedWords = rawWords.map((word, idx) =>
       parseWordTajweed(word, idx === 0, idx === rawWords.length - 1)
@@ -353,37 +448,20 @@ export function renderTajweedText(
           <React.Fragment key={wIdx}>
             <span
               onClick={() => onWordClick?.(wholeWordText)}
-              className={`transition-all duration-150 cursor-pointer rounded px-0.5 inline-block ${
+              className={`transition-colors duration-150 cursor-pointer rounded px-0.5 ${
                 isCurrentActiveWord
-                  ? 'bg-emerald-500/35 text-emerald-100 ring-1 ring-emerald-400 shadow-sm scale-105 font-bold'
+                  ? 'bg-emerald-500/35 text-emerald-100 ring-1 ring-emerald-400 shadow-sm'
                   : 'hover:bg-emerald-500/10'
               }`}
             >
               {wordTokens.map((token, tIdx) => {
-                if (!token.rule) {
-                  return <span key={tIdx}>{token.text}</span>;
+                const ruleClass = getRuleClass(token.rule);
+                if (!ruleClass) {
+                  return <React.Fragment key={tIdx}>{token.text}</React.Fragment>;
                 }
 
-                let ruleClass = '';
-                if (token.rule === 'silent') ruleClass = 'tajweed-silent';
-                else if (token.rule === 'ghunnah') ruleClass = 'tajweed-ghunnah border-b border-emerald-500/40';
-                else if (token.rule === 'ikhfa') ruleClass = 'tajweed-ikhfa border-b border-amber-500/40';
-                else if (token.rule === 'idgham') ruleClass = 'tajweed-idgham border-b border-cyan-500/40';
-                else if (token.rule === 'iqlab') ruleClass = 'tajweed-iqlab border-b border-violet-500/40';
-                else if (token.rule === 'qalqalah') ruleClass = 'tajweed-qalqalah border-b border-sky-500/40';
-                else if (token.rule === 'madd-wajib') ruleClass = 'tajweed-madd-wajib border-b border-rose-500/40';
-                else if (token.rule === 'madd-lazim') ruleClass = 'tajweed-madd-lazim border-b border-purple-500/40';
-                else if (token.rule === 'madd-badal') ruleClass = 'tajweed-madd-badal border-b border-yellow-400/40';
-                else if (token.rule === 'madd-arid') ruleClass = 'tajweed-madd-arid border-b border-orange-400/40';
-                else if (token.rule === 'madd-tabeei') ruleClass = 'tajweed-madd-tabeei';
-                else if (token.rule === 'tafkheem') ruleClass = 'tajweed-tafkheem';
-
                 return (
-                  <span
-                    key={tIdx}
-                    className={ruleClass}
-                    title={token.tooltip}
-                  >
+                  <span key={tIdx} className={ruleClass} title={token.tooltip}>
                     {token.text}
                   </span>
                 );

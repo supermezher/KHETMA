@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { TAJWEED_RULES, TAJWEED_QUIZ, TajweedRule } from '../data/tajweedRules';
-import { BookOpen, HelpCircle, Check, X, Award, ChevronDown, ChevronUp, Sparkles, Volume2 } from 'lucide-react';
+import { HelpCircle, Check, X, Award, Sparkles } from 'lucide-react';
 
 export const TajweedEncyclopedia: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'rules' | 'quiz'>('rules');

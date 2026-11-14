@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { PenLine, Search, Trash2, Download, ShieldCheck, Calendar, Sparkles, BookOpen } from 'lucide-react';
+import { PenLine, Search, Trash2, Download, ShieldCheck, Calendar, BookOpen } from 'lucide-react';
+import { SURAHS_LIST } from '../data/quranMetadata';
 
 export interface JournalNote {
   ayahId: number;
+  surahNumber?: number;
   surahName?: string;
   ayahNumber?: number;
   text: string;
@@ -100,7 +102,9 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <span className="text-xs px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-bold">
-                      {note.surahName ? `سورة ${note.surahName}` : `الآية ${note.ayahId}`}
+                      {note.surahName
+                        ? `سورة ${note.surahName}${note.ayahNumber ? ` • آية ${note.ayahNumber}` : ''}`
+                        : `الآية ${note.ayahId}`}
                     </span>
                     <span className="text-[11px] text-slate-500 flex items-center gap-1">
                       <Calendar className="w-3 h-3" />
@@ -122,11 +126,17 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
                 </p>
               </div>
 
-              {note.surahName && onNavigateToAyah && (
+              {(note.surahNumber || note.surahName) && onNavigateToAyah && (
                 <div className="pt-2 border-t border-slate-800/80 flex justify-end">
                   <button
-                    onClick={() => onNavigateToAyah(1, 1)}
-                    className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1"
+                    onClick={() => {
+                      const resolvedSurah =
+                        note.surahNumber ||
+                        SURAHS_LIST.find((s) => s.name === note.surahName)?.number ||
+                        1;
+                      onNavigateToAyah(resolvedSurah, note.ayahNumber || 1);
+                    }}
+                    className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1 cursor-pointer"
                   >
                     <BookOpen className="w-3.5 h-3.5" />
                     <span>مراجعة الآية في المصحف</span>

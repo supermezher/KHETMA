@@ -1,23 +1,33 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { SurahData, Ayah, sanitizeAyahText } from '../data/quranService';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import {
+  SurahData,
+  Ayah,
+  sanitizeAyahText,
+  getMushafPageData,
+  getSurahAudioSegments,
+  MushafPageData,
+  MushafPageAyah,
+  WordSegment
+} from '../data/quranService';
+import { recordPageProgress } from '../data/faithAnalyticsService';
 import { renderTajweedText } from '../utils/tajweedParser';
 import { safeLocalStorage } from '../utils/safeStorage';
 import {
-  BookOpen, Sparkles, Eye, Share2, Columns, Smartphone,
-  ZoomIn, ZoomOut, Palette, Maximize2, Minimize2,
-  Bookmark, ChevronLeft, ChevronRight, HelpCircle,
-  ChevronsDown, Play, Pause, X, ArrowDown, Radio, Hand,
-  ChevronDown, SlidersHorizontal, Volume2
+  BookOpen, Sparkles, Columns,
+  ZoomIn, ZoomOut, Maximize2, Minimize2,
+  Bookmark, HelpCircle, Play, Pause, X, Radio, Hand,
+  ChevronDown, SlidersHorizontal, Volume2, BookMarked,
+  ChevronRight, ChevronLeft, RefreshCw, AlertCircle
 } from 'lucide-react';
 import { Reciter } from '../data/reciters';
 
 interface QuranReaderProps {
   surahData: SurahData;
   activeAyahNumber: number;
-  onSelectAyah: (ayah: Ayah) => void;
-  onAyahAudioSelect?: (ayahNumber: number) => void;
-  onOpenShareModal: (ayah: Ayah) => void;
-  onOpenTadabburModal: (ayah: Ayah) => void;
+  onSelectAyah: (ayah: Ayah, overrideSurahNumber?: number, overrideSurahName?: string) => void;
+  onAyahAudioSelect?: (ayahNumber: number, surahNumber?: number) => void;
+  onOpenShareModal?: (ayah: Ayah) => void;
+  onOpenTadabburModal: (ayah: Ayah, overrideSurahNumber?: number, overrideSurahName?: string) => void;
   isTajweedActive: boolean;
   onToggleTajweed: () => void;
   isSmartScrollActive: boolean;
@@ -33,39 +43,52 @@ interface QuranReaderProps {
 }
 
 type ReaderTheme = 'dark' | 'sepia' | 'emerald' | 'high-contrast';
+type ReaderMode = 'surah' | 'page';
 
 interface AyahSpanProps {
   ayah: Ayah;
   surahNumber: number;
+  surahName: string;
   isActive: boolean;
   isBookmarked: boolean;
   isPlayingAudio?: boolean;
   fontSize: number;
   isTajweedActive: boolean;
   activeWordIndex?: number;
-  onOpenTadabburModal: (ayah: Ayah) => void;
+  onSelectAyah: (ayah: Ayah, overrideSurahNumber?: number, overrideSurahName?: string) => void;
+  onToggleBookmark: (ayahNumber: number, targetSurahNumber?: number) => void;
+  onOpenTadabburModal: (ayah: Ayah, overrideSurahNumber?: number, overrideSurahName?: string) => void;
   setRef: (el: HTMLSpanElement | null) => void;
 }
 
 const AyahSpan = React.memo<AyahSpanProps>(({
   ayah,
   surahNumber,
+  surahName,
   isActive,
   isBookmarked,
   isPlayingAudio,
   fontSize,
   isTajweedActive,
   activeWordIndex,
+  onSelectAyah,
+  onToggleBookmark,
   onOpenTadabburModal,
   setRef
 }) => {
   const cleanText = sanitizeAyahText(ayah.text, surahNumber, ayah.numberInSurah);
   const cleanTajweed = ayah.tajweedText ? sanitizeAyahText(ayah.tajweedText, surahNumber, ayah.numberInSurah) : undefined;
 
+  const handleOpenAyah = () => {
+    const cleaned = { ...ayah, text: cleanText };
+    onSelectAyah(cleaned, surahNumber, surahName);
+    onOpenTadabburModal(cleaned, surahNumber, surahName);
+  };
+
   return (
     <span
       ref={setRef}
-      className={`relative inline transition-colors duration-200 rounded px-1 ${
+      className={`relative inline transition-colors duration-200 rounded px-1 group/ayah ${
         isActive ? 'bg-emerald-500/10' : 'hover:bg-emerald-500/5'
       }`}
       style={{ fontSize: `${fontSize}px` }}
@@ -73,13 +96,13 @@ const AyahSpan = React.memo<AyahSpanProps>(({
       {renderTajweedText(
         cleanText,
         isTajweedActive,
-        () => onOpenTadabburModal({ ...ayah, text: cleanText }),
+        handleOpenAyah,
         activeWordIndex,
         cleanTajweed
       )}
       <span
-        onClick={() => onOpenTadabburModal({ ...ayah, text: cleanText })}
-        className="ayah-end-symbol mx-1.5 inline-flex items-center justify-center cursor-pointer group"
+        onClick={handleOpenAyah}
+        className="ayah-end-symbol mx-1 inline-flex items-center justify-center cursor-pointer group"
         title={`الآية ${ayah.numberInSurah} - انقر للتدبر والتفسير`}
       >
         <span
@@ -92,9 +115,21 @@ const AyahSpan = React.memo<AyahSpanProps>(({
           ﴿{ayah.numberInSurah}﴾
         </span>
       </span>
-      {isBookmarked && (
-        <Bookmark className="inline w-4 h-4 text-amber-400 fill-amber-400 align-middle ml-1" />
-      )}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleBookmark(ayah.numberInSurah, surahNumber);
+        }}
+        title={isBookmarked ? 'إزالة علامة الوقف' : 'وضع علامة مرجعية على هذه الآية'}
+        className={`inline-flex items-center justify-center align-middle mx-0.5 p-0.5 rounded transition-opacity cursor-pointer ${
+          isBookmarked
+            ? 'text-amber-400 opacity-100'
+            : 'text-slate-500 opacity-0 group-hover/ayah:opacity-80 hover:text-amber-300'
+        }`}
+      >
+        <Bookmark className={`w-3.5 h-3.5 ${isBookmarked ? 'fill-amber-400' : ''}`} />
+      </button>
     </span>
   );
 });
@@ -103,8 +138,6 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
   surahData,
   activeAyahNumber,
   onSelectAyah,
-  onAyahAudioSelect,
-  onOpenShareModal,
   onOpenTadabburModal,
   isTajweedActive,
   onToggleTajweed,
@@ -120,13 +153,22 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
   onTogglePlayAudio,
 }) => {
   const [fontSize, setFontSize] = useState<number>(28);
+  const [readerMode, setReaderMode] = useState<ReaderMode>('surah');
+  const [mushafPageNumber, setMushafPageNumber] = useState<number>(() => surahData.meta.startPage || 1);
+  const [pageInputDraft, setPageInputDraft] = useState<string>(() => String(surahData.meta.startPage || 1));
+  const [pageData, setPageData] = useState<MushafPageData | null>(null);
+  const [isLoadingPage, setIsLoadingPage] = useState<boolean>(false);
+  const [pageError, setPageError] = useState<string | null>(null);
+  const [pageReloadTrigger, setPageReloadTrigger] = useState<number>(0);
+
   const [isDualPage, setIsDualPage] = useState<boolean>(false);
   const [theme, setTheme] = useState<ReaderTheme>('dark');
   const [isZenMode, setIsZenMode] = useState<boolean>(false);
   const [bookmarkedAyah, setBookmarkedAyah] = useState<number | null>(null);
+  const [segmentsBySurahKey, setSegmentsBySurahKey] = useState<Record<string, Record<number, WordSegment[]>>>({});
 
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const ayahRefs = useRef<Record<number, HTMLElement | null>>({});
+  const ayahRefs = useRef<Record<string, HTMLElement | null>>({});
 
   // Keep latest audio timing in refs so 60fps auto-scroll engine doesn't re-mount 4 times/sec
   const currentTimeRef = useRef(currentTime);
@@ -135,6 +177,73 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
     currentTimeRef.current = currentTime;
     durationRef.current = duration;
   }, [currentTime, duration]);
+
+  // Keep mushafPageNumber aligned with active ayah's page while in Surah mode
+  useEffect(() => {
+    if (readerMode === 'surah') {
+      const matched = surahData.ayahs.find((a) => a.numberInSurah === activeAyahNumber);
+      const targetPage = matched?.page || surahData.meta.startPage || 1;
+      setMushafPageNumber(targetPage);
+      setPageInputDraft(String(targetPage));
+    }
+  }, [readerMode, surahData.meta.number, surahData.meta.startPage, activeAyahNumber, surahData.ayahs]);
+
+  // Fetch genuine 604-page Mushaf data when Page mode is active
+  useEffect(() => {
+    if (readerMode !== 'page') return;
+    let isCancelled = false;
+    setIsLoadingPage(true);
+    setPageError(null);
+
+    getMushafPageData(mushafPageNumber)
+      .then((data) => {
+        if (!isCancelled) {
+          setPageData(data);
+          setIsLoadingPage(false);
+          recordPageProgress(mushafPageNumber);
+          if (containerRef.current) {
+            containerRef.current.scrollTop = 0;
+            preciseScrollTop.current = 0;
+          }
+        }
+      })
+      .catch((err) => {
+        if (!isCancelled) {
+          setPageError(err instanceof Error ? err.message : 'تعذر تحميل صفحة المصحف');
+          setIsLoadingPage(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [readerMode, mushafPageNumber, pageReloadTrigger]);
+
+  // Fetch authentic Quran.com word-timing segments for active surah(s) & reciter
+  useEffect(() => {
+    const recId = selectedReciter?.quranComRecitationId;
+    if (!recId) return;
+
+    const targetSurahs = new Set<number>([surahData.meta.number]);
+    if (readerMode === 'page' && pageData) {
+      pageData.ayahs.forEach((a) => targetSurahs.add(a.surahNumber));
+    }
+
+    let cancelled = false;
+    targetSurahs.forEach((sNum) => {
+      const cacheKey = `${recId}:${sNum}`;
+      if (segmentsBySurahKey[cacheKey]) return;
+      getSurahAudioSegments(recId, sNum).then((segs) => {
+        if (!cancelled && Object.keys(segs).length > 0) {
+          setSegmentsBySurahKey((prev) => ({ ...prev, [cacheKey]: segs }));
+        }
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedReciter?.quranComRecitationId, surahData.meta.number, readerMode, pageData, segmentsBySurahKey]);
 
   // Unified Auto-Scroll Engine state (Dual-Mode: Reciter-Adaptive Sync OR Manual Self-Reading)
   const [isAutoScrolling, setIsAutoScrolling] = useState<boolean>(false);
@@ -237,6 +346,9 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
 
   // Synchronize reciter mode when audio starts or stops (without trapping manual mode changes)
   const prevIsPlayingAudioRef = useRef(isPlayingAudio);
+  const scrollModeRef = useRef(scrollMode);
+  scrollModeRef.current = scrollMode;
+
   useEffect(() => {
     const wasPlaying = prevIsPlayingAudioRef.current;
     prevIsPlayingAudioRef.current = isPlayingAudio;
@@ -248,11 +360,11 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
       setScrollMode('reciter-sync');
       setIsAutoScrollPaused(false);
     } else if (wasPlaying && !isPlayingAudio) {
-      if (scrollMode === 'reciter-sync') {
+      if (scrollModeRef.current === 'reciter-sync') {
         setIsAutoScrolling(false);
       }
     }
-  }, [isPlayingAudio, isSmartScrollActive, scrollMode]);
+  }, [isPlayingAudio, isSmartScrollActive]);
 
   // 60 FPS Unified Auto-Scroll Engine (Voice Sync Gliding + Free Self-Reading)
   useEffect(() => {
@@ -288,7 +400,7 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
       // MODE 1: VOICE RECITATION TRACKER (المزامنة الذكية مع صوت وتلاوة الشيخ)
       if (isPlayingAudio && scrollMode === 'reciter-sync') {
 
-        const el = ayahRefs.current[activeAyahNumber];
+        const el = ayahRefs.current[`${surahData.meta.number}:${activeAyahNumber}`];
         if (el) {
           const containerRect = container.getBoundingClientRect();
           const elRect = el.getBoundingClientRect();
@@ -349,7 +461,7 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
               const num = ayah.numberInSurah;
               if (pausedAyahsHistory.current.has(num)) continue;
 
-              const el = ayahRefs.current[num];
+              const el = ayahRefs.current[`${surahData.meta.number}:${num}`];
               if (el) {
                 const rect = el.getBoundingClientRect();
                 if (rect.bottom >= focalLine - 16 && rect.bottom <= focalLine + 16) {
@@ -402,13 +514,23 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
     }
   }, [surahData.meta.number]);
 
-  const handleToggleBookmark = (ayahNum: number) => {
-    if (bookmarkedAyah === ayahNum) {
-      setBookmarkedAyah(null);
-      safeLocalStorage.removeItem(`bayan_bookmark_${surahData.meta.number}`);
+  const handleToggleBookmark = (ayahNum: number, targetSurahNum = surahData.meta.number) => {
+    if (targetSurahNum === surahData.meta.number) {
+      if (bookmarkedAyah === ayahNum) {
+        setBookmarkedAyah(null);
+        safeLocalStorage.removeItem(`bayan_bookmark_${targetSurahNum}`);
+      } else {
+        setBookmarkedAyah(ayahNum);
+        safeLocalStorage.setItem(`bayan_bookmark_${targetSurahNum}`, String(ayahNum));
+      }
+      return;
+    }
+
+    const existing = safeLocalStorage.getItem(`bayan_bookmark_${targetSurahNum}`);
+    if (existing === String(ayahNum)) {
+      safeLocalStorage.removeItem(`bayan_bookmark_${targetSurahNum}`);
     } else {
-      setBookmarkedAyah(ayahNum);
-      safeLocalStorage.setItem(`bayan_bookmark_${surahData.meta.number}`, String(ayahNum));
+      safeLocalStorage.setItem(`bayan_bookmark_${targetSurahNum}`, String(ayahNum));
     }
   };
 
@@ -416,13 +538,13 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
   const getThemeClasses = () => {
     switch (theme) {
       case 'sepia':
-        return 'bg-[#fbf7ee] text-[#1c1917] border-amber-900/20';
+        return 'mushaf-paper-sepia bg-[#fbf7ee] text-[#1c1917] border-amber-900/20';
       case 'emerald':
-        return 'bg-[#041a14] text-[#e6f7f2] border-emerald-900/30';
+        return 'mushaf-paper-emerald bg-[#041a14] text-[#e6f7f2] border-emerald-900/30';
       case 'high-contrast':
         return 'bg-black text-white border-zinc-800';
       default:
-        return 'bg-[#0c1319] text-[#e2e8f0] border-slate-800';
+        return 'mushaf-paper-dark bg-[#0c1319] text-[#e2e8f0] border-slate-800';
     }
   };
 
@@ -441,6 +563,86 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
   const midPoint = Math.ceil(surahData.ayahs.length / 2);
   const rightPageAyahs = isDualPage ? surahData.ayahs.slice(0, midPoint) : surahData.ayahs;
   const leftPageAyahs = isDualPage ? surahData.ayahs.slice(midPoint) : [];
+
+  // Group 604-page Mushaf ayahs by Surah so multi-surah pages render headers & Bismillahs cleanly
+  const pageSurahGroups = useMemo(() => {
+    if (!pageData) return [];
+    const groups: {
+      surahNumber: number;
+      surahName: string;
+      revelationTypeAr: 'مكية' | 'مدنية';
+      bismillahPre: boolean;
+      startsAtAyahOne: boolean;
+      ayahs: MushafPageAyah[];
+    }[] = [];
+
+    for (const ayah of pageData.ayahs) {
+      const last = groups[groups.length - 1];
+      if (!last || last.surahNumber !== ayah.surahNumber) {
+        groups.push({
+          surahNumber: ayah.surahNumber,
+          surahName: ayah.surahName,
+          revelationTypeAr: ayah.revelationTypeAr,
+          bismillahPre: ayah.bismillahPre,
+          startsAtAyahOne: ayah.numberInSurah === 1,
+          ayahs: [ayah],
+        });
+      } else {
+        last.ayahs.push(ayah);
+      }
+    }
+    return groups;
+  }, [pageData]);
+
+  // Helper to resolve active word index (authentic segment timestamp first, proportional fallback)
+  const computeActiveWordIndex = (ayah: Ayah, targetSurahNum: number): number | undefined => {
+    const isActive = targetSurahNum === surahData.meta.number && activeAyahNumber === ayah.numberInSurah;
+    if (!isActive || !isPlayingAudio || !duration || duration <= 0) return undefined;
+
+    const cleanText = sanitizeAyahText(ayah.text, targetSurahNum, ayah.numberInSurah);
+    const words = cleanText.trim().split(/\s+/);
+    if (words.length === 0) return undefined;
+
+    const recId = selectedReciter?.quranComRecitationId;
+    const segs = recId ? segmentsBySurahKey[`${recId}:${targetSurahNum}`]?.[ayah.numberInSurah] : undefined;
+
+    if (segs && segs.length > 0) {
+      const curMs = (currentTime || 0) * 1000;
+      const exactMatch = segs.find(([, , startMs, endMs]) => curMs >= startMs && curMs <= endMs);
+      if (exactMatch) {
+        return Math.max(0, Math.min(words.length - 1, exactMatch[0]));
+      }
+      // Within brief pauses between words, hold the most recently started word
+      let lastIdx = 0;
+      for (const [wordStart, , startMs] of segs) {
+        if (curMs >= startMs) lastIdx = wordStart;
+      }
+      return Math.max(0, Math.min(words.length - 1, lastIdx));
+    }
+
+    const progress = Math.max(0, Math.min(0.99, (currentTime || 0) / duration));
+    return Math.floor(progress * words.length);
+  };
+
+  const handleStepMushafPage = (delta: number) => {
+    setMushafPageNumber((prev) => {
+      const next = Math.min(604, Math.max(1, prev + delta));
+      setPageInputDraft(String(next));
+      return next;
+    });
+  };
+
+  const handleJumpMushafPage = (e: React.FormEvent) => {
+    e.preventDefault();
+    const parsed = parseInt(pageInputDraft, 10);
+    if (Number.isFinite(parsed)) {
+      const clamped = Math.min(604, Math.max(1, parsed));
+      setMushafPageNumber(clamped);
+      setPageInputDraft(String(clamped));
+    } else {
+      setPageInputDraft(String(mushafPageNumber));
+    }
+  };
 
   const effectiveFullScreen = isFullScreen || isZenMode;
 
@@ -780,19 +982,36 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
             </button>
           )}
 
-          {/* Dual Page Toggle (on tablets / desktop) */}
+          {/* 604-Page Medina Mushaf vs Full Surah Mode Switcher */}
           <button
-            onClick={() => setIsDualPage(!isDualPage)}
-            className={`hidden md:flex items-center gap-1.5 py-1.5 px-2.5 rounded-xl text-xs font-semibold border transition-all ${
-              isDualPage
-                ? 'bg-sky-500/20 border-sky-500 text-sky-300'
-                : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
+            type="button"
+            onClick={() => setReaderMode((prev) => (prev === 'surah' ? 'page' : 'surah'))}
+            className={`py-1.5 px-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
+              readerMode === 'page'
+                ? 'bg-amber-500/20 border-amber-400 text-amber-200 shadow-sm'
+                : 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white'
             }`}
-            title="عرض المصحف المزدوج (صفحتين متقابلتين)"
+            title="التبديل بين عرض السورة كاملة وعرض صفحات المصحف (604 صفحات)"
           >
-            <Columns className="w-3.5 h-3.5" />
-            <span>{isDualPage ? 'صفحتين' : 'صفحة واحدة'}</span>
+            <BookMarked className="w-3.5 h-3.5" />
+            <span>{readerMode === 'page' ? `صفحة ${mushafPageNumber} / 604` : 'صفحات المصحف (604)'}</span>
           </button>
+
+          {/* Dual Page Toggle (on tablets / desktop in Surah mode) */}
+          {readerMode === 'surah' && (
+            <button
+              onClick={() => setIsDualPage(!isDualPage)}
+              className={`hidden md:flex items-center gap-1.5 py-1.5 px-2.5 rounded-xl text-xs font-semibold border transition-all ${
+                isDualPage
+                  ? 'bg-sky-500/20 border-sky-500 text-sky-300'
+                  : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
+              }`}
+              title="عرض المصحف المزدوج (صفحتين متقابلتين)"
+            >
+              <Columns className="w-3.5 h-3.5" />
+              <span>{isDualPage ? 'صفحتين' : 'صفحة واحدة'}</span>
+            </button>
+          )}
 
           {/* Unified Split Popover Button for Self-Reading & Speeds */}
           {renderAutoScrollSplitButton(false)}
@@ -837,6 +1056,23 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
               title="الزمرد الملكي"
             />
           </div>
+
+          {/* Quick Bookmark Toggle for Active Ayah */}
+          <button
+            onClick={() => handleToggleBookmark(activeAyahNumber)}
+            className={`p-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+              bookmarkedAyah === activeAyahNumber
+                ? 'border-amber-500/60 bg-amber-500/15 text-amber-300'
+                : 'border-slate-700 bg-slate-800 text-slate-300 hover:text-amber-300'
+            }`}
+            title={
+              bookmarkedAyah === activeAyahNumber
+                ? `إزالة العلامة المرجعية عن الآية ${activeAyahNumber}`
+                : `حفظ علامة مرجعية على الآية ${activeAyahNumber}`
+            }
+          >
+            <Bookmark className={`w-4 h-4 ${bookmarkedAyah === activeAyahNumber ? 'fill-amber-400 text-amber-400' : ''}`} />
+          </button>
 
           {/* Full Screen Mode toggle */}
           <button
@@ -910,112 +1146,251 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
           style={{ borderColor: getBorderColor() }}
         />
 
-        {/* Surah Decorative Frame Header */}
-        <div className="relative text-center mb-8 pb-4">
-          <div className="inline-block relative px-8 py-3 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-amber-500/10 to-emerald-500/10 border border-emerald-500/30 shadow-inner">
-            <h1 className="font-kufi text-2xl sm:text-3xl font-bold tracking-wide">
-              سُورَةُ {surahData.meta.name}
-            </h1>
-            <div className="flex items-center justify-center gap-3 mt-1.5 text-xs text-slate-400 font-sans">
-              <span>{surahData.meta.revelationTypeAr}</span>
-              <span>•</span>
-              <span>{surahData.meta.numberOfAyahs} آيات</span>
-              <span>•</span>
+        {readerMode === 'page' ? (
+          /* ===================== 604-PAGE MEDINA MUSHAF VIEW ===================== */
+          <div className="space-y-6">
+            {/* Page Navigation Header */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-current/15 font-sans">
+              <button
+                type="button"
+                onClick={() => handleStepMushafPage(-1)}
+                disabled={mushafPageNumber <= 1}
+                className="flex items-center gap-1.5 py-1.5 px-3 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 disabled:opacity-35 border border-emerald-500/30 text-xs font-bold cursor-pointer disabled:cursor-not-allowed"
+              >
+                <ChevronRight className="w-4 h-4" />
+                <span>الصفحة السابقة</span>
+              </button>
+
+              <form onSubmit={handleJumpMushafPage} className="flex items-center gap-2 text-xs">
+                <span className="opacity-75">صفحة</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={604}
+                  value={pageInputDraft}
+                  onChange={(e) => setPageInputDraft(e.target.value)}
+                  onBlur={() => {
+                    const parsed = parseInt(pageInputDraft, 10);
+                    if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 604 && parsed !== mushafPageNumber) {
+                      setMushafPageNumber(parsed);
+                    }
+                  }}
+                  aria-label="رقم صفحة المصحف"
+                  className="w-16 text-center py-1 px-2 rounded-lg bg-slate-900/70 border border-slate-700 text-white font-bold outline-none focus:border-emerald-400"
+                />
+                <span className="opacity-75">من 604</span>
+                {pageData?.ayahs[0] && (
+                  <span className="hidden sm:inline px-2.5 py-0.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 font-semibold text-[11px]">
+                    الجزء {pageData.ayahs[0].juz}
+                  </span>
+                )}
+              </form>
+
+              <button
+                type="button"
+                onClick={() => handleStepMushafPage(1)}
+                disabled={mushafPageNumber >= 604}
+                className="flex items-center gap-1.5 py-1.5 px-3 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 disabled:opacity-35 border border-emerald-500/30 text-xs font-bold cursor-pointer disabled:cursor-not-allowed"
+              >
+                <span>الصفحة التالية</span>
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            </div>
+
+            {isLoadingPage ? (
+              <div className="py-16 text-center flex flex-col items-center justify-center gap-3 font-sans">
+                <div className="w-9 h-9 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
+                <p className="text-xs opacity-70">جارٍ تحميل صفحة المصحف رقم {mushafPageNumber}...</p>
+              </div>
+            ) : pageError ? (
+              <div className="py-10 text-center space-y-3 font-sans">
+                <AlertCircle className="w-8 h-8 text-rose-400 mx-auto" />
+                <p className="text-xs text-rose-300">{pageError}</p>
+                <button
+                  type="button"
+                  onClick={() => setPageReloadTrigger((c) => c + 1)}
+                  className="py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold inline-flex items-center gap-1.5"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>إعادة المحاولة</span>
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {pageSurahGroups.map((group) => (
+                  <div key={`${mushafPageNumber}-${group.surahNumber}`} className="space-y-4">
+                    {group.startsAtAyahOne ? (
+                      <div className="text-center py-3">
+                        <div className="inline-block px-7 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-amber-500/10 to-emerald-500/10 border border-emerald-500/30 shadow-inner">
+                          <h2 className="font-kufi text-xl sm:text-2xl font-bold">سُورَةُ {group.surahName}</h2>
+                        </div>
+                        {group.bismillahPre && (
+                          <p className="mt-4 font-quran text-2xl sm:text-3xl text-emerald-400/90 leading-loose">
+                            بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between text-[11px] font-sans opacity-65 pb-1 border-b border-current/10">
+                        <span>تتمة سورة {group.surahName}</span>
+                        <span>{group.revelationTypeAr}</span>
+                      </div>
+                    )}
+
+                    <div className="space-y-3 leading-loose text-justify font-quran select-text">
+                      {group.ayahs.map((ayah) => {
+                        const isActive =
+                          group.surahNumber === surahData.meta.number &&
+                          activeAyahNumber === ayah.numberInSurah;
+                        const savedBookmark =
+                          group.surahNumber === surahData.meta.number
+                            ? bookmarkedAyah
+                            : Number(safeLocalStorage.getItem(`bayan_bookmark_${group.surahNumber}`) || 0) || null;
+                        const isBookmarked = savedBookmark === ayah.numberInSurah;
+
+                        return (
+                          <AyahSpan
+                            key={`${group.surahNumber}:${ayah.numberInSurah}`}
+                            ayah={ayah}
+                            surahNumber={group.surahNumber}
+                            surahName={group.surahName}
+                            isActive={isActive}
+                            isBookmarked={isBookmarked}
+                            isPlayingAudio={isPlayingAudio}
+                            fontSize={fontSize}
+                            isTajweedActive={isTajweedActive}
+                            activeWordIndex={computeActiveWordIndex(ayah, group.surahNumber)}
+                            onSelectAyah={onSelectAyah}
+                            onToggleBookmark={handleToggleBookmark}
+                            onOpenTadabburModal={onOpenTadabburModal}
+                            setRef={(el) => {
+                              ayahRefs.current[`${group.surahNumber}:${ayah.numberInSurah}`] = el;
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Page Footer */}
+            <div className="mt-10 pt-5 border-t border-current opacity-50 flex items-center justify-between text-xs font-sans">
+              <span>{pageData?.ayahs[0] ? `الجزء ${pageData.ayahs[0].juz}` : ''}</span>
+              <span>مصحف بيان • الصفحة {mushafPageNumber} / 604</span>
+              <button
+                type="button"
+                onClick={() => setReaderMode('surah')}
+                className="underline hover:text-emerald-400 cursor-pointer"
+              >
+                عرض السورة كاملة
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* ===================== FULL SURAH VIEW (SINGLE OR DUAL PAGE) ===================== */
+          <>
+            {/* Surah Decorative Frame Header */}
+            <div className="relative text-center mb-8 pb-4">
+              <div className="inline-block relative px-8 py-3 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-amber-500/10 to-emerald-500/10 border border-emerald-500/30 shadow-inner">
+                <h1 className="font-kufi text-2xl sm:text-3xl font-bold tracking-wide">
+                  سُورَةُ {surahData.meta.name}
+                </h1>
+                <div className="flex items-center justify-center gap-3 mt-1.5 text-xs text-slate-400 font-sans">
+                  <span>{surahData.meta.revelationTypeAr}</span>
+                  <span>•</span>
+                  <span>{surahData.meta.numberOfAyahs} آيات</span>
+                  <span>•</span>
+                  <span>الجزء {surahData.meta.juzNumber}</span>
+                  <span>•</span>
+                  <span>الصفحة {surahData.meta.startPage}</span>
+                </div>
+              </div>
+
+              {/* Bismillah Banner (unless Tawba) */}
+              {surahData.bismillahPre && (
+                <div className="mt-6 text-center">
+                  <p className="font-quran text-2xl sm:text-3xl text-emerald-400/90 leading-loose">
+                    بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Verses Container (Single or Dual Page) */}
+            <div className={isDualPage ? 'grid grid-cols-1 md:grid-cols-2 gap-8 md:divide-x-2 rtl:md:divide-x-reverse divide-amber-500/20' : 'space-y-4'}>
+              
+              {/* Right Page (or full list) */}
+              <div className={`space-y-3 leading-loose text-justify font-quran select-text ${isDualPage ? 'md:pl-6' : ''}`}>
+                {rightPageAyahs.map((ayah) => {
+                  const isActive = activeAyahNumber === ayah.numberInSurah;
+                  const isBookmarked = bookmarkedAyah === ayah.numberInSurah;
+
+                  return (
+                    <AyahSpan
+                      key={ayah.numberInSurah}
+                      ayah={ayah}
+                      surahNumber={surahData.meta.number}
+                      surahName={surahData.meta.name}
+                      isActive={isActive}
+                      isBookmarked={isBookmarked}
+                      isPlayingAudio={isPlayingAudio}
+                      fontSize={fontSize}
+                      isTajweedActive={isTajweedActive}
+                      activeWordIndex={computeActiveWordIndex(ayah, surahData.meta.number)}
+                      onSelectAyah={onSelectAyah}
+                      onToggleBookmark={handleToggleBookmark}
+                      onOpenTadabburModal={onOpenTadabburModal}
+                      setRef={(el) => {
+                        ayahRefs.current[`${surahData.meta.number}:${ayah.numberInSurah}`] = el;
+                      }}
+                    />
+                  );
+                })}
+              </div>
+
+              {/* Left Page (Dual Page Mode) */}
+              {isDualPage && (
+                <div className="space-y-3 leading-loose text-justify font-quran select-text md:pr-6">
+                  {leftPageAyahs.map((ayah) => {
+                    const isActive = activeAyahNumber === ayah.numberInSurah;
+                    const isBookmarked = bookmarkedAyah === ayah.numberInSurah;
+
+                    return (
+                      <AyahSpan
+                        key={ayah.numberInSurah}
+                        ayah={ayah}
+                        surahNumber={surahData.meta.number}
+                        surahName={surahData.meta.name}
+                        isActive={isActive}
+                        isBookmarked={isBookmarked}
+                        isPlayingAudio={isPlayingAudio}
+                        fontSize={fontSize}
+                        isTajweedActive={isTajweedActive}
+                        activeWordIndex={computeActiveWordIndex(ayah, surahData.meta.number)}
+                        onSelectAyah={onSelectAyah}
+                        onToggleBookmark={handleToggleBookmark}
+                        onOpenTadabburModal={onOpenTadabburModal}
+                        setRef={(el) => {
+                          ayahRefs.current[`${surahData.meta.number}:${ayah.numberInSurah}`] = el;
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+
+            </div>
+
+            {/* Page Footer metadata */}
+            <div className="mt-12 pt-6 border-t border-current opacity-30 flex items-center justify-between text-xs font-sans">
               <span>الجزء {surahData.meta.juzNumber}</span>
-              <span>•</span>
+              <span>مصحف بيان • وقف لوجه الله تعالى</span>
               <span>الصفحة {surahData.meta.startPage}</span>
             </div>
-          </div>
-
-          {/* Bismillah Banner (unless Tawba) */}
-          {surahData.bismillahPre && (
-            <div className="mt-6 text-center">
-              <p className="font-quran text-2xl sm:text-3xl text-emerald-400/90 leading-loose">
-                بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* Verses Container (Single or Dual Page) */}
-        <div className={isDualPage ? 'grid grid-cols-1 md:grid-cols-2 gap-8 divide-x-2 divide-amber-500/20' : 'space-y-4'}>
-          
-          {/* Right Page (or full list) */}
-          <div className="space-y-3 leading-loose text-justify font-quran select-text">
-            {rightPageAyahs.map((ayah) => {
-              const isActive = activeAyahNumber === ayah.numberInSurah;
-              const isBookmarked = bookmarkedAyah === ayah.numberInSurah;
-              let activeWordIndex: number | undefined = undefined;
-              if (isActive && isPlayingAudio && duration && duration > 0) {
-                const cleanText = sanitizeAyahText(ayah.text, surahData.meta.number, ayah.numberInSurah);
-                const words = cleanText.trim().split(/\s+/);
-                const progress = Math.max(0, Math.min(0.99, (currentTime || 0) / duration));
-                activeWordIndex = Math.floor(progress * words.length);
-              }
-
-              return (
-                <AyahSpan
-                  key={ayah.numberInSurah}
-                  ayah={ayah}
-                  surahNumber={surahData.meta.number}
-                  isActive={isActive}
-                  isBookmarked={isBookmarked}
-                  isPlayingAudio={isPlayingAudio}
-                  fontSize={fontSize}
-                  isTajweedActive={isTajweedActive}
-                  activeWordIndex={activeWordIndex}
-                  onOpenTadabburModal={onOpenTadabburModal}
-                  setRef={(el) => {
-                    ayahRefs.current[ayah.numberInSurah] = el;
-                  }}
-                />
-              );
-            })}
-          </div>
-
-          {/* Left Page (Dual Page Mode) */}
-          {isDualPage && (
-            <div className="space-y-3 leading-loose text-justify font-quran select-text pr-6">
-              {leftPageAyahs.map((ayah) => {
-                const isActive = activeAyahNumber === ayah.numberInSurah;
-                const isBookmarked = bookmarkedAyah === ayah.numberInSurah;
-                let activeWordIndex: number | undefined = undefined;
-                if (isActive && isPlayingAudio && duration && duration > 0) {
-                  const cleanText = sanitizeAyahText(ayah.text, surahData.meta.number, ayah.numberInSurah);
-                  const words = cleanText.trim().split(/\s+/);
-                  const progress = Math.max(0, Math.min(0.99, (currentTime || 0) / duration));
-                  activeWordIndex = Math.floor(progress * words.length);
-                }
-
-                return (
-                  <AyahSpan
-                    key={ayah.numberInSurah}
-                    ayah={ayah}
-                    surahNumber={surahData.meta.number}
-                    isActive={isActive}
-                    isBookmarked={isBookmarked}
-                    isPlayingAudio={isPlayingAudio}
-                    fontSize={fontSize}
-                    isTajweedActive={isTajweedActive}
-                    activeWordIndex={activeWordIndex}
-                    onOpenTadabburModal={onOpenTadabburModal}
-                    setRef={(el) => {
-                      ayahRefs.current[ayah.numberInSurah] = el;
-                    }}
-                  />
-                );
-              })}
-            </div>
-          )}
-
-        </div>
-
-        {/* Page Footer metadata */}
-        <div className="mt-12 pt-6 border-t border-current opacity-30 flex items-center justify-between text-xs font-sans">
-          <span>الجزء {surahData.meta.juzNumber}</span>
-          <span>مصحف بيان • وقف لوجه الله تعالى</span>
-          <span>الصفحة {surahData.meta.startPage}</span>
-        </div>
+          </>
+        )}
 
       </div>
 

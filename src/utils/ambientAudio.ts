@@ -30,6 +30,10 @@ class AmbientSoundEngine {
     }
   }
 
+  public getVolume(): number {
+    return this.volume;
+  }
+
   public stop() {
     this.sourceNodes.forEach(node => {
       try {
@@ -45,8 +49,8 @@ class AmbientSoundEngine {
     this.currentMode = null;
   }
 
-  public getCurrentMode(): string | null {
-    return this.currentMode;
+  public getCurrentMode(): 'rain' | 'breeze' | 'night' | null {
+    return this.currentMode as 'rain' | 'breeze' | 'night' | null;
   }
 
   public play(mode: 'rain' | 'breeze' | 'night' | 'none') {

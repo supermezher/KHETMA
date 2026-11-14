@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Sparkles, HelpCircle } from 'lucide-react';
+import { X, Sparkles } from 'lucide-react';
 import { TAJWEED_RULES } from '../data/tajweedRules';
 
 interface TajweedLegendModalProps {

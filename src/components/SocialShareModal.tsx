@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { X, Download, Share2, Copy, Sparkles, Check, Image as ImageIcon } from 'lucide-react';
+import { X, Download, Share2, Copy, Sparkles, Check } from 'lucide-react';
 import { Ayah } from '../data/quranService';
 
 interface SocialShareModalProps {

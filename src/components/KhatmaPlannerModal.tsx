@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Calendar, Clock, Sparkles, Check, BookOpen, Flame, Compass } from 'lucide-react';
+import { X, Sparkles, Check } from 'lucide-react';
 
 export interface KhatmaPlan {
   targetDays: number;

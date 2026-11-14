@@ -1,16 +1,13 @@
 import React, { useState } from 'react';
 import { MOOD_CATEGORIES, MoodVerseCategory } from '../data/moodVerses';
-import { HeartHandshake, ShieldAlert, Activity, Sparkles, Sun, BookOpen, Share2, Volume2 } from 'lucide-react';
-import { Ayah } from '../data/quranService';
+import { HeartHandshake, ShieldAlert, Activity, Sparkles, Sun, BookOpen } from 'lucide-react';
 
 interface MoodVersesExplorerProps {
   onNavigateToAyah: (surahNumber: number, ayahNumber: number) => void;
-  onOpenShareModal: (ayah: Ayah) => void;
 }
 
 export const MoodVersesExplorer: React.FC<MoodVersesExplorerProps> = ({
   onNavigateToAyah,
-  onOpenShareModal,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<MoodVerseCategory>(MOOD_CATEGORIES[0]);
 

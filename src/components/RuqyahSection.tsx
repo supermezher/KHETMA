@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   RUQYAH_ITEMS,
   RUQYAH_ETIQUETTES,
@@ -10,7 +10,8 @@ import {
   Reciter,
   getAyahAudioUrl
 } from '../data/reciters';
-import { SURAHS_LIST, SurahMeta } from '../data/quranMetadata';
+import { SURAHS_LIST } from '../data/quranMetadata';
+import { safeLocalStorage } from '../utils/safeStorage';
 import {
   ShieldCheck, Sparkles, BookOpen, Heart, Volume2, Copy, Check,
   RotateCcw, Info, Compass, CheckCircle2, Pause, Square,
@@ -32,15 +33,21 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
   const [counters, setCounters] = useState<Record<string, number>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Custom User/Developer added Ruqyah items (stored in localStorage)
+  // Custom User/Developer added Ruqyah items (stored in safeLocalStorage)
   const [customItems, setCustomItems] = useState<RuqyahItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('bayan_custom_ruqyah_items');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
+    return safeLocalStorage.getJSON<RuqyahItem[]>('bayan_custom_ruqyah_items', []);
   });
+
+  // In-app toast & restore confirmation (replaces browser alert/confirm)
+  const [statusToast, setStatusToast] = useState<string | null>(null);
+  const [isRestoreConfirmOpen, setIsRestoreConfirmOpen] = useState(false);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showStatusToast = useCallback((msg: string) => {
+    setStatusToast(msg);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setStatusToast(null), 3500);
+  }, []);
 
   // Modal state for adding a new item
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -64,25 +71,23 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0);
   const [autoLoopUntilTarget, setAutoLoopUntilTarget] = useState<boolean>(true);
 
-  // Close add modal on Escape key for keyboard accessibility
+  // Close open modals/menus on Escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isAddModalOpen) {
-        setIsAddModalOpen(false);
+      if (e.key === 'Escape') {
+        if (isAddModalOpen) setIsAddModalOpen(false);
+        if (isRestoreConfirmOpen) setIsRestoreConfirmOpen(false);
+        if (isReciterMenuOpen) setIsReciterMenuOpen(false);
       }
     };
-    if (isAddModalOpen) {
-      window.addEventListener('keydown', handleKeyDown);
-      return () => window.removeEventListener('keydown', handleKeyDown);
-    }
-  }, [isAddModalOpen]);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isAddModalOpen, isRestoreConfirmOpen, isReciterMenuOpen]);
 
   // Active playing card state
   const [playingItemId, setPlayingItemId] = useState<string | null>(null);
   const [playingAyahIndex, setPlayingAyahIndex] = useState<number>(0);
   const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
-  const [audioProgress, setAudioProgress] = useState<number>(0);
-  const [audioDuration, setAudioDuration] = useState<number>(0);
   const [isAudioLoading, setIsAudioLoading] = useState<boolean>(false);
 
   // Prophetic speech state
@@ -92,17 +97,30 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
   // Audio element ref
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Combine default items and custom items
-  const allItems: RuqyahItem[] = [...customItems, ...RUQYAH_ITEMS];
+  // Memoize combined items so downstream effects/renders remain stable
+  const allItems: RuqyahItem[] = useMemo(() => [...customItems, ...RUQYAH_ITEMS], [customItems]);
+
+  // Keep latest mutable refs for stable audio event callbacks
+  const allItemsRef = useRef(allItems);
+  const countersRef = useRef(counters);
+  const autoLoopRef = useRef(autoLoopUntilTarget);
+  const playingItemIdRef = useRef(playingItemId);
+  const playingAyahIndexRef = useRef(playingAyahIndex);
+  const selectedReciterRef = useRef(selectedReciter);
+  const playbackSpeedRef = useRef(playbackSpeed);
+
+  allItemsRef.current = allItems;
+  countersRef.current = counters;
+  autoLoopRef.current = autoLoopUntilTarget;
+  playingItemIdRef.current = playingItemId;
+  playingAyahIndexRef.current = playingAyahIndex;
+  selectedReciterRef.current = selectedReciter;
+  playbackSpeedRef.current = playbackSpeed;
 
   // Save custom items whenever updated
   const saveCustomItems = (items: RuqyahItem[]) => {
     setCustomItems(items);
-    try {
-      localStorage.setItem('bayan_custom_ruqyah_items', JSON.stringify(items));
-    } catch (err) {
-      console.warn('Failed to save custom ruqyah items:', err);
-    }
+    safeLocalStorage.setJSON('bayan_custom_ruqyah_items', items);
   };
 
   // Delete a single custom item
@@ -115,12 +133,16 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
     saveCustomItems(updated);
   };
 
-  // Clear all custom items (revert to default)
+  // Clear all custom items (revert to default via in-app confirm dialog)
   const handleRestoreDefaults = () => {
-    if (window.confirm('هل تريد حذف جميع الأوراد المضافة واستعادة الأوراد الافتراضية فقط؟')) {
-      stopAllAudio();
-      saveCustomItems([]);
-    }
+    setIsRestoreConfirmOpen(true);
+  };
+
+  const confirmRestoreDefaults = () => {
+    stopAllAudio();
+    saveCustomItems([]);
+    setIsRestoreConfirmOpen(false);
+    showStatusToast('تمت استعادة قائمة الرقية الشرعية الافتراضية بنجاح');
   };
 
   // Filter items based on active tab
@@ -182,20 +204,19 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
   // AUDIO ENGINE: Quranic recitation & Prophetic Duas
   // -------------------------------------------------------------
 
-  const stopAllAudio = () => {
+  const stopAllAudio = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
     }
-    if ('speechSynthesis' in window) {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
     setIsPlayingAudio(false);
     setIsSpeakingDua(false);
     setPlayingItemId(null);
     setPlayingAyahIndex(0);
-    setAudioProgress(0);
-  };
+  }, []);
 
   const handleToggleQuranAudio = (item: RuqyahItem) => {
     if (playingItemId === item.id) {
@@ -203,7 +224,9 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
         audioRef.current?.pause();
         setIsPlayingAudio(false);
       } else {
-        audioRef.current?.play().then(() => setIsPlayingAudio(true)).catch(() => {});
+        audioRef.current?.play().then(() => setIsPlayingAudio(true)).catch(() => {
+          showStatusToast('تعذر استئناف التلاوة الصوتية، يرجى التحقق من الاتصال');
+        });
       }
       return;
     }
@@ -220,21 +243,51 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
     playAyah(item.id, item.audioSequence, 0);
   };
 
-  const playAyah = (itemId: string, sequence: AudioAyahRef[], index: number) => {
+  const playAyah = useCallback((itemId: string, sequence: AudioAyahRef[], index: number) => {
     if (!sequence[index]) return;
     const { surah, ayah } = sequence[index];
-    const url = getAyahAudioUrl(selectedReciter.serverKey, surah, ayah);
+    const url = getAyahAudioUrl(selectedReciterRef.current.serverKey, surah, ayah);
 
     setPlayingItemId(itemId);
     setPlayingAyahIndex(index);
     setIsAudioLoading(true);
 
     if (!audioRef.current) {
-      audioRef.current = new Audio();
+      const audio = new Audio();
+      audio.onended = () => {
+        const currentId = playingItemIdRef.current;
+        if (!currentId) return;
+        const item = allItemsRef.current.find((i) => i.id === currentId);
+        if (!item || !item.audioSequence) {
+          stopAllAudio();
+          return;
+        }
+
+        const nextIndex = playingAyahIndexRef.current + 1;
+        if (nextIndex < item.audioSequence.length) {
+          playAyah(item.id, item.audioSequence, nextIndex);
+        } else {
+          handleIncrement(item);
+
+          const nextCount = (countersRef.current[item.id] || 0) + 1;
+          if (autoLoopRef.current && nextCount < item.repeatTarget) {
+            playAyah(item.id, item.audioSequence, 0);
+          } else {
+            setIsPlayingAudio(false);
+            setPlayingAyahIndex(0);
+          }
+        }
+      };
+      audio.onerror = () => {
+        setIsAudioLoading(false);
+        setIsPlayingAudio(false);
+        showStatusToast('تعذر تحميل ملف التلاوة من الخادم، تحقق من اتصال الإنترنت');
+      };
+      audioRef.current = audio;
     }
 
     audioRef.current.src = url;
-    audioRef.current.playbackRate = playbackSpeed;
+    audioRef.current.playbackRate = playbackSpeedRef.current;
     audioRef.current
       .play()
       .then(() => {
@@ -246,50 +299,7 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
         setIsAudioLoading(false);
         setIsPlayingAudio(false);
       });
-  };
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const onTimeUpdate = () => {
-      setAudioProgress(audio.currentTime);
-      setAudioDuration(audio.duration || 0);
-    };
-
-    const onEnded = () => {
-      if (!playingItemId) return;
-      const item = allItems.find((i) => i.id === playingItemId);
-      if (!item || !item.audioSequence) {
-        stopAllAudio();
-        return;
-      }
-
-      const nextIndex = playingAyahIndex + 1;
-      if (nextIndex < item.audioSequence.length) {
-        playAyah(item.id, item.audioSequence, nextIndex);
-      } else {
-        handleIncrement(item);
-
-        const currentCount = (counters[item.id] || 0) + 1;
-        if (autoLoopUntilTarget && currentCount < item.repeatTarget) {
-          playAyah(item.id, item.audioSequence, 0);
-        } else {
-          setIsPlayingAudio(false);
-          setPlayingAyahIndex(0);
-          setAudioProgress(0);
-        }
-      }
-    };
-
-    audio.addEventListener('timeupdate', onTimeUpdate);
-    audio.addEventListener('ended', onEnded);
-
-    return () => {
-      audio.removeEventListener('timeupdate', onTimeUpdate);
-      audio.removeEventListener('ended', onEnded);
-    };
-  }, [playingItemId, playingAyahIndex, autoLoopUntilTarget, counters, selectedReciter, playbackSpeed, allItems]);
+  }, [stopAllAudio, showStatusToast]);
 
   useEffect(() => {
     if (audioRef.current) {
@@ -299,11 +309,14 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
 
   useEffect(() => {
     return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       if (audioRef.current) {
         audioRef.current.pause();
+        audioRef.current.onended = null;
+        audioRef.current.onerror = null;
         audioRef.current = null;
       }
-      if ('speechSynthesis' in window) {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         window.speechSynthesis.cancel();
       }
     };
@@ -311,7 +324,7 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
 
   const handleTogglePropheticAudio = (item: RuqyahItem) => {
     if (playingItemId === item.id && isSpeakingDua) {
-      if ('speechSynthesis' in window) {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         window.speechSynthesis.cancel();
       }
       setIsSpeakingDua(false);
@@ -321,8 +334,8 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
 
     stopAllAudio();
 
-    if (!('speechSynthesis' in window)) {
-      alert('ميزة التلاوة الصوتية للأدعية غير مدعومة في هذا المتصفح');
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      showStatusToast('ميزة النطق الصوتي للأدعية غير مدعومة في هذا المتصفح');
       return;
     }
 
@@ -1208,6 +1221,56 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
             </form>
 
           </div>
+        </div>
+      )}
+
+      {/* IN-APP RESTORE DEFAULTS CONFIRMATION MODAL */}
+      {isRestoreConfirmOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="تأكيد استعادة الأوراد الافتراضية"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in"
+        >
+          <div className="bg-slate-900 border border-amber-500/40 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2 text-amber-400 font-bold">
+                <RotateCcw className="w-4 h-4" />
+                <h3 className="text-base text-white">استعادة الأوراد الافتراضية</h3>
+              </div>
+              <button
+                onClick={() => setIsRestoreConfirmOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              هل تريد حذف جميع الأوراد التي أضفتها يدوياً ({customItems.length} ورد) واستعادة القائمة الافتراضية فقط؟
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setIsRestoreConfirmOpen(false)}
+                className="py-2 px-4 rounded-xl text-xs text-slate-400 hover:text-white cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={confirmRestoreDefaults}
+                className="py-2 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold cursor-pointer"
+              >
+                نعم، استعادة الأصل
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* IN-APP STATUS TOAST */}
+      {statusToast && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900 border border-amber-500/40 text-amber-100 px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-2 text-xs animate-in fade-in slide-in-from-bottom-3">
+          <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+          <span>{statusToast}</span>
         </div>
       )}
 

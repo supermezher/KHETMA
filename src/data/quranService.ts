@@ -1,5 +1,7 @@
 import { SURAHS_LIST, SurahMeta } from './quranMetadata';
 import { safeLocalStorage } from '../utils/safeStorage';
+import { idbGet, idbSet, idbGetAllValues, idbCount } from '../utils/quranIndexedDb';
+import { normalizeArabicText } from '../utils/arabicNormalize';
 
 export interface Ayah {
   numberInSurah: number;
@@ -22,6 +24,43 @@ export interface SurahData {
   ayahs: Ayah[];
 }
 
+export interface MushafPageAyah extends Ayah {
+  surahNumber: number;
+  surahName: string;
+  revelationTypeAr: 'مكية' | 'مدنية';
+  bismillahPre: boolean;
+}
+
+export interface MushafPageData {
+  pageNumber: number;
+  ayahs: MushafPageAyah[];
+}
+
+export interface TafsirEdition {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export const TAFSIR_EDITIONS: TafsirEdition[] = [
+  { id: 'ar.muyassar', name: 'التفسير الميسر', description: 'مجمع الملك فهد لطباعة المصحف الشريف' },
+  { id: 'ar.jalalayn', name: 'تفسير الجلالين', description: 'تفسير وجيز ميسّر المعاني' },
+  { id: 'ar.waseet', name: 'التفسير الوسيط', description: 'تفسير محمد سيد طنطاوي' },
+  { id: 'ar.baghawi', name: 'تفسير البغوي', description: 'معالم التنزيل في التفسير والأثر' },
+  { id: 'ar.qurtubi', name: 'تفسير القرطبي', description: 'الجامع لأحكام القرآن' },
+];
+
+export interface QuranSearchMatch {
+  surahNumber: number;
+  surahName: string;
+  ayahNumber: number;
+  text: string;
+  overallNumber: number;
+}
+
+// Tuple from Quran.com segments: [wordStartIndex, wordEndIndex, startMs, endMs]
+export type WordSegment = [number, number, number, number];
+
 // Curated authentic preloaded dataset with full Tafsir and verified overallNumber
 export const PRELOADED_SURAHS: Record<number, SurahData> = {
   // Surah 1: Al-Fatiha (Ayahs 1 - 7, overall 1 - 7)
@@ -32,7 +71,7 @@ export const PRELOADED_SURAHS: Record<number, SurahData> = {
       {
         numberInSurah: 1,
         overallNumber: 1,
-        text: 'بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ',
+        text: 'بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ',
         tajweedText: 'بِسْمِ [h:1[ٱ]للَّهِ [h:2[ٱ][l[ل]رَّحْمَ[n[ـٰ]نِ [h:3[ٱ][l[ل]رَّح[p[ِي]مِ',
         tafsir: 'أبتدئ قراءتي مستعيناً باسم الله مستحضراً رحمته الواسعة التي وسعت كل شيء، ورحمته الخاصة بعباده المؤمنين.',
         irabHint: 'الباء حرف جر للمصاحبة والاستعانة، (اسمِ) مجرور، و(اللهِ) لفظ الجلالة مضاف إليه، (الرحمنِ الرحيمِ) نعتان جليلان.',
@@ -46,7 +85,7 @@ export const PRELOADED_SURAHS: Record<number, SurahData> = {
       {
         numberInSurah: 2,
         overallNumber: 2,
-        text: 'ٱلْحَمْدُ لِلَّهِ رَبِّ ٱلْعَـٰلَمِينَ',
+        text: 'ٱلْحَمْدُ لِلَّهِ رَبِّ ٱلْعَٰلَمِينَ',
         tajweedText: 'ٱلْحَمْدُ لِلَّهِ رَبِّ [h:4[ٱ]لْعَ[n[ـٰ]لَم[p[ِي]نَ',
         tafsir: 'الثناء الكامل المطلق لله وحده بجميع صفات كماله ونعمه الظاهرة والباطنة، وهو المربي لجميع الخلق برعايته.',
         irabHint: 'الـ في (الحمدُ) لاستغراق جميع المحامد، (ربِّ) نعت أو بدل مجرور، (العالمينَ) مضاف إليه مجرور بالياء لأنه ملحق بجمع المذكر السالم.',
@@ -59,7 +98,7 @@ export const PRELOADED_SURAHS: Record<number, SurahData> = {
       {
         numberInSurah: 3,
         overallNumber: 3,
-        text: 'ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ',
+        text: 'ٱلرَّحْمَٰنِ ٱلرَّحِيمِ',
         tajweedText: 'ٱ[l[ل]رَّحْمَ[n[ـٰ]نِ [h:3[ٱ][l[ل]رَّح[p[ِي]مِ',
         tafsir: 'الرحمن: ذو الرحمة العامة الشاملة لجميع المخلوقات في الدنيا، والرحيم: ذو الرحمة الخاصة بالمؤمنين في الآخرة.',
         irabHint: 'صفتان مشبهتان مشتقتان من الرحمة، (الرحمن) على وزن فعلان يدل على الامتلاء، و(الرحيم) على وزن فعيل يدل على الدوام.',
@@ -72,7 +111,7 @@ export const PRELOADED_SURAHS: Record<number, SurahData> = {
       {
         numberInSurah: 4,
         overallNumber: 4,
-        text: 'مَـٰلِكِ يَوْمِ ٱلدِّينِ',
+        text: 'مَٰلِكِ يَوْمِ ٱلدِّينِ',
         tajweedText: 'مَ[n[ـٰ]لِكِ يَوْمِ [h:5[ٱ][l[ل]دّ[p[ِي]نِ',
         tafsir: 'المالك المتصرف وحده بيوم الحساب والجزاء، يوم لا تملك نفس لنفس شيئاً والأمر يومئذ لله.',
         irabHint: '(مالكِ) صفة ثالثة للفظ الجلالة، و(يومِ) مضاف إليه، و(الدينِ) مضاف إليه ثانٍ بمعنى الجزاء والحساب.',
@@ -111,7 +150,7 @@ export const PRELOADED_SURAHS: Record<number, SurahData> = {
       {
         numberInSurah: 7,
         overallNumber: 7,
-        text: 'صِرَٰطَ ٱلَّذِينَ أَنْعَمْتَ عَلَيْهِمْ غَيْرِ ٱلْمَغْضُوبِ عَلَيْهِمْ وَلَا ٱلضَّآلِّينَ',
+        text: 'صِرَٰطَ ٱلَّذِينَ أَنْعَمْتَ عَلَيْهِمْ غَيْرِ ٱلْمَغْضُوبِ عَلَيْهِمْ وَلَا ٱلضَّآلِّينَ',
         tajweedText: 'صِر[n[َٲ]طَ [h:8[ٱ]لَّذِينَ أَنْعَمْتَ عَلَيْهِمْ غَيْرِ [h:9[ٱ]لْمَغْضُوبِ عَلَيْهِمْ وَلَا [h:10[ٱ][l[ل]ضّ[m[َا]ٓلّ[p[ِي]نَ',
         tafsir: 'طريق النبيين والصديقين والشهداء والصالحين، لا طريق من علموا الحق فتركوه (المغضوب عليهم)، ولا من عبدوا الله على جهل وضلال (الضالين).',
         irabHint: '(صراطَ) بدل مطابق من الصراط الأول منصوب، (غيرِ) بدل أو نعت، (ولا) لتأكيد النفي، (الضالين) معطوف مجرور بالياء.',
@@ -126,7 +165,7 @@ export const PRELOADED_SURAHS: Record<number, SurahData> = {
 
   // Surah 112: Al-Ikhlas (Ayahs 1 - 4, overall 6222 - 6225)
   112: {
-    meta: SURAHS_LIST[111], // Al-Ikhlas
+    meta: SURAHS_LIST[111],
     bismillahPre: true,
     ayahs: [
       {
@@ -187,7 +226,7 @@ export const PRELOADED_SURAHS: Record<number, SurahData> = {
 
   // Surah 113: Al-Falaq (Ayahs 1 - 5, overall 6226 - 6230)
   113: {
-    meta: SURAHS_LIST[112], // Al-Falaq
+    meta: SURAHS_LIST[112],
     bismillahPre: true,
     ayahs: [
       {
@@ -232,7 +271,7 @@ export const PRELOADED_SURAHS: Record<number, SurahData> = {
       {
         numberInSurah: 4,
         overallNumber: 6229,
-        text: 'وَمِن شَرِّ ٱلنَّفَّـٰثَـٰتِ فِى ٱلْعُقَدِ',
+        text: 'وَمِن شَرِّ ٱلنَّفَّٰثَٰتِ فِى ٱلْعُقَدِ',
         tajweedText: 'وَمِ[f:14680[ن ش]َرِّ [h:14681[ٱ][l[ل][g[نّ]َفَّ[n[ـٰ]ثَ[n[ـٰ]تِ فِى [h:14682[ٱ]لْعُقَ[q[د]ِ',
         tafsir: 'ومن شر السواحر اللاتي يعقدن الخيوط وينفثن فيها بريق السحر والأذى لإفساد العلاقات والنفوس.',
         irabHint: '(النفاثات) صيغة مبالغة على وزن فعالات، (في العقد) متعلق بالنفاثات.',
@@ -260,7 +299,7 @@ export const PRELOADED_SURAHS: Record<number, SurahData> = {
 
   // Surah 114: An-Nas (Ayahs 1 - 6, overall 6231 - 6236)
   114: {
-    meta: SURAHS_LIST[113], // An-Nas
+    meta: SURAHS_LIST[113],
     bismillahPre: true,
     ayahs: [
       {
@@ -292,7 +331,7 @@ export const PRELOADED_SURAHS: Record<number, SurahData> = {
       {
         numberInSurah: 3,
         overallNumber: 6233,
-        text: 'إِلَـٰهِ ٱلنَّاسِ',
+        text: 'إِلَٰهِ ٱلنَّاسِ',
         tajweedText: 'إِلَ[n[ـٰ]هِ [h:14685[ٱ][l[ل][g[نّ][p[َا]سِ',
         tafsir: 'معبودهم الحق الذي لا معبود سواه، والمستحق وحده لإخلاص المحبة والخشية والتذلل.',
         irabHint: '(إله الناس) صفة ثالثة تؤكد حصر العبادة.',
@@ -346,44 +385,45 @@ export const PRELOADED_SURAHS: Record<number, SurahData> = {
 };
 
 /**
- * Sanitizes Ayah text to prevent Bismillah duplication when APIs prepend it
- * Uses diacritic-flexible regex to handle any tashkeel variations, tatweel, and dagger alefs.
+ * Sanitizes Ayah text to remove UTF-8 BOM and prevent Bismillah duplication on non-Fatiha opening ayahs.
  */
 export function sanitizeAyahText(text: string, surahNumber: number, ayahNumber: number): string {
-  if (surahNumber !== 1 && ayahNumber === 1 && text) {
+  if (!text) return '';
+  let clean = text.replace(/^\uFEFF/, '').trim();
+  if (surahNumber !== 1 && ayahNumber === 1) {
     const bismillahRegex = /^ب[\u064B-\u065F\u0670\u0640]*س[\u064B-\u065F\u0670\u0640]*م[\u064B-\u065F\u0670\u0640]*\s+[ٱا]لل[\u064B-\u065F\u0670\u0640]*ه[\u064B-\u065F\u0670\u0640]*\s+[ٱا]لر[\u064B-\u065F\u0670\u0640]*ح[\u064B-\u065F\u0670\u0640]*م[\u064B-\u065F\u0670\u0640]*ن[\u064B-\u065F\u0670\u0640]*\s+[ٱا]لر[\u064B-\u065F\u0670\u0640]*ح[\u064B-\u065F\u0670\u0640]*ي[\u064B-\u065F\u0670\u0640]*م[\u064B-\u065F\u0670\u0640]*\s*/u;
-    return text.replace(bismillahRegex, '').trim();
+    clean = clean.replace(bismillahRegex, '').trim();
   }
-  return text;
+  return clean;
 }
 
 /**
- * Fetcher with LocalStorage Offline-first Cache
- * Throws explicit error on network failure instead of returning a misleading 1-ayah dummy surah.
+ * Fetcher with IndexedDB + LocalStorage Offline-first Cache.
  */
 export async function getSurahData(surahNumber: number): Promise<SurahData> {
-  // If preloaded, return immediately
   if (PRELOADED_SURAHS[surahNumber]) {
     return PRELOADED_SURAHS[surahNumber];
   }
 
-  // Find meta
   const meta = SURAHS_LIST.find((s) => s.number === surahNumber) || SURAHS_LIST[0];
+  const idbKey = `surah_${surahNumber}`;
 
-  // Check safeLocalStorage cache
+  const idbCached = await idbGet<SurahData>('surahs', idbKey);
+  if (idbCached && Array.isArray(idbCached.ayahs) && idbCached.ayahs.length === meta.numberOfAyahs) {
+    return idbCached;
+  }
+
   const cacheKey = `bayan_surah_cache_v2_${surahNumber}`;
   const cached = safeLocalStorage.getItem(cacheKey);
   if (cached) {
     try {
       const parsed: SurahData = JSON.parse(cached);
-      // Validate that cached surah has the correct expected number of ayahs
       if (parsed.ayahs && parsed.ayahs.length === meta.numberOfAyahs) {
-        if (surahNumber !== 1) {
-          parsed.ayahs[0].text = sanitizeAyahText(parsed.ayahs[0].text, surahNumber, 1);
-          if (parsed.ayahs[0].tajweedText) {
-            parsed.ayahs[0].tajweedText = sanitizeAyahText(parsed.ayahs[0].tajweedText, surahNumber, 1);
-          }
+        parsed.ayahs[0].text = sanitizeAyahText(parsed.ayahs[0].text, surahNumber, 1);
+        if (parsed.ayahs[0].tajweedText) {
+          parsed.ayahs[0].tajweedText = sanitizeAyahText(parsed.ayahs[0].tajweedText, surahNumber, 1);
         }
+        await idbSet('surahs', idbKey, parsed);
         return parsed;
       }
     } catch {
@@ -391,7 +431,6 @@ export async function getSurahData(surahNumber: number): Promise<SurahData> {
     }
   }
 
-  // Fetch complete Uthmani text, authentic Tajweed annotations, and Tafsir Muyassar in a single call from alquran.cloud
   const res = await fetch(`https://api.alquran.cloud/v1/surah/${surahNumber}/editions/quran-uthmani,quran-tajweed,ar.muyassar`);
   if (!res.ok) {
     throw new Error(`تعذر الاتصال بالخادم لتحميل سورة ${meta.name} (رمز الاستجابة: ${res.status}). يرجى التأكد من اتصال الإنترنت ثم إعادة المحاولة.`);
@@ -422,9 +461,7 @@ export async function getSurahData(surahNumber: number): Promise<SurahData> {
       overallNumber: a.number,
       text: cleanedText,
       tajweedText: cleanedTajweed,
-      // Genuine Tafsir Al-Muyassar
       tafsir: tafsirItem && tafsirItem.text ? tafsirItem.text : 'التفسير الميسر المعتمد لهذه الآية الكريمة.',
-      // Real Quranic coordinates
       juz: a.juz,
       page: a.page,
       hizbQuarter: a.hizbQuarter
@@ -437,7 +474,272 @@ export async function getSurahData(surahNumber: number): Promise<SurahData> {
     ayahs
   };
 
+  await idbSet('surahs', idbKey, surahResult);
   safeLocalStorage.setItem(cacheKey, JSON.stringify(surahResult));
 
   return surahResult;
+}
+
+/**
+ * Fetches a genuine Medina Mushaf page (1..604) with Uthmani text, Tajweed, and Tafsir Muyassar.
+ */
+export async function getMushafPageData(pageNumber: number): Promise<MushafPageData> {
+  if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > 604) {
+    throw new Error('رقم الصفحة يجب أن يكون بين 1 و 604');
+  }
+
+  const cacheKey = `page_${pageNumber}`;
+  const cached = await idbGet<MushafPageData>('pages', cacheKey);
+  if (cached && Array.isArray(cached.ayahs) && cached.ayahs.length > 0) {
+    return cached;
+  }
+
+  const [uthmaniRes, tajweedRes, tafsirRes] = await Promise.all([
+    fetch(`https://api.alquran.cloud/v1/page/${pageNumber}/quran-uthmani`),
+    fetch(`https://api.alquran.cloud/v1/page/${pageNumber}/quran-tajweed`),
+    fetch(`https://api.alquran.cloud/v1/page/${pageNumber}/ar.muyassar`),
+  ]);
+
+  if (!uthmaniRes.ok) {
+    throw new Error(`تعذر تحميل صفحة المصحف رقم ${pageNumber}`);
+  }
+
+  const [uthmaniJson, tajweedJson, tafsirJson] = await Promise.all([
+    uthmaniRes.json(),
+    tajweedRes.ok ? tajweedRes.json() : Promise.resolve(null),
+    tafsirRes.ok ? tafsirRes.json() : Promise.resolve(null),
+  ]);
+
+  const rawAyahs = uthmaniJson?.data?.ayahs;
+  if (!Array.isArray(rawAyahs) || rawAyahs.length === 0) {
+    throw new Error(`لم يتم العثور على آيات في الصفحة ${pageNumber}`);
+  }
+
+  const tajweedAyahs = tajweedJson?.data?.ayahs || [];
+  const tafsirAyahs = tafsirJson?.data?.ayahs || [];
+
+  const ayahs: MushafPageAyah[] = rawAyahs.map((a: any, idx: number) => {
+    const sNum: number = a.surah?.number || 1;
+    const localMeta = SURAHS_LIST.find((s) => s.number === sNum);
+    const sName = localMeta?.name || (a.surah?.name || '').replace(/^سُورَةُ\s+/, '');
+    const cleanedText = sanitizeAyahText(a.text || '', sNum, a.numberInSurah);
+    const cleanedTajweed = tajweedAyahs[idx]?.text
+      ? sanitizeAyahText(tajweedAyahs[idx].text, sNum, a.numberInSurah)
+      : undefined;
+
+    return {
+      numberInSurah: a.numberInSurah,
+      overallNumber: a.number,
+      text: cleanedText,
+      tajweedText: cleanedTajweed,
+      tafsir: tafsirAyahs[idx]?.text || 'التفسير الميسر المعتمد لهذه الآية الكريمة.',
+      juz: a.juz,
+      page: a.page,
+      hizbQuarter: a.hizbQuarter,
+      surahNumber: sNum,
+      surahName: sName,
+      revelationTypeAr: localMeta?.revelationTypeAr || 'مكية',
+      bismillahPre: sNum !== 1 && sNum !== 9,
+    };
+  });
+
+  const pageData: MushafPageData = { pageNumber, ayahs };
+  await idbSet('pages', cacheKey, pageData);
+  return pageData;
+}
+
+/**
+ * Loads & caches a full Surah's Tafsir for a chosen edition, then returns the ayah text.
+ */
+export async function getAyahTafsirByEdition(
+  surahNumber: number,
+  ayahNumber: number,
+  editionId: string
+): Promise<string> {
+  const validEdition = TAFSIR_EDITIONS.find((e) => e.id === editionId) ? editionId : 'ar.muyassar';
+  const cacheKey = `${validEdition}:${surahNumber}`;
+
+  const cachedMap = await idbGet<Record<number, string>>('tafsirs', cacheKey);
+  if (cachedMap && cachedMap[ayahNumber]) {
+    return cachedMap[ayahNumber];
+  }
+
+  const res = await fetch(`https://api.alquran.cloud/v1/surah/${surahNumber}/${validEdition}`);
+  if (!res.ok) {
+    throw new Error('تعذر جلب التفسير المختار، يرجى التحقق من اتصال الإنترنت.');
+  }
+
+  const json = await res.json();
+  const list = json?.data?.ayahs;
+  if (!Array.isArray(list)) {
+    throw new Error('استجابة التفسير غير صالحة.');
+  }
+
+  const map: Record<number, string> = {};
+  for (const item of list) {
+    if (typeof item.numberInSurah === 'number' && typeof item.text === 'string') {
+      map[item.numberInSurah] = item.text;
+    }
+  }
+
+  await idbSet('tafsirs', cacheKey, map);
+  return map[ayahNumber] || 'لا يتوفر نص لهذا التفسير في هذه الآية.';
+}
+
+/**
+ * Full-Quran search across cached IndexedDB surahs + live API search when online.
+ */
+export async function searchQuranAyahs(query: string): Promise<QuranSearchMatch[]> {
+  const normalized = normalizeArabicText(query);
+  if (normalized.length < 2) return [];
+
+  const results: QuranSearchMatch[] = [];
+  const seen = new Set<string>();
+
+  const pushMatch = (m: QuranSearchMatch) => {
+    const key = `${m.surahNumber}:${m.ayahNumber}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      results.push(m);
+    }
+  };
+
+  // 1. Search local preloaded & IndexedDB cached surahs immediately (works offline!)
+  const cachedSurahs = await idbGetAllValues<SurahData>('surahs');
+  const localPool: SurahData[] = [...Object.values(PRELOADED_SURAHS), ...cachedSurahs];
+
+  for (const surah of localPool) {
+    for (const ayah of surah.ayahs) {
+      if (normalizeArabicText(ayah.text).includes(normalized)) {
+        pushMatch({
+          surahNumber: surah.meta.number,
+          surahName: surah.meta.name,
+          ayahNumber: ayah.numberInSurah,
+          text: ayah.text,
+          overallNumber: ayah.overallNumber,
+        });
+        if (results.length >= 60) break;
+      }
+    }
+    if (results.length >= 60) break;
+  }
+
+  // 2. Query remote search index across all 114 surahs when online
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(
+      `https://api.alquran.cloud/v1/search/${encodeURIComponent(normalized)}/all/quran-simple-clean`,
+      { signal: controller.signal }
+    );
+    clearTimeout(timer);
+
+    if (res.ok) {
+      const json = await res.json();
+      const matches = json?.data?.matches;
+      if (Array.isArray(matches)) {
+        for (const m of matches.slice(0, 60)) {
+          const sNum: number = m.surah?.number;
+          if (!sNum) continue;
+          const localMeta = SURAHS_LIST.find((s) => s.number === sNum);
+          pushMatch({
+            surahNumber: sNum,
+            surahName: localMeta?.name || m.surah?.name || `سورة ${sNum}`,
+            ayahNumber: m.numberInSurah,
+            text: (m.text || '').replace(/^\uFEFF/, ''),
+            overallNumber: m.number,
+          });
+        }
+      }
+    }
+  } catch {
+    // Offline or network timeout -> local matches still returned cleanly
+  }
+
+  return results;
+}
+
+/**
+ * Fetches real per-word audio segment timestamps from Quran.com v4 API and caches them.
+ * Returns map of ayahNumber -> WordSegment[] or empty object on failure.
+ */
+export async function getSurahAudioSegments(
+  recitationId: number | undefined,
+  surahNumber: number
+): Promise<Record<number, WordSegment[]>> {
+  if (!recitationId) return {};
+
+  const cacheKey = `seg_${recitationId}_${surahNumber}`;
+  const cached = await idbGet<Record<number, WordSegment[]>>('segments', cacheKey);
+  if (cached) return cached;
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+    const res = await fetch(
+      `https://api.quran.com/api/v4/recitations/${recitationId}/by_chapter/${surahNumber}?fields=segments`,
+      { signal: controller.signal }
+    );
+    clearTimeout(timer);
+    if (!res.ok) return {};
+
+    const json = await res.json();
+    const files = json?.audio_files;
+    if (!Array.isArray(files)) return {};
+
+    const result: Record<number, WordSegment[]> = {};
+    for (const f of files) {
+      if (typeof f.verse_key === 'string' && Array.isArray(f.segments)) {
+        const [, ayahStr] = f.verse_key.split(':');
+        const ayahNum = parseInt(ayahStr, 10);
+        if (Number.isInteger(ayahNum) && ayahNum >= 1) {
+          result[ayahNum] = f.segments.filter(
+            (seg: unknown): seg is WordSegment =>
+              Array.isArray(seg) && seg.length >= 4 && typeof seg[2] === 'number' && typeof seg[3] === 'number'
+          );
+        }
+      }
+    }
+
+    if (Object.keys(result).length > 0) {
+      await idbSet('segments', cacheKey, result);
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+export async function getOfflineCachedSurahsCount(): Promise<number> {
+  const count = await idbCount('surahs');
+  return Math.max(count, Object.keys(PRELOADED_SURAHS).length);
+}
+
+/**
+ * Downloads all 114 surahs into IndexedDB for full offline reading and search.
+ */
+export async function downloadFullQuranOffline(
+  onProgress?: (stats: { completed: number; total: number; failed: number }) => void
+): Promise<{ completed: number; total: number; failed: number }> {
+  const total = SURAHS_LIST.length;
+  let completed = 0;
+  let failed = 0;
+  const concurrency = 3;
+
+  for (let i = 0; i < total; i += concurrency) {
+    const batch = SURAHS_LIST.slice(i, i + concurrency);
+    await Promise.all(
+      batch.map(async (s) => {
+        try {
+          await getSurahData(s.number);
+          completed++;
+        } catch {
+          failed++;
+        }
+        onProgress?.({ completed, total, failed });
+      })
+    );
+  }
+
+  return { completed, total, failed };
 }

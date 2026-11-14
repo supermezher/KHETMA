@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { X, BookOpen, Sparkles, Compass, Lightbulb, PenLine, Bookmark, Check, Share2, Volume2 } from 'lucide-react';
-import { Ayah } from '../data/quranService';
+import React, { useState, useEffect } from 'react';
+import { X, BookOpen, Sparkles, Compass, Lightbulb, PenLine, Check, Share2, Volume2, Loader2 } from 'lucide-react';
+import { Ayah, TAFSIR_EDITIONS, getAyahTafsirByEdition } from '../data/quranService';
 
 export interface JournalNotePayload {
   ayahId: number;
+  surahNumber: number;
   surahName: string;
   ayahNumber: number;
   text: string;
@@ -15,6 +16,7 @@ interface TadabburModalProps {
   isOpen: boolean;
   onClose: () => void;
   ayah: Ayah | null;
+  surahNumber: number;
   surahName: string;
   onSaveJournalNote: (payload: JournalNotePayload) => void;
   savedNote?: string;
@@ -26,6 +28,7 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
   isOpen,
   onClose,
   ayah,
+  surahNumber,
   surahName,
   onSaveJournalNote,
   savedNote = '',
@@ -36,13 +39,52 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
   const [journalInput, setJournalInput] = useState(savedNote);
   const [isSavedAlert, setIsSavedAlert] = useState(false);
 
-  // Sync journalInput if savedNote changes
-  React.useEffect(() => {
+  // Multi-tafsir edition state
+  const [selectedEdition, setSelectedEdition] = useState<string>('ar.muyassar');
+  const [editionTafsirText, setEditionTafsirText] = useState<string>('');
+  const [isLoadingTafsir, setIsLoadingTafsir] = useState<boolean>(false);
+  const [tafsirError, setTafsirError] = useState<string | null>(null);
+
+  // Sync journalInput if savedNote or ayah changes
+  useEffect(() => {
     setJournalInput(savedNote);
   }, [savedNote, ayah]);
 
+  // Fetch selected tafsir edition when tab is tafsir or edition/ayah changes
+  useEffect(() => {
+    if (!isOpen || !ayah) return;
+    if (selectedEdition === 'ar.muyassar') {
+      setEditionTafsirText(ayah.tafsir);
+      setTafsirError(null);
+      setIsLoadingTafsir(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingTafsir(true);
+    setTafsirError(null);
+
+    getAyahTafsirByEdition(surahNumber, ayah.numberInSurah, selectedEdition)
+      .then((text) => {
+        if (!cancelled) {
+          setEditionTafsirText(text);
+          setIsLoadingTafsir(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setTafsirError(err.message || 'تعذر تحميل هذا التفسير');
+          setIsLoadingTafsir(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, ayah, surahNumber, selectedEdition]);
+
   // Keyboard accessibility: close on Escape
-  React.useEffect(() => {
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose();
@@ -56,9 +98,12 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
 
   if (!isOpen || !ayah) return null;
 
+  const activeEditionMeta = TAFSIR_EDITIONS.find((e) => e.id === selectedEdition) || TAFSIR_EDITIONS[0];
+
   const handleSaveNote = () => {
     onSaveJournalNote({
       ayahId: ayah.overallNumber,
+      surahNumber,
       surahName,
       ayahNumber: ayah.numberInSurah,
       text: ayah.text,
@@ -77,8 +122,8 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
     >
       <div className="relative w-full max-w-2xl max-h-[90vh] bg-slate-900 border border-emerald-900/40 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-        
-        {/* Header with Ayah Badge */}
+
+        {/* Header */}
         <div className="p-4 sm:p-5 border-b border-slate-800 bg-gradient-to-r from-emerald-950/40 via-slate-900 to-slate-950 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
@@ -87,11 +132,11 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
             <div>
               <h3 id="tadabbur-modal-title" className="font-bold text-white text-base sm:text-lg flex items-center gap-2">
                 <span>سورة {surahName}</span>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-normal">
-                  الآية {ayah.numberInSurah}
+                <span className="text-xs text-emerald-300 font-normal">
+                  · الآية {ayah.numberInSurah}
                 </span>
               </h3>
-              <p className="text-xs text-slate-400">مساعد الفهم العميق والتدبر العملي والتفسير</p>
+              <p className="text-xs text-slate-400">مساعد الفهم العميق والتدبر العملي والتفاسير المعتمدة</p>
             </div>
           </div>
 
@@ -100,7 +145,7 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
               <button
                 onClick={() => onPlayAyah(ayah.numberInSurah)}
                 title="استماع للآية"
-                className="p-2 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition-colors"
+                className="p-2 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <Volume2 className="w-5 h-5" />
               </button>
@@ -109,14 +154,14 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
               <button
                 onClick={() => onOpenShareModal(ayah)}
                 title="مشاركة كبطاقة"
-                className="p-2 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition-colors"
+                className="p-2 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <Share2 className="w-5 h-5" />
               </button>
             )}
             <button
               onClick={onClose}
-              className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -128,11 +173,11 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
           <p className="font-quran text-xl sm:text-2xl text-emerald-100 leading-loose">
             ﴿ {ayah.text} ﴾
           </p>
-          <div className="mt-2 text-xs text-slate-500 flex justify-center gap-4">
+          <div className="mt-2 text-xs text-slate-500 flex justify-center gap-3 tabular-nums">
             <span>الجزء {ayah.juz}</span>
-            <span>•</span>
+            <span>·</span>
             <span>الصفحة {ayah.page}</span>
-            <span>•</span>
+            <span>·</span>
             <span>الحزب {Math.ceil(ayah.hizbQuarter / 4)}</span>
           </div>
         </div>
@@ -141,7 +186,7 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
         <div className="flex border-b border-slate-800 bg-slate-950/40 px-3 pt-2 gap-1 overflow-x-auto">
           {[
             { id: 'tadabbur', label: 'مساعد التدبر والعمل', icon: Sparkles },
-            { id: 'tafsir', label: 'التفسير الميسر', icon: BookOpen },
+            { id: 'tafsir', label: 'التفاسير المعتمدة', icon: BookOpen },
             { id: 'irab', label: 'الإعراب والغريب', icon: Compass },
             { id: 'journal', label: 'مفكرتي الخاصة', icon: PenLine },
           ].map((tab) => {
@@ -151,7 +196,7 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-2 py-2.5 px-4 text-xs sm:text-sm font-semibold rounded-t-xl transition-all whitespace-nowrap ${
+                className={`flex items-center gap-2 py-2.5 px-4 text-xs sm:text-sm font-semibold rounded-t-xl transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                   isActive
                     ? 'bg-slate-900 text-emerald-400 border-t-2 border-emerald-400 shadow-lg'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
@@ -168,7 +213,6 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
         <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-4">
           {activeTab === 'tadabbur' && (
             <div className="space-y-4 animate-in fade-in duration-200">
-              {/* Rhetorical Question / Reflection prompt */}
               <div className="p-4 rounded-xl bg-gradient-to-br from-amber-500/10 to-amber-950/20 border border-amber-500/20">
                 <div className="flex items-center gap-2 text-amber-400 text-xs font-bold mb-2">
                   <Lightbulb className="w-4 h-4" />
@@ -180,7 +224,6 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
                 </p>
               </div>
 
-              {/* Practical Action */}
               <div className="p-4 rounded-xl bg-gradient-to-br from-emerald-500/10 to-emerald-950/20 border border-emerald-500/20">
                 <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold mb-2">
                   <Sparkles className="w-4 h-4" />
@@ -192,7 +235,6 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
                 </p>
               </div>
 
-              {/* Asbab al-Nuzul if available */}
               {ayah.asbabNuzul && (
                 <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800">
                   <span className="text-xs font-bold text-slate-400 block mb-1">سبب النزول ومقصد السورة:</span>
@@ -206,14 +248,47 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
 
           {activeTab === 'tafsir' && (
             <div className="space-y-4 animate-in fade-in duration-200">
-              <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800">
-                <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold mb-3">
-                  <BookOpen className="w-4 h-4" />
-                  <span>التفسير الميسر (مجمع الملك فهد لطباعة المصحف الشريف)</span>
+              {/* Edition Switcher */}
+              <div className="flex flex-wrap gap-1.5 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
+                {TAFSIR_EDITIONS.map((ed) => {
+                  const isSel = selectedEdition === ed.id;
+                  return (
+                    <button
+                      key={ed.id}
+                      onClick={() => setSelectedEdition(ed.id)}
+                      className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                        isSel
+                          ? 'bg-emerald-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                      }`}
+                    >
+                      {ed.name}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-800/80">
+                  <div className="flex items-center gap-2 text-emerald-400 font-bold">
+                    <BookOpen className="w-4 h-4" />
+                    <span>{activeEditionMeta.name}</span>
+                  </div>
+                  <span className="text-[11px] text-slate-500">{activeEditionMeta.description}</span>
                 </div>
-                <p className="text-slate-200 text-sm sm:text-base leading-relaxed">
-                  {ayah.tafsir}
-                </p>
+
+                {isLoadingTafsir ? (
+                  <div className="py-8 flex items-center justify-center gap-2 text-xs text-slate-400">
+                    <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+                    <span>جارٍ جلب {activeEditionMeta.name}...</span>
+                  </div>
+                ) : tafsirError ? (
+                  <p className="text-xs text-rose-300 py-3">{tafsirError}</p>
+                ) : (
+                  <p className="text-slate-200 text-sm sm:text-base leading-loose pt-1">
+                    {editionTafsirText || ayah.tafsir}
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -237,7 +312,7 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
             <div className="space-y-4 animate-in fade-in duration-200">
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-2">
-                  خواطري وتأملاتي الخاصة حول هذه الآية (مشفرة ومحفوظة على جهازك):
+                  خواطري وتأملاتي الخاصة حول هذه الآية (محفوظة محلياً على جهازك):
                 </label>
                 <textarea
                   rows={5}
@@ -251,14 +326,14 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
               <div className="flex items-center justify-between">
                 <button
                   onClick={handleSaveNote}
-                  className="py-2.5 px-5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 shadow-lg shadow-emerald-900/30 transition-all"
+                  className="py-2.5 px-5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 shadow-lg shadow-emerald-900/30 transition-all cursor-pointer"
                 >
                   <PenLine className="w-4 h-4" />
                   <span>حفظ في مفكرتي</span>
                 </button>
 
                 {isSavedAlert && (
-                  <span className="text-xs text-emerald-400 flex items-center gap-1 animate-pulse">
+                  <span className="text-xs text-emerald-400 flex items-center gap-1">
                     <Check className="w-4 h-4" />
                     تم الحفظ بنجاح في المفكرة
                   </span>
@@ -270,10 +345,10 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
 
         {/* Modal Footer */}
         <div className="p-3 sm:p-4 border-t border-slate-800 bg-slate-950/90 flex items-center justify-between text-xs text-slate-500">
-          <span>بيان • وقف لوجه الله تعالى</span>
+          <span>بيان · وقف لوجه الله تعالى</span>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition-colors"
+            className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition-colors cursor-pointer"
           >
             إغلاق
           </button>

@@ -6,6 +6,7 @@ export interface Reciter {
   bitrate: string;
   country: string;
   bio: string;
+  quranComRecitationId?: number;
 }
 
 export const RECITERS_LIST: Reciter[] = [
@@ -16,7 +17,8 @@ export const RECITERS_LIST: Reciter[] = [
     serverKey: 'Alafasy_128kbps',
     bitrate: '128 kbps',
     country: 'الكويت',
-    bio: 'إمام المسجد الكبير بدولة الكويت، قارئ متميز بصوته الندي وإتقانه الدقيق لأحكام التجويد ومخارج الحروف.'
+    bio: 'إمام المسجد الكبير بدولة الكويت، قارئ متميز بصوته الندي وإتقانه الدقيق لأحكام التجويد ومخارج الحروف.',
+    quranComRecitationId: 7,
   },
   {
     id: 'abdulbasit-murattal',
@@ -25,7 +27,8 @@ export const RECITERS_LIST: Reciter[] = [
     serverKey: 'Abdul_Basit_Murattal_192kbps',
     bitrate: '192 kbps',
     country: 'مصر',
-    bio: 'صوت مكة وأحد أشهر قراء العالم الإسلامي، يتميز بنبرته الخاشعة ونَفَسِه المديد وتطبيقه الدقيق لميزان التجويد.'
+    bio: 'صوت مكة وأحد أشهر قراء العالم الإسلامي، يتميز بنبرته الخاشعة ونَفَسِه المديد وتطبيقه الدقيق لميزان التجويد.',
+    quranComRecitationId: 2,
   },
   {
     id: 'abdulbasit-mujawwad',
@@ -34,7 +37,8 @@ export const RECITERS_LIST: Reciter[] = [
     serverKey: 'Abdul_Basit_Mujawwad_128kbps',
     bitrate: '128 kbps',
     country: 'مصر',
-    bio: 'التلاوة المجودة الرائعة ذات المقامات الرفيعة التي حركت قلوب الملايين حول العالم.'
+    bio: 'التلاوة المجودة الرائعة ذات المقامات الرفيعة التي حركت قلوب الملايين حول العالم.',
+    quranComRecitationId: 1,
   },
   {
     id: 'minshawi',
@@ -43,7 +47,8 @@ export const RECITERS_LIST: Reciter[] = [
     serverKey: 'Minshawy_Murattal_128kbps',
     bitrate: '128 kbps',
     country: 'مصر',
-    bio: 'صاحب الصوت الخاشع الحزين المتأصل في وجدان الأمة، تلاوته تبعث على التدبر التام والدمعة الصادقة.'
+    bio: 'صاحب الصوت الخاشع الحزين المتأصل في وجدان الأمة، تلاوته تبعث على التدبر التام والدمعة الصادقة.',
+    quranComRecitationId: 9,
   },
   {
     id: 'husary',
@@ -52,7 +57,8 @@ export const RECITERS_LIST: Reciter[] = [
     serverKey: 'Husary_128kbps',
     bitrate: '128 kbps',
     country: 'مصر',
-    bio: 'المرجع الأول لضبط التلاوة ومخارج الحروف وقواعد التجويد بلا تكلف، المصحف المعلم المعتمد للأجيال.'
+    bio: 'المرجع الأول لضبط التلاوة ومخارج الحروف وقواعد التجويد بلا تكلف، المصحف المعلم المعتمد للأجيال.',
+    quranComRecitationId: 6,
   },
   {
     id: 'muaiqly',
@@ -61,7 +67,7 @@ export const RECITERS_LIST: Reciter[] = [
     serverKey: 'Maher_AlMuaiqly_64kbps',
     bitrate: '64 kbps',
     country: 'السعودية',
-    bio: 'إمام وخطيب المسجد الحرام بمكة المكرمة، تلاوة مؤثرة حية تقرب أجواء الحرم الشريف إلى قلب القارئ.'
+    bio: 'إمام وخطيب المسجد الحرام بمكة المكرمة، تلاوة مؤثرة حية تقرب أجواء الحرم الشريف إلى قلب القارئ.',
   },
   {
     id: 'ghamdi',
@@ -70,7 +76,7 @@ export const RECITERS_LIST: Reciter[] = [
     serverKey: 'Ghamadi_40kbps',
     bitrate: '40 kbps (خفيف وسريع)',
     country: 'السعودية',
-    bio: 'قارئ بارز يتميز بسلاسة أدائه وسرعته الموزونة المناسبة للحفظ والمراجعة الدورية.'
+    bio: 'قارئ بارز يتميز بسلاسة أدائه وسرعته الموزونة المناسبة للحفظ والمراجعة الدورية.',
   },
   {
     id: 'shatri',
@@ -79,7 +85,8 @@ export const RECITERS_LIST: Reciter[] = [
     serverKey: 'Abu_Bakr_Ash-Shaatree_128kbps',
     bitrate: '128 kbps',
     country: 'السعودية',
-    bio: 'نبرة حجازية هادئة تمتاز بالنقاء العاطفي والصفاء الذهني الذي يساعد على التركيز أثناء القراءة.'
+    bio: 'نبرة حجازية هادئة تمتاز بالنقاء العاطفي والصفاء الذهني الذي يساعد على التركيز أثناء القراءة.',
+    quranComRecitationId: 4,
   },
   {
     id: 'dosari',
@@ -88,7 +95,7 @@ export const RECITERS_LIST: Reciter[] = [
     serverKey: 'Yasser_Ad-Dussary_128kbps',
     bitrate: '128 kbps',
     country: 'السعودية',
-    bio: 'إمام المسجد الحرام، تلاواته تمتاز بالجهورية والخشوع الشديد والقوة في استحضار معاني الوعيد والوعد.'
+    bio: 'إمام المسجد الحرام، تلاواته تمتاز بالجهورية والخشوع الشديد والقوة في استحضار معاني الوعيد والوعد.',
   },
   {
     id: 'shuraim',
@@ -97,7 +104,8 @@ export const RECITERS_LIST: Reciter[] = [
     serverKey: 'Saood_ash-Shuraym_128kbps',
     bitrate: '128 kbps',
     country: 'السعودية',
-    bio: 'الصوت الرخيم الذي ارتبط به المسلمون في صلوات التراويح والقيام بالحرم المكي لعقود.'
+    bio: 'الصوت الرخيم الذي ارتبط به المسلمون في صلوات التراويح والقيام بالحرم المكي لعقود.',
+    quranComRecitationId: 10,
   }
 ];
 

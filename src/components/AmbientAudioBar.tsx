@@ -1,11 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { CloudRain, Wind, Moon, VolumeX, Volume2, Sparkles } from 'lucide-react';
 import { ambientAudio } from '../utils/ambientAudio';
 
 export const AmbientAudioBar: React.FC = () => {
-  const [activeSound, setActiveSound] = useState<'rain' | 'breeze' | 'night' | 'none'>('none');
-  const [volume, setVolume] = useState<number>(30);
+  const [activeSound, setActiveSound] = useState<'rain' | 'breeze' | 'night' | 'none'>(
+    () => ambientAudio.getCurrentMode() || 'none'
+  );
+  const [volume, setVolume] = useState<number>(() => Math.round(ambientAudio.getVolume() * 100));
   const [isOpen, setIsOpen] = useState<boolean>(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsOpen(false);
+    };
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
 
   const toggleSound = (mode: 'rain' | 'breeze' | 'night') => {
     if (activeSound === mode) {
@@ -24,7 +45,7 @@ export const AmbientAudioBar: React.FC = () => {
   };
 
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={`flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-xs font-semibold border transition-all ${

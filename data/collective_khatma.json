@@ -4,36 +4,216 @@
   "deadlineDays": 3,
   "adminPinHash": "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4",
   "parts": [
-    { "juzNumber": 1, "juzName": "الجزء 1", "claimedBy": null, "isCompleted": false, "surahsCovered": "من الفاتحة 1 إلى البقرة 141" },
-    { "juzNumber": 2, "juzName": "الجزء 2", "claimedBy": null, "isCompleted": false, "surahsCovered": "من البقرة 142 إلى البقرة 252" },
-    { "juzNumber": 3, "juzName": "الجزء 3", "claimedBy": null, "isCompleted": false, "surahsCovered": "من البقرة 253 إلى آل عمران 92" },
-    { "juzNumber": 4, "juzName": "الجزء 4", "claimedBy": null, "isCompleted": false, "surahsCovered": "من آل عمران 93 إلى النساء 23" },
-    { "juzNumber": 5, "juzName": "الجزء 5", "claimedBy": null, "isCompleted": false, "surahsCovered": "من النساء 24 إلى النساء 147" },
-    { "juzNumber": 6, "juzName": "الجزء 6", "claimedBy": null, "isCompleted": false, "surahsCovered": "من النساء 148 إلى المائدة 81" },
-    { "juzNumber": 7, "juzName": "الجزء 7", "claimedBy": null, "isCompleted": false, "surahsCovered": "من المائدة 82 إلى الأنعام 110" },
-    { "juzNumber": 8, "juzName": "الجزء 8", "claimedBy": null, "isCompleted": false, "surahsCovered": "من الأنعام 111 إلى الأعراف 87" },
-    { "juzNumber": 9, "juzName": "الجزء 9", "claimedBy": null, "isCompleted": false, "surahsCovered": "من الأعراف 88 إلى الأنفال 40" },
-    { "juzNumber": 10, "juzName": "الجزء 10", "claimedBy": null, "isCompleted": false, "surahsCovered": "من الأنفال 41 إلى التوبة 92" },
-    { "juzNumber": 11, "juzName": "الجزء 11", "claimedBy": null, "isCompleted": false, "surahsCovered": "من التوبة 93 إلى هود 5" },
-    { "juzNumber": 12, "juzName": "الجزء 12", "claimedBy": null, "isCompleted": false, "surahsCovered": "من هود 6 إلى يوسف 52" },
-    { "juzNumber": 13, "juzName": "الجزء 13", "claimedBy": null, "isCompleted": false, "surahsCovered": "من يوسف 53 إلى إبراهيم 52" },
-    { "juzNumber": 14, "juzName": "الجزء 14", "claimedBy": null, "isCompleted": false, "surahsCovered": "من الحجر 1 إلى النحل 128" },
-    { "juzNumber": 15, "juzName": "الجزء 15", "claimedBy": null, "isCompleted": false, "surahsCovered": "من الإسراء 1 إلى الكهف 74" },
-    { "juzNumber": 16, "juzName": "الجزء 16", "claimedBy": null, "isCompleted": false, "surahsCovered": "من الكهف 75 إلى طه 135" },
-    { "juzNumber": 17, "juzName": "الجزء 17", "claimedBy": null, "isCompleted": false, "surahsCovered": "من الأنبياء 1 إلى الحج 78" },
-    { "juzNumber": 18, "juzName": "الجزء 18", "claimedBy": null, "isCompleted": false, "surahsCovered": "من المؤمنون 1 إلى الفرقان 20" },
-    { "juzNumber": 19, "juzName": "الجزء 19", "claimedBy": null, "isCompleted": false, "surahsCovered": "من الفرقان 21 إلى النمل 55" },
-    { "juzNumber": 20, "juzName": "الجزء 20", "claimedBy": null, "isCompleted": false, "surahsCovered": "من النمل 56 إلى العنكبوت 45" },
-    { "juzNumber": 21, "juzName": "الجزء 21", "claimedBy": null, "isCompleted": false, "surahsCovered": "من العنكبوت 46 إلى الأحزاب 30" },
-    { "juzNumber": 22, "juzName": "الجزء 22", "claimedBy": null, "isCompleted": false, "surahsCovered": "من الأحزاب 31 إلى يس 27" },
-    { "juzNumber": 23, "juzName": "الجزء 23", "claimedBy": null, "isCompleted": false, "surahsCovered": "من يس 28 إلى الزمر 31" },
-    { "juzNumber": 24, "juzName": "الجزء 24", "claimedBy": null, "isCompleted": false, "surahsCovered": "من الزمر 32 إلى فصلت 46" },
-    { "juzNumber": 25, "juzName": "الجزء 25", "claimedBy": null, "isCompleted": false, "surahsCovered": "من فصلت 47 إلى الجاثية 37" },
-    { "juzNumber": 26, "juzName": "الجزء 26", "claimedBy": null, "isCompleted": false, "surahsCovered": "من الأحقاف 1 إلى الذاريات 30" },
-    { "juzNumber": 27, "juzName": "الجزء 27", "claimedBy": null, "isCompleted": false, "surahsCovered": "من الذاريات 31 إلى الحديد 29" },
-    { "juzNumber": 28, "juzName": "الجزء 28", "claimedBy": null, "isCompleted": false, "surahsCovered": "من المجادلة 1 إلى التحريم 12" },
-    { "juzNumber": 29, "juzName": "الجزء 29", "claimedBy": null, "isCompleted": false, "surahsCovered": "من الملك 1 إلى المرسلات 50" },
-    { "juzNumber": 30, "juzName": "الجزء 30", "claimedBy": null, "isCompleted": false, "surahsCovered": "من النبأ 1 إلى الناس 6 (جزء عم)" }
+    {
+      "juzNumber": 1,
+      "juzName": "الجزء 1",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من الفاتحة 1 إلى البقرة 141"
+    },
+    {
+      "juzNumber": 2,
+      "juzName": "الجزء 2",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من البقرة 142 إلى البقرة 252"
+    },
+    {
+      "juzNumber": 3,
+      "juzName": "الجزء 3",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من البقرة 253 إلى آل عمران 92"
+    },
+    {
+      "juzNumber": 4,
+      "juzName": "الجزء 4",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من آل عمران 93 إلى النساء 23"
+    },
+    {
+      "juzNumber": 5,
+      "juzName": "الجزء 5",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من النساء 24 إلى النساء 147"
+    },
+    {
+      "juzNumber": 6,
+      "juzName": "الجزء 6",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من النساء 148 إلى المائدة 81"
+    },
+    {
+      "juzNumber": 7,
+      "juzName": "الجزء 7",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من المائدة 82 إلى الأنعام 110"
+    },
+    {
+      "juzNumber": 8,
+      "juzName": "الجزء 8",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من الأنعام 111 إلى الأعراف 87"
+    },
+    {
+      "juzNumber": 9,
+      "juzName": "الجزء 9",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من الأعراف 88 إلى الأنفال 40"
+    },
+    {
+      "juzNumber": 10,
+      "juzName": "الجزء 10",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من الأنفال 41 إلى التوبة 92"
+    },
+    {
+      "juzNumber": 11,
+      "juzName": "الجزء 11",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من التوبة 93 إلى هود 5"
+    },
+    {
+      "juzNumber": 12,
+      "juzName": "الجزء 12",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من هود 6 إلى يوسف 52"
+    },
+    {
+      "juzNumber": 13,
+      "juzName": "الجزء 13",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من يوسف 53 إلى إبراهيم 52"
+    },
+    {
+      "juzNumber": 14,
+      "juzName": "الجزء 14",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من الحجر 1 إلى النحل 128"
+    },
+    {
+      "juzNumber": 15,
+      "juzName": "الجزء 15",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من الإسراء 1 إلى الكهف 74"
+    },
+    {
+      "juzNumber": 16,
+      "juzName": "الجزء 16",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من الكهف 75 إلى طه 135"
+    },
+    {
+      "juzNumber": 17,
+      "juzName": "الجزء 17",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من الأنبياء 1 إلى الحج 78"
+    },
+    {
+      "juzNumber": 18,
+      "juzName": "الجزء 18",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من المؤمنون 1 إلى الفرقان 20"
+    },
+    {
+      "juzNumber": 19,
+      "juzName": "الجزء 19",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من الفرقان 21 إلى النمل 55"
+    },
+    {
+      "juzNumber": 20,
+      "juzName": "الجزء 20",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من النمل 56 إلى العنكبوت 45"
+    },
+    {
+      "juzNumber": 21,
+      "juzName": "الجزء 21",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من العنكبوت 46 إلى الأحزاب 30"
+    },
+    {
+      "juzNumber": 22,
+      "juzName": "الجزء 22",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من الأحزاب 31 إلى يس 27"
+    },
+    {
+      "juzNumber": 23,
+      "juzName": "الجزء 23",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من يس 28 إلى الزمر 31"
+    },
+    {
+      "juzNumber": 24,
+      "juzName": "الجزء 24",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من الزمر 32 إلى فصلت 46"
+    },
+    {
+      "juzNumber": 25,
+      "juzName": "الجزء 25",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من فصلت 47 إلى الجاثية 37"
+    },
+    {
+      "juzNumber": 26,
+      "juzName": "الجزء 26",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من الأحقاف 1 إلى الذاريات 30"
+    },
+    {
+      "juzNumber": 27,
+      "juzName": "الجزء 27",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من الذاريات 31 إلى الحديد 29"
+    },
+    {
+      "juzNumber": 28,
+      "juzName": "الجزء 28",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من المجادلة 1 إلى التحريم 12"
+    },
+    {
+      "juzNumber": 29,
+      "juzName": "الجزء 29",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من الملك 1 إلى المرسلات 50"
+    },
+    {
+      "juzNumber": 30,
+      "juzName": "الجزء 30",
+      "claimedBy": null,
+      "isCompleted": false,
+      "surahsCovered": "من النبأ 1 إلى الناس 6 (جزء عم)"
+    }
   ],
-  "updatedAt": "2026-11-11T21:15:00.000Z"
+  "updatedAt": "2026-11-13T22:45:20.682Z"
 }

@@ -50,88 +50,120 @@
   background: rgba(16, 185, 129, 0.6);
 }
 
-/* Tajweed standard highlighting classes */
+/* Standard Approved Tajweed Highlighting Classes (مصحف التجويد الملون القياسي) */
+/* NOTE: Never alter font-weight or use opacity < 1 on sub-word spans, so Arabic cursive ligatures remain 100% intact. */
 .tajweed-ghunnah {
-  color: #10b981; /* Green for Ghunnah */
-  font-weight: 600;
+  color: #10b981; /* أخضر زمردي: الغنة المشددة (نّ، مّ) */
 }
 
 .tajweed-ikhfa {
-  color: #f59e0b; /* Amber for Ikhfa */
-  font-weight: 600;
+  color: #4ade80; /* أخضر فاتح: الإخفاء الحقيقي والشفوي */
 }
 
 .tajweed-idgham {
-  color: #06b6d4; /* Cyan for Idgham */
-  font-weight: 600;
+  color: #2dd4bf; /* أخضر مزرق: الإدغام بغنة والشفوي */
 }
 
 .tajweed-iqlab {
-  color: #c084fc; /* Violet for Iqlab */
-  font-weight: 600;
+  color: #34d399; /* أخضر نعناعي: الإقلاب */
 }
 
 .tajweed-qalqalah {
-  color: #38bdf8; /* Sky blue for Qalqalah */
-  font-weight: 700;
+  color: #38bdf8; /* أزرق سماوي: القلقلة (قطب جد) */
 }
 
 .tajweed-madd-wajib {
-  color: #f43f5e; /* Rose/Red for Madd 4-5 */
-  font-weight: 700;
+  color: #f43f5e; /* أحمر قرمزي: المد الواجب المتصل والجائز المنفصل (4-5 حركات) */
 }
 
 .tajweed-madd-lazim {
-  color: #a855f7; /* Purple for Madd Lazim 6 */
-  font-weight: 800;
+  color: #ef4444; /* أحمر قاني: المد اللازم الكلمي والحرفي (6 حركات وجوباً) */
 }
 
 .tajweed-madd-arid {
-  color: #fb923c; /* Orange for Madd Arid 2-4-6 */
-  font-weight: 600;
+  color: #fb923c; /* برتقالي: المد العارض للسكون (2-4-6 حركات) */
 }
 
 .tajweed-madd-tabeei {
-  color: #eab308; /* Yellow-amber */
-  font-weight: 500;
+  color: #eab308; /* ذهبي كموني: المد الطبيعي والألف الخنجرية (حركتان) */
 }
 
 .tajweed-madd-badal {
-  color: #facc15; /* Gold for Madd Badal 2 */
-  font-weight: 600;
+  color: #facc15; /* ذهبي: مد البدل (حركتان) */
 }
 
 .tajweed-tafkheem {
-  color: #60a5fa; /* Blue for Heavy letters */
-  font-weight: 600;
+  color: #60a5fa; /* أزرق ملكي: حروف التفخيم والاستعلاء */
 }
 
-/* Silent / Unpronounced letters (الحروف التي لا تُلفظ) */
+/* Silent / Unpronounced & completely assimilated letters (الحروف التي لا تُلفظ) */
 .tajweed-silent {
-  color: #94a3b8 !important; /* Elegant muted slate gray */
-  opacity: 0.55;
-  font-weight: 400;
-  display: inline;
-  transition: opacity 0.15s ease;
+  color: #64748b; /* رمادي: لا تُلفظ (بدون opacity للحفاظ على اتصال الحروف العربية) */
 }
 
-.tajweed-silent:hover {
-  opacity: 0.9;
+/* High-contrast palette overrides for Ivory / Sepia & Light Mushaf Paper */
+.mushaf-paper-sepia .tajweed-ghunnah,
+.mushaf-paper-light .tajweed-ghunnah {
+  color: #15803d;
 }
 
-.mushaf-paper-sepia .tajweed-silent {
-  color: #8c827a !important;
-  opacity: 0.6;
+.mushaf-paper-sepia .tajweed-ikhfa,
+.mushaf-paper-light .tajweed-ikhfa {
+  color: #16a34a;
 }
 
+.mushaf-paper-sepia .tajweed-idgham,
+.mushaf-paper-light .tajweed-idgham {
+  color: #0d9488;
+}
+
+.mushaf-paper-sepia .tajweed-iqlab,
+.mushaf-paper-light .tajweed-iqlab {
+  color: #059669;
+}
+
+.mushaf-paper-sepia .tajweed-qalqalah,
+.mushaf-paper-light .tajweed-qalqalah {
+  color: #0284c7;
+}
+
+.mushaf-paper-sepia .tajweed-madd-wajib,
+.mushaf-paper-light .tajweed-madd-wajib {
+  color: #e11d48;
+}
+
+.mushaf-paper-sepia .tajweed-madd-lazim,
+.mushaf-paper-light .tajweed-madd-lazim {
+  color: #b91c1c;
+}
+
+.mushaf-paper-sepia .tajweed-madd-arid,
+.mushaf-paper-light .tajweed-madd-arid {
+  color: #ea580c;
+}
+
+.mushaf-paper-sepia .tajweed-madd-tabeei,
+.mushaf-paper-light .tajweed-madd-tabeei {
+  color: #b45309;
+}
+
+.mushaf-paper-sepia .tajweed-madd-badal,
+.mushaf-paper-light .tajweed-madd-badal {
+  color: #a16207;
+}
+
+.mushaf-paper-sepia .tajweed-tafkheem,
+.mushaf-paper-light .tajweed-tafkheem {
+  color: #1d4ed8;
+}
+
+.mushaf-paper-sepia .tajweed-silent,
 .mushaf-paper-light .tajweed-silent {
-  color: #9ca3af !important;
-  opacity: 0.6;
+  color: #9ca3af;
 }
 
 .mushaf-paper-emerald .tajweed-silent {
-  color: #64748b !important;
-  opacity: 0.55;
+  color: #64748b;
 }
 
 /* Page Paper Texture for Mus'haf Mode */
