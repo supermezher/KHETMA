@@ -12,7 +12,7 @@ import { QuranReader } from './components/QuranReader';
 import { AudioPlayerBar } from './components/AudioPlayerBar';
 import { TadabburModal, JournalNotePayload } from './components/TadabburModal';
 import { SocialShareModal } from './components/SocialShareModal';
-import { MemorizationMode } from './components/MemorizationMode';
+import { MemorizationMode, MemorizationRepeatTarget } from './components/MemorizationMode';
 import { FaithAnalytics } from './components/FaithAnalytics';
 import { CollectiveKhatma } from './components/CollectiveKhatma';
 import { TajweedEncyclopedia } from './components/TajweedEncyclopedia';
@@ -91,12 +91,19 @@ export default function App() {
   // Audio & Tajweed state
   const [selectedReciter, setSelectedReciter] = useState<Reciter>(RECITERS_LIST[0]);
   const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
+  const [playTriggerNonce, setPlayTriggerNonce] = useState<number>(0);
+  const [memorizationRepeatTarget, setMemorizationRepeatTarget] = useState<MemorizationRepeatTarget>(1);
+  const [memorizationCurrentRepeat, setMemorizationCurrentRepeat] = useState<number>(1);
   const [audioCurrentTime, setAudioCurrentTime] = useState<number>(0);
   const [audioDuration, setAudioDuration] = useState<number>(1);
   const [isTajweedActive, setIsTajweedActive] = useState<boolean>(true);
   const [isSmartScrollActive, setIsSmartScrollActive] = useState<boolean>(true);
   const [isFullScreenReading, setIsFullScreenReading] = useState<boolean>(false);
+  const [isAudioBarVisible, setIsAudioBarVisible] = useState<boolean>(true);
+  const audioBarBeforeFullScreenRef = useRef<boolean>(true);
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState<boolean>(false);
+  const [isDesktopMoreOpen, setIsDesktopMoreOpen] = useState<boolean>(false);
+  const desktopMoreRef = useRef<HTMLDivElement | null>(null);
 
   // Modals state
   const [tadabburAyah, setTadabburAyah] = useState<Ayah | null>(null);
@@ -133,6 +140,25 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isSurahPickerOpen]);
+
+  // Close Desktop "More" menu on Escape or outside click
+  useEffect(() => {
+    if (!isDesktopMoreOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsDesktopMoreOpen(false);
+    };
+    const handleMouseDown = (e: MouseEvent) => {
+      if (desktopMoreRef.current && !desktopMoreRef.current.contains(e.target as Node)) {
+        setIsDesktopMoreOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleMouseDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleMouseDown);
+    };
+  }, [isDesktopMoreOpen]);
 
   // Debounced Full-Quran Ayah Search when Ayah search tab is active
   useEffect(() => {
@@ -271,7 +297,23 @@ export default function App() {
     } else {
       setActiveAyahNumber(ayahNum);
     }
+    setMemorizationCurrentRepeat(1);
+    setPlayTriggerNonce((n) => n + 1);
     setIsPlayingAudio(true);
+    setIsAudioBarVisible(true);
+  };
+
+  const handleToggleFullScreen = () => {
+    if (!isFullScreenReading) {
+      audioBarBeforeFullScreenRef.current = isAudioBarVisible;
+      if (!isPlayingAudio) {
+        setIsAudioBarVisible(false);
+      }
+      setIsFullScreenReading(true);
+    } else {
+      setIsFullScreenReading(false);
+      setIsAudioBarVisible(isPlayingAudio ? true : audioBarBeforeFullScreenRef.current);
+    }
   };
 
   const filteredSurahs = SURAHS_LIST.filter(s =>
@@ -288,110 +330,173 @@ export default function App() {
       {/* Top Main Navigation Bar (Hidden when in full screen reading) */}
       {!isFullScreenReading && (
         <header className="sticky top-0 z-30 bg-[#090f14]/95 border-b border-slate-800/80 backdrop-blur-md">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-            
-            {/* Logo & Waqf Title */}
-            <div className="flex items-center gap-3">
-              <div
-                onClick={() => setActiveView('mushaf')}
-                className="flex items-center gap-2.5 cursor-pointer group"
-              >
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-lg shadow-emerald-950 font-bold text-xl font-kufi group-hover:scale-105 transition-transform">
-                  ب
-                </div>
-                <div>
-                  <div className="font-bold text-base sm:text-lg text-white font-kufi flex items-center gap-2">
-                    <span>بَيَان</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-sans font-medium">
-                      وقف خيري
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-slate-400 font-sans">
-                    المصحف الرقمي الذكي بالرسم العثماني
-                  </div>
-                </div>
-              </div>
-
-              {/* Quick Surah selector button & Full-Screen quick toggle */}
-              {activeView === 'mushaf' && surahData && (
-                <div className="flex items-center gap-1.5 mr-2">
-                  <button
-                    onClick={() => setIsSurahPickerOpen(true)}
-                    className="py-1.5 px-2.5 sm:px-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-slate-200 font-bold flex items-center gap-1.5 transition-colors shadow-sm"
-                  >
-                    <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>سورة {surahData.meta.name}</span>
-                    <ChevronDown className="w-3 h-3 text-slate-400" />
-                  </button>
-
-                  <button
-                    onClick={() => setIsFullScreenReading(true)}
-                    className="py-1.5 px-2 sm:px-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-xs text-amber-300 font-bold flex items-center gap-1 transition-all"
-                    title="تفعيل وضع ملء الشاشة القرآني (إخفاء كل القوائم لتفرغ القراءة)"
-                  >
-                    <Maximize2 className="w-3.5 h-3.5 text-amber-400" />
-                    <span className="hidden sm:inline">ملء الشاشة</span>
-                  </button>
-                </div>
-              )}
-            </div>
-
-          {/* Center Navigation Tabs (Desktop) */}
-          <nav className="hidden lg:flex items-center gap-1 bg-slate-950/80 p-1 rounded-2xl border border-slate-800/80">
-            {[
-              { id: 'mushaf', label: 'المصحف الشريف', icon: BookOpen },
-              { id: 'ruqyah', label: 'الرقية الشرعية', icon: ShieldCheck },
-              { id: 'memorization', label: 'حلقة الحفظ', icon: Award },
-              { id: 'mood', label: 'القرآن حياتي', icon: Heart },
-              { id: 'analytics', label: 'سجل الختمات', icon: Calendar },
-              { id: 'khatma', label: 'الختمات', icon: Sparkles },
-              { id: 'tajweed', label: 'التجويد', icon: HelpCircle },
-              { id: 'journal', label: 'مفكرتي', icon: PenLine },
-              { id: 'flutter-arch', label: 'هندسة Flutter', icon: Cpu },
-            ].map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeView === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveView(tab.id as ActiveView)}
-                  className={`flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-xs font-semibold transition-all ${
-                    isActive
-                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/30 font-bold'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
-          </nav>
-
-          {/* Right Header Helpers */}
-          <div className="flex items-center gap-2">
-            <PWAInstallButton />
-            <AmbientAudioBar />
-            
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4 sm:gap-6">
+            {/* Zone 1: Brand Wordmark */}
             <button
-              onClick={() => setIsKhatmaPlannerOpen(true)}
-              className="hidden sm:flex items-center gap-1.5 py-1.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-slate-300 transition-colors"
-              title="مخطط الورد والختمة الذكية"
+              type="button"
+              onClick={() => {
+                setActiveView('mushaf');
+                setIsDesktopMoreOpen(false);
+              }}
+              className="flex items-center gap-2.5 cursor-pointer group whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 rounded-xl p-1 -mr-1"
             >
-              <Flame className="w-3.5 h-3.5 text-amber-400" />
-              <span>مخطط الورد</span>
+              <span className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-md shadow-emerald-950/70 font-bold text-lg font-kufi group-hover:scale-105 transition-transform">
+                ب
+              </span>
+              <span className="font-bold text-lg text-white font-kufi tracking-tight">
+                بَيَان
+              </span>
             </button>
-          </div>
 
-        </div>
-      </header>
+            {/* Zone 2: Primary Desktop Navigation + Overflow Menu */}
+            <nav
+              aria-label="التنقل الرئيسي"
+              className="hidden lg:flex items-center gap-1 h-full"
+            >
+              {[
+                { id: 'mushaf', label: 'المصحف الشريف', icon: BookOpen },
+                { id: 'memorization', label: 'حلقة الحفظ', icon: Award },
+                { id: 'ruqyah', label: 'الرقية الشرعية', icon: ShieldCheck },
+                { id: 'khatma', label: 'الختمات', icon: Sparkles },
+              ].map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeView === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveView(tab.id as ActiveView);
+                      setIsDesktopMoreOpen(false);
+                    }}
+                    className={`relative h-full px-3.5 text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
+                      isActive
+                        ? 'text-emerald-300 font-bold'
+                        : 'text-slate-400 hover:text-slate-100'
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5 shrink-0" />
+                    <span>{tab.label}</span>
+                    {isActive && (
+                      <span className="absolute bottom-0 inset-x-2 h-0.5 bg-emerald-400 rounded-full" />
+                    )}
+                  </button>
+                );
+              })}
+
+              {/* Secondary Destinations Dropdown ("المزيد") */}
+              <div ref={desktopMoreRef} className="relative h-full flex items-center">
+                {(() => {
+                  const secondaryTabs: { id: ActiveView; label: string; sub: string; icon: typeof Heart }[] = [
+                    { id: 'mood', label: 'القرآن حياتي', sub: 'آيات بحسب المشاعر والحال', icon: Heart },
+                    { id: 'analytics', label: 'سجل الختمات', sub: 'إحصاءات القراءة والإنجاز', icon: Calendar },
+                    { id: 'tajweed', label: 'موسوعة التجويد', sub: 'أحكام التلاوة والأمثلة', icon: HelpCircle },
+                    { id: 'journal', label: 'مفكرتي', sub: 'ملاحظات التدبر المحفوظة', icon: PenLine },
+                    { id: 'flutter-arch', label: 'هندسة Flutter', sub: 'بنية تطبيق الجوال', icon: Cpu },
+                  ];
+                  const activeSecondary = secondaryTabs.find((t) => t.id === activeView);
+                  return (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setIsDesktopMoreOpen((o) => !o)}
+                        aria-expanded={isDesktopMoreOpen}
+                        aria-haspopup="menu"
+                        className={`relative h-full px-3.5 text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
+                          activeSecondary
+                            ? 'text-emerald-300 font-bold'
+                            : isDesktopMoreOpen
+                            ? 'text-white'
+                            : 'text-slate-400 hover:text-slate-100'
+                        }`}
+                      >
+                        <span>{activeSecondary ? activeSecondary.label : 'المزيد'}</span>
+                        <ChevronDown
+                          className={`w-3.5 h-3.5 transition-transform ${
+                            isDesktopMoreOpen ? 'rotate-180' : ''
+                          }`}
+                        />
+                        {activeSecondary && (
+                          <span className="absolute bottom-0 inset-x-2 h-0.5 bg-emerald-400 rounded-full" />
+                        )}
+                      </button>
+
+                      {isDesktopMoreOpen && (
+                        <div
+                          role="menu"
+                          className="absolute top-full left-0 mt-1.5 w-64 rounded-2xl bg-slate-900 border border-slate-700/80 shadow-2xl p-1.5 z-50 space-y-0.5"
+                        >
+                          {secondaryTabs.map((item) => {
+                            const Icon = item.icon;
+                            const isSelected = activeView === item.id;
+                            return (
+                              <button
+                                key={item.id}
+                                type="button"
+                                role="menuitem"
+                                onClick={() => {
+                                  setActiveView(item.id);
+                                  setIsDesktopMoreOpen(false);
+                                }}
+                                className={`w-full text-right p-2.5 rounded-xl flex items-center gap-3 transition-colors cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/30'
+                                    : 'text-slate-200 hover:bg-slate-800/80 border border-transparent'
+                                }`}
+                              >
+                                <span
+                                  className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                                    isSelected
+                                      ? 'bg-emerald-500/20 text-emerald-300'
+                                      : 'bg-slate-950 text-slate-400'
+                                  }`}
+                                >
+                                  <Icon className="w-4 h-4" />
+                                </span>
+                                <span className="min-w-0">
+                                  <span className="block text-xs font-bold">{item.label}</span>
+                                  <span className="block text-[10px] text-slate-400 truncate">
+                                    {item.sub}
+                                  </span>
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            </nav>
+
+            {/* Zone 3: Utilities & Primary Action */}
+            <div className="flex items-center gap-2 shrink-0">
+              <PWAInstallButton />
+              <AmbientAudioBar />
+
+              <button
+                type="button"
+                onClick={() => setIsKhatmaPlannerOpen(true)}
+                className="flex items-center gap-1.5 py-2 px-3 sm:px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold whitespace-nowrap shrink-0 shadow-sm shadow-emerald-950/60 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+                title="مخطط الورد والختمة الذكية"
+              >
+                <Flame className="w-3.5 h-3.5 shrink-0" />
+                <span className="sm:hidden">الورد</span>
+                <span className="hidden sm:inline">مخطط الورد</span>
+              </button>
+            </div>
+          </div>
+        </header>
       )}
 
       {/* Main Viewport Content */}
       <main className={`flex-1 w-full mx-auto transition-all ${
         isFullScreenReading
           ? 'p-0 max-w-full m-0'
-          : 'max-w-7xl p-4 sm:p-6 pb-40 lg:pb-28'
+          : isAudioBarVisible
+          ? 'max-w-7xl p-3 sm:p-6 pb-52 md:pb-36 lg:pb-28'
+          : 'max-w-7xl p-3 sm:p-6 pb-24 lg:pb-12'
       }`}>
         {activeView === 'mushaf' && (
           <div className="relative">
@@ -456,9 +561,23 @@ export default function App() {
                 currentTime={audioCurrentTime}
                 duration={audioDuration}
                 isFullScreen={isFullScreenReading}
-                onToggleFullScreen={() => setIsFullScreenReading(prev => !prev)}
+                onToggleFullScreen={handleToggleFullScreen}
+                isAudioBarVisible={isAudioBarVisible}
+                onToggleAudioBar={() => setIsAudioBarVisible(prev => !prev)}
+                onOpenSurahPicker={() => {
+                  setPickerTab('surahs');
+                  setIsSurahPickerOpen(true);
+                }}
+                onOpenAyahSearch={() => {
+                  setPickerTab('ayahs');
+                  setIsSurahPickerOpen(true);
+                }}
                 selectedReciter={selectedReciter}
-                onTogglePlayAudio={() => setIsPlayingAudio(prev => !prev)}
+                onTogglePlayAudio={() => {
+                  const next = !isPlayingAudio;
+                  setIsPlayingAudio(next);
+                  if (next) setIsAudioBarVisible(true);
+                }}
               />
             ) : null}
           </div>
@@ -470,8 +589,20 @@ export default function App() {
               ayahs={surahData.ayahs}
               surahNumber={surahData.meta.number}
               surahName={surahData.meta.name}
-              onClose={() => setActiveView('mushaf')}
-              onPlayAyah={handlePlayAyahAudio}
+              onClose={() => {
+                setIsPlayingAudio(false);
+                setActiveView('mushaf');
+              }}
+              onPlayAyah={(ayahNum) => handlePlayAyahAudio(ayahNum)}
+              onPauseAudio={() => setIsPlayingAudio(false)}
+              onFocusAyah={(ayahNum) => setActiveAyahNumber(ayahNum)}
+              activeAudioAyahNumber={activeAyahNumber}
+              isPlayingAudio={isPlayingAudio}
+              repeatTarget={memorizationRepeatTarget}
+              onChangeRepeatTarget={(target) => {
+                setMemorizationRepeatTarget(target);
+              }}
+              currentRepeat={memorizationCurrentRepeat}
             />
           ) : (
             <div className="p-16 text-center rounded-2xl bg-slate-900/40 border border-slate-800 flex flex-col items-center justify-center space-y-3">
@@ -545,8 +676,14 @@ export default function App() {
             }
           }}
           isFullScreen={isFullScreenReading}
+          isVisible={isAudioBarVisible}
+          onHideBar={() => setIsAudioBarVisible(false)}
           selectedReciter={selectedReciter}
           onSelectReciter={(r) => setSelectedReciter(r)}
+          playTriggerNonce={playTriggerNonce}
+          stopAfterAyahMode={activeView === 'memorization'}
+          memorizationRepeatTarget={memorizationRepeatTarget}
+          onMemorizationRepeatChange={setMemorizationCurrentRepeat}
         />
       )}
 
@@ -720,7 +857,7 @@ export default function App() {
               <button
                 onClick={() => {
                   setIsMobileMoreOpen(false);
-                  setIsFullScreenReading(true);
+                  if (!isFullScreenReading) handleToggleFullScreen();
                 }}
                 className="py-1 px-3 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold text-xs flex items-center gap-1 cursor-pointer"
               >
@@ -809,15 +946,15 @@ export default function App() {
                         }`}
                       >
                         <div className="flex items-center gap-2.5">
-                          <span className="w-7 h-7 rounded-lg bg-slate-800/80 text-emerald-400 font-bold text-xs flex items-center justify-center shrink-0">
+                          <span className="w-7 h-7 rounded-lg bg-slate-800/80 text-emerald-400 font-bold text-xs tabular-nums flex items-center justify-center shrink-0">
                             {s.number}
                           </span>
                           <div>
                             <div className="font-bold text-xs text-white">سورة {s.name}</div>
-                            <div className="text-[10px] text-slate-400">{s.revelationTypeAr} • {s.numberOfAyahs} آيات</div>
+                            <div className="text-[10px] text-slate-400 tabular-nums">{s.revelationTypeAr} · {s.numberOfAyahs} آيات</div>
                           </div>
                         </div>
-                        <span className="text-[10px] text-slate-500">جـ{s.juzNumber}</span>
+                        <span className="text-[10px] text-slate-500 tabular-nums">جـ {s.juzNumber}</span>
                       </button>
                     );
                   })}
@@ -936,14 +1073,14 @@ export default function App() {
         onApplyPlan={(plan) => {
           safeLocalStorage.setJSON('bayan_khatma_plan', plan);
           setIsKhatmaPlannerOpen(false);
-          setPlannerToast(`تم اعتماد خطة الختمة المباركة: ${plan.pagesPerDay} صفحات يومياً لإنهاء الختمة في ${plan.targetDays} يوماً ✨`);
+          setPlannerToast(`تم اعتماد خطة الختمة المباركة: ${plan.pagesPerDay} صفحات يومياً لإنهاء الختمة في ${plan.targetDays} يوماً`);
           setTimeout(() => setPlannerToast(null), 4000);
         }}
       />
 
       {/* Planner Success Toast */}
       {plannerToast && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900 border border-emerald-500/50 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 text-xs sm:text-sm animate-in fade-in slide-in-from-top-2">
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900 border border-emerald-500/50 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 text-xs sm:text-sm tabular-nums animate-in fade-in slide-in-from-top-2">
           <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
           <span>{plannerToast}</span>
         </div>

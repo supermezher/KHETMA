@@ -14,6 +14,7 @@ import {
   restoreUserBackupData,
   validateAndParseUserBackup,
 } from '../utils/userBackup';
+import { resolveAudioEndedTransition } from '../components/AudioPlayerBar';
 
 function installMemoryLocalStorage() {
   const store = new Map<string, string>();
@@ -139,3 +140,91 @@ describe('User backup export, validation & restore', () => {
     expect(validateAndParseUserBackup('{invalid-json').ok).toBe(false);
   });
 });
+
+describe('Memorization Loop single-ayah playback & repeat transitions', () => {
+  it('stops cleanly after 1 ayah in memorization mode without advancing through the rest of the Surah', () => {
+    expect(
+      resolveAudioEndedTransition({
+        stopAfterAyahMode: true,
+        memorizationRepeatTarget: 1,
+        repeatMode: 'none',
+        currentRepeatCount: 1,
+        currentAyahNumber: 2,
+        totalAyahs: 7,
+      })
+    ).toEqual({ type: 'stop' });
+  });
+
+  it('repeats the exact same ayah 2 or 3 times when selected, then stops cleanly', () => {
+    // 2x repeat
+    expect(
+      resolveAudioEndedTransition({
+        stopAfterAyahMode: true,
+        memorizationRepeatTarget: 2,
+        repeatMode: 'none',
+        currentRepeatCount: 1,
+        currentAyahNumber: 3,
+        totalAyahs: 7,
+      })
+    ).toEqual({ type: 'replay-same-ayah', nextRepeatCount: 2 });
+
+    expect(
+      resolveAudioEndedTransition({
+        stopAfterAyahMode: true,
+        memorizationRepeatTarget: 2,
+        repeatMode: 'none',
+        currentRepeatCount: 2,
+        currentAyahNumber: 3,
+        totalAyahs: 7,
+      })
+    ).toEqual({ type: 'stop' });
+
+    // 3x repeat
+    expect(
+      resolveAudioEndedTransition({
+        stopAfterAyahMode: true,
+        memorizationRepeatTarget: 3,
+        repeatMode: 'none',
+        currentRepeatCount: 1,
+        currentAyahNumber: 3,
+        totalAyahs: 7,
+      })
+    ).toEqual({ type: 'replay-same-ayah', nextRepeatCount: 2 });
+
+    expect(
+      resolveAudioEndedTransition({
+        stopAfterAyahMode: true,
+        memorizationRepeatTarget: 3,
+        repeatMode: 'none',
+        currentRepeatCount: 2,
+        currentAyahNumber: 3,
+        totalAyahs: 7,
+      })
+    ).toEqual({ type: 'replay-same-ayah', nextRepeatCount: 3 });
+
+    expect(
+      resolveAudioEndedTransition({
+        stopAfterAyahMode: true,
+        memorizationRepeatTarget: 3,
+        repeatMode: 'none',
+        currentRepeatCount: 3,
+        currentAyahNumber: 3,
+        totalAyahs: 7,
+      })
+    ).toEqual({ type: 'stop' });
+  });
+
+  it('continues advancing sequentially only when outside memorization mode', () => {
+    expect(
+      resolveAudioEndedTransition({
+        stopAfterAyahMode: false,
+        memorizationRepeatTarget: 1,
+        repeatMode: 'none',
+        currentRepeatCount: 1,
+        currentAyahNumber: 2,
+        totalAyahs: 7,
+      })
+    ).toEqual({ type: 'advance-next-ayah', nextAyahNumber: 3 });
+  });
+});
+

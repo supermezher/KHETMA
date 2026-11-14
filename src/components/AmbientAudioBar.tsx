@@ -47,19 +47,20 @@ export const AmbientAudioBar: React.FC = () => {
   return (
     <div ref={containerRef} className="relative">
       <button
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-xs font-semibold border transition-all ${
+        className={`flex items-center gap-1.5 py-2 px-3 rounded-xl text-xs font-semibold border transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
           activeSound !== 'none'
-            ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 shadow-sm animate-pulse'
-            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+            ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-300'
+            : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
         }`}
         title="أجواء التدبر والتركيز (أصوات طبيعية هادئة)"
       >
         {activeSound === 'rain' && <CloudRain className="w-3.5 h-3.5" />}
         {activeSound === 'breeze' && <Wind className="w-3.5 h-3.5" />}
         {activeSound === 'night' && <Moon className="w-3.5 h-3.5" />}
-        {activeSound === 'none' && <Volume2 className="w-3.5 h-3.5" />}
-        <span>{activeSound !== 'none' ? 'أجواء التدبر تعمل' : 'أجواء التدبر'}</span>
+        {activeSound === 'none' && <Volume2 className="w-3.5 h-3.5 text-slate-400" />}
+        <span className="hidden xl:inline">{activeSound !== 'none' ? 'أجواء التدبر' : 'أجواء هادئة'}</span>
       </button>
 
       {isOpen && (

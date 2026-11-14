@@ -26,9 +26,25 @@ function resolveRoomId(req: express.Request): string {
   return normalizeRoomId((req.body && req.body.roomId) || req.query.roomId || DEFAULT_ROOM_ID);
 }
 
+function getCliArg(flag: string): string | undefined {
+  const idx = process.argv.indexOf(flag);
+  if (idx !== -1 && idx + 1 < process.argv.length) {
+    return process.argv[idx + 1];
+  }
+  const eqArg = process.argv.find((a) => a.startsWith(`${flag}=`));
+  if (eqArg) {
+    return eqArg.slice(flag.length + 1);
+  }
+  return undefined;
+}
+
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  const cliPort = getCliArg('--port');
+  const cliHost = getCliArg('--host');
+  const parsedPort = cliPort ? parseInt(cliPort, 10) : process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  const PORT = Number.isFinite(parsedPort) && parsedPort > 0 ? parsedPort : 3000;
+  const HOST = cliHost || process.env.HOST || '0.0.0.0';
   const isProduction = process.env.NODE_ENV === 'production';
 
   app.use(express.json());
@@ -337,7 +353,7 @@ async function startServer() {
   // ---------------------------------------------------------------------------
   if (!isProduction) {
     const hmrEnabled = process.env.DISABLE_HMR !== 'true';
-    const vite = await createViteServer({
+    const vitePromise = createViteServer({
       server: {
         middlewareMode: true,
         hmr: hmrEnabled,
@@ -350,6 +366,7 @@ async function startServer() {
       // When HMR is disabled (e.g. DISABLE_HMR=true), prevent @vite/client from opening a failing WebSocket to port 24678
       app.get('/@vite/client', async (_req, res, next) => {
         try {
+          const vite = await vitePromise;
           const result = await vite.transformRequest('/@vite/client');
           if (result && typeof result.code === 'string') {
             const safeCode = result.code.replace(
@@ -367,7 +384,14 @@ async function startServer() {
       });
     }
 
-    app.use(vite.middlewares);
+    app.use(async (req, res, next) => {
+      try {
+        const vite = await vitePromise;
+        vite.middlewares(req, res, next);
+      } catch (err) {
+        next(err);
+      }
+    });
   } else {
     app.use(express.static(path.resolve(process.cwd(), 'dist')));
     app.get('*', (req, res) => {
@@ -375,8 +399,8 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Bayan Quran Full-Stack server running at http://0.0.0.0:${PORT}`);
+  app.listen(PORT, HOST, () => {
+    console.log(`Bayan Quran Full-Stack server running at http://${HOST}:${PORT}`);
   });
 }
 

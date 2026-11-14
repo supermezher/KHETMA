@@ -2,7 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Ayah, sanitizeAyahText } from '../data/quranService';
 import { safeLocalStorage } from '../utils/safeStorage';
 import { formatLocalDate, addDaysLocal } from '../data/faithAnalyticsService';
-import { Eye, EyeOff, RotateCcw, CheckCircle2, Award, ChevronLeft, ChevronRight, Volume2, BrainCircuit, CalendarClock } from 'lucide-react';
+import { Eye, EyeOff, RotateCcw, CheckCircle2, Award, ChevronLeft, ChevronRight, Volume2, Pause, BrainCircuit, CalendarClock } from 'lucide-react';
+
+export type MemorizationRepeatTarget = 1 | 2 | 3 | 'loop';
 
 interface MemorizationModeProps {
   ayahs: Ayah[];
@@ -10,6 +12,13 @@ interface MemorizationModeProps {
   surahName: string;
   onClose: () => void;
   onPlayAyah: (ayahNum: number) => void;
+  onPauseAudio?: () => void;
+  onFocusAyah?: (ayahNum: number) => void;
+  activeAudioAyahNumber?: number;
+  isPlayingAudio?: boolean;
+  repeatTarget?: MemorizationRepeatTarget;
+  onChangeRepeatTarget?: (target: MemorizationRepeatTarget) => void;
+  currentRepeat?: number;
 }
 
 type HidePattern = 'first-word-only' | 'alternate-words' | 'all-blank';
@@ -55,14 +64,23 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
   surahName,
   onClose,
   onPlayAyah,
+  onPauseAudio,
+  onFocusAyah,
+  activeAudioAyahNumber,
+  isPlayingAudio = false,
+  repeatTarget: propRepeatTarget,
+  onChangeRepeatTarget: propOnChangeRepeatTarget,
+  currentRepeat: propCurrentRepeat,
 }) => {
   const [studyTab, setStudyTab] = useState<StudyTab>('recite');
   const [onlyDueFilter, setOnlyDueFilter] = useState<boolean>(false);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [hidePattern, setHidePattern] = useState<HidePattern>('first-word-only');
   const [revealedWordIndices, setRevealedWordIndices] = useState<Set<number>>(new Set());
-  const [repeatCount] = useState(3);
-  const [currentRepeat, setCurrentRepeat] = useState(1);
+  const [internalRepeatTarget, setInternalRepeatTarget] = useState<MemorizationRepeatTarget>(1);
+  const repeatTarget = propRepeatTarget ?? internalRepeatTarget;
+  const setRepeatTarget = propOnChangeRepeatTarget ?? setInternalRepeatTarget;
+  const currentRepeat = propCurrentRepeat ?? 1;
 
   const [srsMap, setSrsMap] = useState<Record<string, SrsRecord>>(() => {
     return safeLocalStorage.getJSON<Record<string, SrsRecord>>(SRS_STORAGE_KEY, {});
@@ -72,6 +90,13 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
   const [quizIndex, setQuizIndex] = useState(0);
   const [selectedOptionAyah, setSelectedOptionAyah] = useState<number | null>(null);
   const [quizScore, setQuizScore] = useState({ correct: 0, total: 0 });
+
+  useEffect(() => {
+    setCurrentIdx(0);
+    setRevealedWordIndices(new Set());
+    setQuizIndex(0);
+    setSelectedOptionAyah(null);
+  }, [surahNumber]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -114,19 +139,32 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
   const words = cleanText.trim() ? cleanText.trim().split(/\s+/) : [];
   const currentRecord = srsMap[`${surahNumber}:${currentAyah.numberInSurah}`];
 
+  const isCurrentAyahPlaying = Boolean(
+    isPlayingAudio && activeAudioAyahNumber === currentAyah.numberInSurah
+  );
+
+  const selectAyahIndex = (nextIdx: number) => {
+    if (nextIdx < 0 || nextIdx >= activeAyahList.length) return;
+    if (isPlayingAudio) {
+      onPauseAudio?.();
+    }
+    setCurrentIdx(nextIdx);
+    setRevealedWordIndices(new Set());
+    const nextAyah = activeAyahList[nextIdx];
+    if (nextAyah) {
+      onFocusAyah?.(nextAyah.numberInSurah);
+    }
+  };
+
   const handleNextAyah = () => {
     if (safeIdx < activeAyahList.length - 1) {
-      setCurrentIdx(safeIdx + 1);
-      setRevealedWordIndices(new Set());
-      setCurrentRepeat(1);
+      selectAyahIndex(safeIdx + 1);
     }
   };
 
   const handlePrevAyah = () => {
     if (safeIdx > 0) {
-      setCurrentIdx(safeIdx - 1);
-      setRevealedWordIndices(new Set());
-      setCurrentRepeat(1);
+      selectAyahIndex(safeIdx - 1);
     }
   };
 
@@ -191,16 +229,14 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
+    <section
       aria-label="حلقة التسميع وتثبيت الحفظ"
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+      className="max-w-4xl mx-auto animate-in fade-in duration-200"
     >
-      <div className="relative w-full max-w-3xl max-h-[92vh] bg-slate-900 border border-emerald-800/50 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="w-full bg-slate-900/95 border border-slate-800 rounded-2xl shadow-xl flex flex-col overflow-hidden">
 
         {/* Header */}
-        <div className="p-4 sm:p-5 border-b border-slate-800 bg-gradient-to-r from-emerald-950/60 to-slate-900 flex flex-wrap items-center justify-between gap-3">
+        <div className="p-4 sm:p-5 border-b border-slate-800 bg-slate-900/80 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
               <Award className="w-5 h-5" />
@@ -279,6 +315,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => {
+                    if (isPlayingAudio) onPauseAudio?.();
                     setOnlyDueFilter(!onlyDueFilter);
                     setCurrentIdx(0);
                     setRevealedWordIndices(new Set());
@@ -311,8 +348,19 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
 
             {/* Main Testing Canvas */}
             <div className="p-6 sm:p-8 flex-1 overflow-y-auto flex flex-col items-center justify-center min-h-[250px] text-center select-none bg-radial from-slate-900 to-slate-950">
-              <div className="text-xs text-emerald-400/90 mb-3 font-semibold flex items-center gap-2 tabular-nums">
-                <span>الآية {currentAyah.numberInSurah} ({safeIdx + 1} من {activeAyahList.length})</span>
+              <div className="text-xs text-emerald-400/90 mb-3 font-semibold flex flex-wrap items-center justify-center gap-2 tabular-nums">
+                <select
+                  aria-label="اختيار رقم الآية"
+                  value={safeIdx}
+                  onChange={(e) => selectAyahIndex(Number(e.target.value))}
+                  className="bg-slate-900 border border-emerald-500/30 rounded-lg px-2.5 py-1 text-emerald-300 font-semibold outline-none cursor-pointer hover:border-emerald-400"
+                >
+                  {activeAyahList.map((a, idx) => (
+                    <option key={a.numberInSurah} value={idx}>
+                      الآية {a.numberInSurah} ({idx + 1} من {activeAyahList.length})
+                    </option>
+                  ))}
+                </select>
                 {currentRecord && (
                   <span className="text-slate-400 font-normal">
                     · المراجعة القادمة: {currentRecord.nextReviewDate}
@@ -356,66 +404,129 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
             </div>
 
             {/* Spaced Repetition Footer */}
-            <div className="p-4 sm:p-5 border-t border-slate-800 bg-slate-950 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => onPlayAyah(currentAyah.numberInSurah)}
-                  className="p-2.5 rounded-xl bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 transition-colors flex items-center gap-1.5 text-xs font-bold cursor-pointer"
-                >
-                  <Volume2 className="w-4 h-4" />
-                  <span>استماع</span>
-                </button>
-
-                <div className="flex items-center gap-1.5 text-xs text-slate-400 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800 tabular-nums">
-                  <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
-                  <span>التكرار:</span>
+            <div className="p-4 sm:p-5 border-t border-slate-800 bg-slate-950 flex flex-col gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
-                    onClick={() => setCurrentRepeat((prev) => (prev >= repeatCount ? 1 : prev + 1))}
-                    className="font-bold text-white bg-slate-800 hover:bg-slate-700 px-2 py-0.5 rounded cursor-pointer"
+                    type="button"
+                    onClick={() => {
+                      if (isCurrentAyahPlaying) {
+                        onPauseAudio?.();
+                      } else {
+                        onPlayAyah(currentAyah.numberInSurah);
+                      }
+                    }}
+                    className={`py-2 px-3.5 rounded-xl transition-colors flex items-center gap-1.5 text-xs font-bold cursor-pointer border ${
+                      isCurrentAyahPlaying
+                        ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 hover:bg-amber-500/30'
+                        : 'bg-emerald-600/20 border-emerald-500/40 text-emerald-400 hover:bg-emerald-600/30'
+                    }`}
                   >
-                    {currentRepeat} / {repeatCount}
+                    {isCurrentAyahPlaying ? (
+                      <>
+                        <Pause className="w-4 h-4" />
+                        <span>إيقاف مؤقت</span>
+                      </>
+                    ) : (
+                      <>
+                        <Volume2 className="w-4 h-4" />
+                        <span>استماع للآية</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => onPlayAyah(currentAyah.numberInSurah)}
+                    title="إعادة تشغيل الآية من البداية"
+                    className="py-2 px-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white transition-colors flex items-center gap-1 text-xs font-medium cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>إعادة</span>
+                  </button>
+
+                  <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800 text-[11px] tabular-nums">
+                    <span className="text-slate-400 px-1.5">التكرار:</span>
+                    {(
+                      [
+                        { value: 1, label: 'مرة' },
+                        { value: 2, label: 'مرتان' },
+                        { value: 3, label: '3 مرات' },
+                        { value: 'loop', label: '∞ مستمر' },
+                      ] as const
+                    ).map((opt) => {
+                      const selected = repeatTarget === opt.value;
+                      return (
+                        <button
+                          key={String(opt.value)}
+                          type="button"
+                          onClick={() => setRepeatTarget(opt.value)}
+                          className={`px-2 py-1 rounded-lg font-bold transition-colors cursor-pointer ${
+                            selected
+                              ? 'bg-amber-500 text-slate-950 shadow-sm'
+                              : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {isCurrentAyahPlaying && (
+                    <span className="text-[11px] text-emerald-300 bg-emerald-950/60 border border-emerald-500/30 px-2.5 py-1 rounded-lg tabular-nums">
+                      {repeatTarget === 'loop'
+                        ? 'تكرار مستمر للآية الحالية'
+                        : `القراءة ${currentRepeat} من ${repeatTarget} · يتوقف بعد الآية`}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handlePrevAyah}
+                    disabled={safeIdx === 0}
+                    title="الآية السابقة"
+                    className="p-2 rounded-xl bg-slate-800 text-slate-300 disabled:opacity-40 hover:bg-slate-700 transition-colors cursor-pointer"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNextAyah}
+                    disabled={safeIdx === activeAyahList.length - 1}
+                    title="الآية التالية"
+                    className="p-2 rounded-xl bg-slate-800 text-slate-300 disabled:opacity-40 hover:bg-slate-700 transition-colors cursor-pointer"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
                   </button>
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center justify-center gap-1.5 text-xs">
-                <span className="text-slate-400 ml-1">تقييم الحفظ:</span>
-                <button
-                  onClick={() => setAyahMastery('needs-review')}
-                  className="py-1.5 px-3 rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-300 hover:bg-rose-500/30 font-medium transition-colors cursor-pointer"
-                >
-                  تثبيت (غداً)
-                </button>
-                <button
-                  onClick={() => setAyahMastery('good')}
-                  className="py-1.5 px-3 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 font-medium transition-colors cursor-pointer"
-                >
-                  جيد (مضاعف)
-                </button>
-                <button
-                  onClick={() => setAyahMastery('mastered')}
-                  className="py-1.5 px-3 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/30 font-medium transition-colors flex items-center gap-1 cursor-pointer"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>متقن (متباعد)</span>
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handlePrevAyah}
-                  disabled={safeIdx === 0}
-                  className="p-2 rounded-xl bg-slate-800 text-slate-300 disabled:opacity-40 hover:bg-slate-700 transition-colors cursor-pointer"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={handleNextAyah}
-                  disabled={safeIdx === activeAyahList.length - 1}
-                  className="p-2 rounded-xl bg-slate-800 text-slate-300 disabled:opacity-40 hover:bg-slate-700 transition-colors cursor-pointer"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
+              <div className="flex flex-wrap items-center justify-center sm:justify-between gap-2 pt-2 border-t border-slate-800/70 text-xs">
+                <div className="flex flex-wrap items-center justify-center gap-1.5">
+                  <span className="text-slate-400 ml-1">تقييم الحفظ:</span>
+                  <button
+                    onClick={() => setAyahMastery('needs-review')}
+                    className="py-1.5 px-3 rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-300 hover:bg-rose-500/30 font-medium transition-colors cursor-pointer"
+                  >
+                    تثبيت (غداً)
+                  </button>
+                  <button
+                    onClick={() => setAyahMastery('good')}
+                    className="py-1.5 px-3 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 font-medium transition-colors cursor-pointer"
+                  >
+                    جيد (مضاعف)
+                  </button>
+                  <button
+                    onClick={() => setAyahMastery('mastered')}
+                    className="py-1.5 px-3 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/30 font-medium transition-colors flex items-center gap-1 cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>متقن (متباعد)</span>
+                  </button>
+                </div>
               </div>
             </div>
           </>
@@ -483,6 +594,6 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
         )}
 
       </div>
-    </div>
+    </section>
   );
 };
