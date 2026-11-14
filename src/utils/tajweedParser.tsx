@@ -48,6 +48,7 @@ export const TANZIL_RULE_MAP: Record<string, { rule: TajweedRuleType; tooltip: s
   m: { rule: 'madd-lazim', tooltip: 'مد لازم كلمي أو حرفي مشبع (6 حركات وجوباً)' },
   p: { rule: 'madd-arid', tooltip: 'مد عارض للسكون (2 - 4 - 6 حركات عند الوقف)' },
   n: { rule: 'madd-tabeei', tooltip: 'مد طبيعي بمقدار حركتين' },
+  k: { rule: 'tafkheem', tooltip: 'حرف مفخم مستعلٍ (خص ضغط قظ) أو راء/لام مفخمة' },
 };
 
 const COMBINING_MARK_RE = /[\u064B-\u065F\u0670\u06D6-\u06ED\u200C]/;

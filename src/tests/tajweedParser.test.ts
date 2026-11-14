@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { TAJWEED_RULES, TAJWEED_QUIZ } from '../data/tajweedRules';
 import {
   TANZIL_RULE_MAP,
   alignUthmaniWithTajweed,
@@ -62,5 +63,40 @@ describe('Tajweed alignment & Uthmani script fidelity', () => {
   it('never starts a token span with a bare combining diacritic', () => {
     const clusters = splitArabicGraphemeClusters('ٱلصَّلَوٰةَ');
     expect(clusters.every((cl) => !/^[\u064B-\u065F\u0670]/.test(cl))).toBe(true);
+  });
+
+  it('aligns every TajweedEncyclopedia rule example cleanly with authentic Uthmani text and target rules', () => {
+    for (const rule of TAJWEED_RULES) {
+      expect(rule.examples.length).toBeGreaterThanOrEqual(2);
+      for (const ex of rule.examples) {
+        const aligned = alignUthmaniWithTajweed(ex.uthmani, ex.tajweedText);
+        const reconstructed = aligned.map((w) => w.map((t) => t.text).join('')).join(' ');
+        expect(reconstructed).toBe(ex.uthmani);
+
+        if (rule.ruleTypes.length > 0) {
+          const hasExpectedRule = aligned.some((w) =>
+            w.some((tok) => tok.rule && rule.ruleTypes.includes(tok.rule))
+          );
+          expect(hasExpectedRule).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('validates all interactive quiz spot-word examples and target word indices', () => {
+    const spotQuestions = TAJWEED_QUIZ.filter((q) => q.type === 'spot-word');
+    expect(spotQuestions.length).toBeGreaterThanOrEqual(3);
+    for (const q of spotQuestions) {
+      expect(q.spotAyah).toBeDefined();
+      if (q.spotAyah) {
+        const aligned = alignUthmaniWithTajweed(q.spotAyah.uthmani, q.spotAyah.tajweedText);
+        const reconstructed = aligned.map((w) => w.map((t) => t.text).join('')).join(' ');
+        expect(reconstructed).toBe(q.spotAyah.uthmani);
+        for (const targetIdx of q.spotAyah.targetWordIndices) {
+          expect(targetIdx).toBeGreaterThanOrEqual(0);
+          expect(targetIdx).toBeLessThan(aligned.length);
+        }
+      }
+    }
   });
 });

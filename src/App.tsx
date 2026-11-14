@@ -634,7 +634,10 @@ export default function App() {
         )}
 
         {activeView === 'tajweed' && (
-          <TajweedEncyclopedia />
+          <TajweedEncyclopedia
+            selectedReciter={selectedReciter}
+            onNavigateToAyah={handleNavigateToAyah}
+          />
         )}
 
         {activeView === 'journal' && (
