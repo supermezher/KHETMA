@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { sanitizeAyahText } from '../data/quranService';
+import { cleanupLegacySurahLocalStorage, sanitizeAyahText } from '../data/quranService';
 import { normalizeArabicText } from '../utils/arabicNormalize';
 import {
   addDaysLocal,
@@ -11,10 +11,13 @@ import {
 import { computeNextSrsState } from '../components/MemorizationMode';
 import {
   buildUserBackupPayload,
+  READER_PREFS_KEY,
   restoreUserBackupData,
+  sanitizeJournalNotesList,
   validateAndParseUserBackup,
 } from '../utils/userBackup';
 import { resolveAudioEndedTransition } from '../components/AudioPlayerBar';
+import { toArabicIndic } from '../components/khatma/KhatmaRing';
 
 function installMemoryLocalStorage() {
   const store = new Map<string, string>();
@@ -115,15 +118,18 @@ describe('User backup export, validation & restore', () => {
     installMemoryLocalStorage();
   });
 
-  it('exports, validates, and restores notes, bookmarks, and SRS cards cleanly', () => {
+  it('exports, validates, and restores notes, bookmarks, readerPrefs, and SRS cards cleanly', async () => {
     window.localStorage.setItem(
       'bayan_journal_notes',
       JSON.stringify([{ ayahId: 1, surahNumber: 1, surahName: 'الفاتحة', ayahNumber: 1, text: 'خاطرة', date: '2026-03-10' }])
     );
     window.localStorage.setItem('bayan_bookmark_2', '255');
     window.localStorage.setItem('bayan_memorization_srs_v2', JSON.stringify({ '1:1': { status: 'mastered', intervalDays: 7, nextReviewDate: '2026-03-17', repetitions: 1, lastReviewedAt: '2026-03-10' } }));
+    window.localStorage.setItem(READER_PREFS_KEY, JSON.stringify({ fontSize: 30, theme: 'parchment', isTajweedActive: true }));
 
     const backup = buildUserBackupPayload();
+    expect(backup.version).toBe(2);
+    expect(backup.readerPrefs).toEqual({ fontSize: 30, theme: 'parchment', isTajweedActive: true });
     const raw = JSON.stringify(backup);
 
     // Clear storage and validate round-trip restore
@@ -131,13 +137,50 @@ describe('User backup export, validation & restore', () => {
     const parsed = validateAndParseUserBackup(raw);
     expect(parsed.ok).toBe(true);
     if (parsed.ok) {
-      const counts = restoreUserBackupData(parsed.data);
-      expect(counts).toEqual({ notesCount: 1, bookmarksCount: 1, srsCount: 1 });
+      const counts = await restoreUserBackupData(parsed.data);
+      expect(counts).toEqual({ notesCount: 1, bookmarksCount: 1, srsCount: 1, persistedOk: true });
       expect(window.localStorage.getItem('bayan_bookmark_2')).toBe('255');
+      expect(JSON.parse(window.localStorage.getItem(READER_PREFS_KEY) || '{}')).toEqual({
+        fontSize: 30,
+        theme: 'parchment',
+        isTajweedActive: true,
+      });
     }
 
     expect(validateAndParseUserBackup('{"app":"other"}').ok).toBe(false);
     expect(validateAndParseUserBackup('{invalid-json').ok).toBe(false);
+  });
+
+  it('filters malformed journal entries during sanitizeJournalNotesList and cleans legacy surah caches', () => {
+    const cleaned = sanitizeJournalNotesList([
+      null,
+      { ayahId: 0, text: 'invalid ayah' },
+      { ayahId: 12, text: '   ' },
+      { ayahId: 255, surahNumber: 2, surahName: 'البقرة', ayahNumber: 255, text: ' آية الكرسي ', date: '2026-03-10' },
+    ]);
+    expect(cleaned).toEqual([
+      {
+        ayahId: 255,
+        surahNumber: 2,
+        surahName: 'البقرة',
+        ayahNumber: 255,
+        text: 'آية الكرسي',
+        date: '2026-03-10',
+      },
+    ]);
+
+    window.localStorage.setItem('bayan_surah_cache_2', '{"big":"json"}');
+    window.localStorage.setItem('bayan_bookmark_2', '255');
+    cleanupLegacySurahLocalStorage();
+    expect(window.localStorage.getItem('bayan_surah_cache_2')).toBeNull();
+    expect(window.localStorage.getItem('bayan_bookmark_2')).toBe('255');
+  });
+
+  it('formats numbers as Arabic-Indic numerals cleanly', () => {
+    expect(toArabicIndic(0)).toBe('٠');
+    expect(toArabicIndic(1)).toBe('١');
+    expect(toArabicIndic(30)).toBe('٣٠');
+    expect(toArabicIndic(286)).toBe('٢٨٦');
   });
 });
 

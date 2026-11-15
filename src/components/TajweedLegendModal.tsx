@@ -8,7 +8,6 @@ interface TajweedLegendModalProps {
 }
 
 export const TajweedLegendModal: React.FC<TajweedLegendModalProps> = ({ isOpen, onClose }) => {
-  // Keyboard accessibility: close on Escape
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -30,22 +29,24 @@ export const TajweedLegendModal: React.FC<TajweedLegendModalProps> = ({ isOpen, 
       aria-labelledby="tajweed-legend-title"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
     >
-      <div className="relative w-full max-w-xl bg-slate-900 border border-emerald-800/40 rounded-2xl shadow-2xl p-5 sm:p-6 space-y-4 max-h-[85vh] overflow-y-auto">
+      <div className="relative w-full max-w-xl bg-[#10161f] border border-[#D9B45A]/30 rounded-2xl shadow-2xl p-5 sm:p-6 space-y-4 max-h-[85vh] overflow-y-auto">
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-          <div className="flex items-center gap-2.5 text-emerald-400 font-bold">
+          <div className="flex items-center gap-2.5 text-[#D9B45A] font-bold">
             <Sparkles className="w-5 h-5" />
-            <h3 id="tajweed-legend-title" className="text-base sm:text-lg text-white">دليل ألوان التجويد القياسي</h3>
+            <h3 id="tajweed-legend-title" className="text-base sm:text-lg text-[#F6EFDD]">دليل ألوان التجويد القياسي</h3>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            aria-label="إغلاق الدليل"
+            className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <p className="text-xs text-slate-300 leading-relaxed">
-          نظام التلوين المعتمد في مصحف "بيان" يطابق المصاحف الشريفة الملونة لتعليم الترتيل وتطبيق الأحكام دون عناء:
+          نظام التلوين المعتمد في مصحف «بيان» يطابق المصاحف الشريفة الملونة لتعليم الترتيل وتطبيق الأحكام دون عناء — اللون الأخضر مخصص لأحكام الغنة والإدغام والإخفاء فقط:
         </p>
 
         <div className="space-y-2.5">
@@ -60,12 +61,12 @@ export const TajweedLegendModal: React.FC<TajweedLegendModalProps> = ({ isOpen, 
               />
               <div className="flex-1">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-white text-xs sm:text-sm">{rule.name}</span>
-                  <span className="text-[11px] text-emerald-400 font-mono">{rule.mizan}</span>
+                  <span className="font-bold text-[#F6EFDD] text-xs sm:text-sm">{rule.name}</span>
+                  <span className="text-[11px] text-[#D9B45A] font-mono">{rule.mizan}</span>
                 </div>
-                <p className="text-xs text-slate-400 mt-0.5">{rule.definition}</p>
-                <div className="mt-1 text-xs text-slate-300 font-quran">
-                  مثال: <span className="text-emerald-200">{rule.exampleQuran}</span>
+                <p className="text-xs text-slate-300 mt-0.5">{rule.definition}</p>
+                <div className="mt-1 text-sm text-[#F6EFDD] font-quran">
+                  مثال: <span style={{ color: rule.colorHex }}>{rule.exampleQuran}</span>
                 </div>
               </div>
             </div>
@@ -74,8 +75,9 @@ export const TajweedLegendModal: React.FC<TajweedLegendModalProps> = ({ isOpen, 
 
         <div className="pt-2 text-center">
           <button
+            type="button"
             onClick={onClose}
-            className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition-colors"
+            className="w-full min-h-[44px] py-2.5 bg-[#1F3A6E] hover:bg-[#2E5499] border border-[#648CD4]/40 text-[#F6EFDD] font-bold rounded-xl text-xs transition-colors cursor-pointer"
           >
             فهمت، العودة للمصحف
           </button>

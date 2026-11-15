@@ -5,25 +5,25 @@ import {
   createKhatmaDatabase,
   DEFAULT_ROOM_ID,
   isValidJuzNumber,
-  hashPin,
-  verifyPinHash,
-  PinRateLimiter,
+  generateCapabilitySecret,
+  hashSecret,
+  verifySecretHash,
+  SecretRateLimiter,
   normalizeRoomId,
+  sanitizePartsForClient,
 } from './src/server/khatmaStore';
 
 const khatmaDb = createKhatmaDatabase();
-const pinRateLimiter = new PinRateLimiter(5, 5 * 60 * 1000);
+const adminRateLimiter = new SecretRateLimiter(5, 5 * 60 * 1000);
+const roomCreateRateLimiter = new SecretRateLimiter(6, 60 * 60 * 1000);
 
 function getClientIp(req: express.Request): string {
-  const fwd = req.headers['x-forwarded-for'];
-  if (typeof fwd === 'string' && fwd.trim()) {
-    return fwd.split(',')[0].trim();
-  }
-  return req.ip || 'local';
+  return req.ip || req.socket?.remoteAddress || '127.0.0.1';
 }
 
-function resolveRoomId(req: express.Request): string {
-  return normalizeRoomId((req.body && req.body.roomId) || req.query.roomId || DEFAULT_ROOM_ID);
+function resolveRoomId(req: express.Request): string | null {
+  const raw = (req.body && req.body.roomId) ?? req.query.roomId ?? DEFAULT_ROOM_ID;
+  return normalizeRoomId(raw);
 }
 
 function getCliArg(flag: string): string | undefined {
@@ -47,71 +47,114 @@ async function startServer() {
   const HOST = cliHost || process.env.HOST || '0.0.0.0';
   const isProduction = process.env.NODE_ENV === 'production';
 
-  app.use(express.json());
+  app.disable('x-powered-by');
+  app.set('trust proxy', 1);
+  app.use(express.json({ limit: '64kb' }));
+
+  // Baseline Security Headers
+  app.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    next();
+  });
+
+  // Never expose server code, .env, or persistent khatma database files
+  app.use((req, res, next) => {
+    const lowerPath = req.path.toLowerCase();
+    if (
+      lowerPath.startsWith('/data') ||
+      lowerPath.startsWith('/.env') ||
+      lowerPath === '/server.ts' ||
+      lowerPath.startsWith('/src/server')
+    ) {
+      return res.status(403).json({ success: false, error: 'غير مصرح بالوصول' });
+    }
+    next();
+  });
 
   // ---------------------------------------------------------------------------
-  // API ROUTES FOR MULTI-ROOM SHARED COLLECTIVE KHATMA
+  // API ROUTES FOR MULTI-ROOM COLLECTIVE KHATMA (CAPABILITY TOKEN SECURITY)
   // ---------------------------------------------------------------------------
 
-  // 0. List active Khatma rooms (public metadata only, never returns PIN hashes)
-  app.get('/api/khatma/rooms', (req, res) => {
+  // 0. List ONLY public room summaries (private rooms are strictly unlisted)
+  app.get('/api/khatma/rooms', (_req, res) => {
     res.json({
       success: true,
-      rooms: khatmaDb.listRoomSummaries(),
+      rooms: khatmaDb.listPublicRoomSummaries(),
     });
   });
 
-  // 0b. Create a new private/shared Khatma room with mandatory custom PIN
+  // 0b. Create a new unlisted private/shared Khatma room (issues 128-bit secret adminKey once)
   app.post('/api/khatma/rooms', (req, res) => {
-    const { requestedSlug, dedicationTitle, creatorName, deadlineDays, pin } = req.body || {};
+    const clientIp = getClientIp(req);
+    const rateKey = `create:${clientIp}`;
+    const limitCheck = roomCreateRateLimiter.check(rateKey);
+    if (!limitCheck.allowed) {
+      return res.status(429).json({
+        success: false,
+        error: `تم تجاوز حد إنشاء الغرف مؤقتاً. يرجى المحاولة بعد ${limitCheck.retryAfterSec} ثانية`,
+      });
+    }
+
+    const { requestedSlug, dedicationTitle, creatorName, deadlineDays, adminSecret } = req.body || {};
     const result = khatmaDb.createRoom({
       requestedSlug,
       dedicationTitle,
       creatorName,
       deadlineDays,
-      pin,
+      adminSecret,
     });
 
     if (!result.ok) {
       return res.status(result.status).json({ success: false, error: result.error });
     }
 
-    const room = result.room;
+    roomCreateRateLimiter.recordFailure(rateKey);
+    const { room, adminKey } = result;
     return res.status(201).json({
       success: true,
       roomId: room.roomId,
+      isPublic: room.isPublic,
       dedicationTitle: room.dedicationTitle,
       creatorName: room.creatorName,
       deadlineDays: room.deadlineDays,
-      parts: room.parts,
+      parts: sanitizePartsForClient(room.parts),
       updatedAt: room.updatedAt,
-      isDefaultPin: false,
+      adminKey, // Returned ONCE upon creation so creator saves/shares the secret supervisor link
     });
   });
 
   // 1. Get Live Khatma State for a Room
   app.get('/api/khatma', (req, res) => {
     const roomId = resolveRoomId(req);
+    if (!roomId) {
+      return res.status(400).json({ success: false, error: 'معرف الغرفة غير صالح' });
+    }
     const room = khatmaDb.getRoom(roomId);
     if (!room) {
       return res.status(404).json({ success: false, error: 'لم يتم العثور على الختمة المطلوبة' });
     }
 
-    res.json({
+    return res.json({
       success: true,
       roomId: room.roomId,
+      isPublic: room.isPublic,
       dedicationTitle: room.dedicationTitle,
       creatorName: room.creatorName,
       deadlineDays: room.deadlineDays,
-      parts: room.parts,
+      parts: sanitizePartsForClient(room.parts),
       updatedAt: room.updatedAt,
-      isDefaultPin: room.roomId === DEFAULT_ROOM_ID && verifyPinHash('1234', room.adminPinHash),
     });
   });
 
-  // 2. Claim a Juz
+  // 2. Claim a Juz (Issues a per-claim 128-bit secret claimToken once)
   app.post('/api/khatma/claim', (req, res) => {
     const roomId = resolveRoomId(req);
+    if (!roomId) {
+      return res.status(400).json({ success: false, error: 'معرف الغرفة غير صالح' });
+    }
     const room = khatmaDb.getRoom(roomId);
     if (!room) {
       return res.status(404).json({ success: false, error: 'الختمة غير موجودة' });
@@ -133,27 +176,38 @@ async function startServer() {
       return res.status(409).json({
         success: false,
         error: `عذراً، تم حجز الجزء ${juzNumber} بالفعل باسم (${part.claimedBy})`,
-        parts: room.parts,
+        parts: sanitizePartsForClient(room.parts),
       });
     }
 
+    const claimToken = generateCapabilitySecret(16);
     part.claimedBy = trimmedName;
     part.claimedAt = new Date().toISOString();
     part.isCompleted = false;
+    part.claimTokenHash = hashSecret(claimToken);
 
     khatmaDb.saveRoom(room);
-    return res.json({ success: true, parts: room.parts, claimedPart: part });
+    const clientParts = sanitizePartsForClient(room.parts);
+    return res.json({
+      success: true,
+      parts: clientParts,
+      claimedPart: clientParts.find((p) => p.juzNumber === juzNumber),
+      claimToken, // Returned once to the claimer's browser
+    });
   });
 
-  // 3. Toggle Part Completion
+  // 3. Toggle Part Completion (Requires matching claimToken OR room adminKey)
   app.post('/api/khatma/complete', (req, res) => {
     const roomId = resolveRoomId(req);
+    if (!roomId) {
+      return res.status(400).json({ success: false, error: 'معرف الغرفة غير صالح' });
+    }
     const room = khatmaDb.getRoom(roomId);
     if (!room) {
       return res.status(404).json({ success: false, error: 'الختمة غير موجودة' });
     }
 
-    const { juzNumber } = req.body || {};
+    const { juzNumber, claimToken, adminKey } = req.body || {};
     if (!isValidJuzNumber(juzNumber)) {
       return res.status(400).json({ success: false, error: 'رقم الجزء غير صالح' });
     }
@@ -162,23 +216,45 @@ async function startServer() {
       return res.status(404).json({ success: false, error: 'الجزء غير موجود' });
     }
     if (part.claimedBy === null) {
-      return res.status(400).json({ success: false, error: 'لا يمكن إتمام جزء شاغر قبل حجزه', parts: room.parts });
+      return res.status(400).json({
+        success: false,
+        error: 'لا يمكن إتمام جزء شاغر قبل حجزه',
+        parts: sanitizePartsForClient(room.parts),
+      });
+    }
+
+    const isClaimOwner = verifySecretHash(claimToken, part.claimTokenHash);
+    const isAdmin = verifySecretHash(adminKey, room.adminKeyHash);
+    if (!isClaimOwner && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        error: 'غير مصرح: يمكن لصاحب الحجز (من المتصفح الذي حجز منه) أو مشرف الغرفة فقط تعديل حالة الإتمام',
+        parts: sanitizePartsForClient(room.parts),
+      });
     }
 
     part.isCompleted = !part.isCompleted;
     khatmaDb.saveRoom(room);
-    return res.json({ success: true, parts: room.parts, updatedPart: part });
+    const clientParts = sanitizePartsForClient(room.parts);
+    return res.json({
+      success: true,
+      parts: clientParts,
+      updatedPart: clientParts.find((p) => p.juzNumber === juzNumber),
+    });
   });
 
-  // 4. Release a Part (Volunteer withdrawal)
+  // 4. Release a Part (Requires matching claimToken OR room adminKey)
   app.post('/api/khatma/release', (req, res) => {
     const roomId = resolveRoomId(req);
+    if (!roomId) {
+      return res.status(400).json({ success: false, error: 'معرف الغرفة غير صالح' });
+    }
     const room = khatmaDb.getRoom(roomId);
     if (!room) {
       return res.status(404).json({ success: false, error: 'الختمة غير موجودة' });
     }
 
-    const { juzNumber } = req.body || {};
+    const { juzNumber, claimToken, adminKey } = req.body || {};
     if (!isValidJuzNumber(juzNumber)) {
       return res.status(400).json({ success: false, error: 'رقم الجزء غير صالح' });
     }
@@ -187,61 +263,74 @@ async function startServer() {
       return res.status(404).json({ success: false, error: 'الجزء غير موجود' });
     }
 
+    const isClaimOwner = verifySecretHash(claimToken, part.claimTokenHash);
+    const isAdmin = verifySecretHash(adminKey, room.adminKeyHash);
+    if (!isClaimOwner && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        error: 'غير مصرح: تفريغ الجزء متاح فقط لصاحب الحجز من متصفحه أو لمشرف الغرفة',
+        parts: sanitizePartsForClient(room.parts),
+      });
+    }
+
     part.claimedBy = null;
     part.claimedAt = undefined;
     part.isCompleted = false;
+    part.claimTokenHash = undefined;
 
     khatmaDb.saveRoom(room);
-    return res.json({ success: true, parts: room.parts });
+    return res.json({ success: true, parts: sanitizePartsForClient(room.parts) });
   });
 
-  // 5. Verify Supervisor PIN (Rate-Limited Server-side Hash Verification)
-  app.post('/api/khatma/verify-pin', (req, res) => {
+  // 5. Verify Room Supervisor Secret Key (Rate-Limited per real IP + room)
+  app.post('/api/khatma/verify-admin', (req, res) => {
     const roomId = resolveRoomId(req);
+    if (!roomId) {
+      return res.status(400).json({ success: false, error: 'معرف الغرفة غير صالح' });
+    }
     const room = khatmaDb.getRoom(roomId);
     if (!room) {
       return res.status(404).json({ success: false, error: 'الختمة غير موجودة' });
     }
 
-    const { pin } = req.body || {};
-    if (typeof pin !== 'string' || !pin.trim()) {
-      return res.status(400).json({ success: false, error: 'الرمز مطلوب' });
+    const { adminKey } = req.body || {};
+    if (typeof adminKey !== 'string' || !adminKey.trim()) {
+      return res.status(400).json({ success: false, error: 'مفتاح المشرف السري مطلوب' });
     }
 
     const rateKey = `${getClientIp(req)}:${room.roomId}`;
-    const limitCheck = pinRateLimiter.check(rateKey);
+    const limitCheck = adminRateLimiter.check(rateKey);
     if (!limitCheck.allowed) {
       return res.status(429).json({
         success: false,
         verified: false,
-        error: `تم تجاوز عدد المحاولات المسموح بها. يرجى الانتظار ${limitCheck.retryAfterSec} ثانية ثم المحاولة مجدداً`,
+        error: `تم تجاوز عدد المحاولات المسموح بها. يرجى الانتظار ${limitCheck.retryAfterSec} ثانية`,
       });
     }
 
-    if (verifyPinHash(pin, room.adminPinHash)) {
-      pinRateLimiter.reset(rateKey);
+    if (verifySecretHash(adminKey, room.adminKeyHash)) {
+      adminRateLimiter.reset(rateKey);
       return res.json({ success: true, verified: true });
-    } else {
-      pinRateLimiter.recordFailure(rateKey);
-      return res.status(401).json({ success: false, verified: false, error: 'رمز المشرف غير صحيح' });
     }
+
+    adminRateLimiter.recordFailure(rateKey);
+    return res.status(401).json({ success: false, verified: false, error: 'مفتاح المشرف السري غير صحيح' });
   });
 
-  // 6. Change Supervisor PIN (Requires Old PIN, Rate-Limited)
-  app.post('/api/khatma/change-pin', (req, res) => {
+  // 6. Rotate Supervisor Secret Key (Generates a fresh 128-bit cryptographic secret key)
+  app.post('/api/khatma/rotate-admin-key', (req, res) => {
     const roomId = resolveRoomId(req);
+    if (!roomId) {
+      return res.status(400).json({ success: false, error: 'معرف الغرفة غير صالح' });
+    }
     const room = khatmaDb.getRoom(roomId);
     if (!room) {
       return res.status(404).json({ success: false, error: 'الختمة غير موجودة' });
     }
 
-    const { currentPin, newPin } = req.body || {};
-    if (typeof currentPin !== 'string' || typeof newPin !== 'string' || !currentPin.trim() || newPin.trim().length < 4) {
-      return res.status(400).json({ success: false, error: 'الرمز الجديد يجب أن يكون 4 أحرف/أرقام على الأقل' });
-    }
-
+    const { currentAdminKey } = req.body || {};
     const rateKey = `${getClientIp(req)}:${room.roomId}`;
-    const limitCheck = pinRateLimiter.check(rateKey);
+    const limitCheck = adminRateLimiter.check(rateKey);
     if (!limitCheck.allowed) {
       return res.status(429).json({
         success: false,
@@ -249,28 +338,36 @@ async function startServer() {
       });
     }
 
-    if (!verifyPinHash(currentPin, room.adminPinHash)) {
-      pinRateLimiter.recordFailure(rateKey);
-      return res.status(401).json({ success: false, error: 'رمز المشرف الحالي غير صحيح' });
+    if (!verifySecretHash(currentAdminKey, room.adminKeyHash)) {
+      adminRateLimiter.recordFailure(rateKey);
+      return res.status(401).json({ success: false, error: 'مفتاح المشرف الحالي غير صحيح' });
     }
 
-    pinRateLimiter.reset(rateKey);
-    room.adminPinHash = hashPin(newPin);
+    adminRateLimiter.reset(rateKey);
+    const nextAdminKey = generateCapabilitySecret(16);
+    room.adminKeyHash = hashSecret(nextAdminKey);
     khatmaDb.saveRoom(room);
-    return res.json({ success: true, message: 'تم تغيير رمز المشرف بنجاح' });
+    return res.json({
+      success: true,
+      adminKey: nextAdminKey,
+      message: 'تم تدوير مفتاح المشرف السري بنجاح؛ يُرجى حفظ الرابط الجديد',
+    });
   });
 
-  // 7. Administrative Action (Guarded strictly by Rate-Limited PIN verification)
+  // 7. Administrative Action (Guarded by Rate-Limited 128-bit Secret Key Verification)
   app.post('/api/khatma/admin-action', (req, res) => {
     const roomId = resolveRoomId(req);
+    if (!roomId) {
+      return res.status(400).json({ success: false, error: 'معرف الغرفة غير صالح' });
+    }
     const room = khatmaDb.getRoom(roomId);
     if (!room) {
       return res.status(404).json({ success: false, error: 'الختمة غير موجودة' });
     }
 
-    const { pin, action, targetJuz, newName, dedicationTitle, creatorName, deadlineDays } = req.body || {};
+    const { adminKey, action, targetJuz, newName, dedicationTitle, creatorName, deadlineDays } = req.body || {};
     const rateKey = `${getClientIp(req)}:${room.roomId}`;
-    const limitCheck = pinRateLimiter.check(rateKey);
+    const limitCheck = adminRateLimiter.check(rateKey);
     if (!limitCheck.allowed) {
       return res.status(429).json({
         success: false,
@@ -278,11 +375,11 @@ async function startServer() {
       });
     }
 
-    if (typeof pin !== 'string' || !pin.trim() || !verifyPinHash(pin, room.adminPinHash)) {
-      pinRateLimiter.recordFailure(rateKey);
-      return res.status(403).json({ success: false, error: 'غير مصرح: رمز المشرف غير صحيح' });
+    if (!verifySecretHash(adminKey, room.adminKeyHash)) {
+      adminRateLimiter.recordFailure(rateKey);
+      return res.status(403).json({ success: false, error: 'غير مصرح: مفتاح المشرف غير صحيح' });
     }
-    pinRateLimiter.reset(rateKey);
+    adminRateLimiter.reset(rateKey);
 
     if (action === 'reset-all') {
       room.parts = room.parts.map((p) => ({
@@ -290,9 +387,14 @@ async function startServer() {
         claimedBy: null,
         claimedAt: undefined,
         isCompleted: false,
+        claimTokenHash: undefined,
       }));
       khatmaDb.saveRoom(room);
-      return res.json({ success: true, parts: room.parts, message: 'تمت إعادة ضبط الختمة وبدء دورة جديدة' });
+      return res.json({
+        success: true,
+        parts: sanitizePartsForClient(room.parts),
+        message: 'تمت إعادة ضبط الختمة وبدء دورة جديدة',
+      });
     }
 
     if (action === 'release-part') {
@@ -306,8 +408,9 @@ async function startServer() {
       part.claimedBy = null;
       part.claimedAt = undefined;
       part.isCompleted = false;
+      part.claimTokenHash = undefined;
       khatmaDb.saveRoom(room);
-      return res.json({ success: true, parts: room.parts });
+      return res.json({ success: true, parts: sanitizePartsForClient(room.parts) });
     }
 
     if (action === 'edit-name') {
@@ -320,7 +423,7 @@ async function startServer() {
       }
       part.claimedBy = newName.trim().slice(0, 60);
       khatmaDb.saveRoom(room);
-      return res.json({ success: true, parts: room.parts });
+      return res.json({ success: true, parts: sanitizePartsForClient(room.parts) });
     }
 
     if (action === 'update-dedication') {
@@ -345,7 +448,20 @@ async function startServer() {
       });
     }
 
+    if (action === 'delete-room') {
+      if (room.isPublic || room.roomId === DEFAULT_ROOM_ID) {
+        return res.status(400).json({ success: false, error: 'لا يمكن حذف الختمة العامة' });
+      }
+      khatmaDb.deletePrivateRoom(room.roomId);
+      return res.json({ success: true, deleted: true });
+    }
+
     return res.status(400).json({ success: false, error: 'إجراء غير معروف' });
+  });
+
+  // Unknown /api/* routes must return JSON 404 rather than SPA HTML fallback
+  app.all('/api/*', (_req, res) => {
+    res.status(404).json({ success: false, error: 'مسار API غير موجود' });
   });
 
   // ---------------------------------------------------------------------------
@@ -363,7 +479,6 @@ async function startServer() {
     });
 
     if (!hmrEnabled) {
-      // When HMR is disabled (e.g. DISABLE_HMR=true), prevent @vite/client from opening a failing WebSocket to port 24678
       app.get('/@vite/client', async (_req, res, next) => {
         try {
           const vite = await vitePromise;
@@ -394,13 +509,13 @@ async function startServer() {
     });
   } else {
     app.use(express.static(path.resolve(process.cwd(), 'dist')));
-    app.get('*', (req, res) => {
+    app.get('*', (_req, res) => {
       res.sendFile(path.resolve(process.cwd(), 'dist', 'index.html'));
     });
   }
 
   app.listen(PORT, HOST, () => {
-    console.log(`Bayan Quran Full-Stack server running at http://${HOST}:${PORT}`);
+    console.log(`Bayan Quran server running (${isProduction ? 'production' : 'development'}) on http://${HOST}:${PORT}`);
   });
 }
 

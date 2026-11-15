@@ -1,9 +1,9 @@
 const DB_NAME = 'bayan_quran_offline_db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
-export type QuranStoreName = 'surahs' | 'pages' | 'tafsirs' | 'segments';
+export type QuranStoreName = 'surahs' | 'pages' | 'tafsirs' | 'segments' | 'user_data';
 
-const STORES: QuranStoreName[] = ['surahs', 'pages', 'tafsirs', 'segments'];
+const STORES: QuranStoreName[] = ['surahs', 'pages', 'tafsirs', 'segments', 'user_data'];
 
 let dbPromise: Promise<IDBDatabase | null> | null = null;
 

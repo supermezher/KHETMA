@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Play, Pause, SkipBack, SkipForward, Volume2, RotateCcw, Clock, Download, Sparkles, SlidersHorizontal, ChevronUp, ChevronDown, CheckCircle2, AlertCircle, EyeOff } from 'lucide-react';
 import { Reciter, RECITERS_LIST, getAyahAudioUrl } from '../data/reciters';
 import { isSurahCached, cacheSurahAudio, getCachedAudioBlobUrl } from '../utils/audioOfflineCache';
+import { toArabicIndic } from './khatma/KhatmaRing';
 
 interface AudioPlayerBarProps {
   surahNumber: number;
@@ -344,40 +345,42 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
           /* Minimized Floating Audio Pill in Bottom Corner */
           <div className="fixed bottom-4 right-4 z-[60] flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2">
             <div
-              className={`flex items-center gap-2 py-2 px-3.5 rounded-full shadow-2xl backdrop-blur-xl border transition-all ${
+              className={`flex items-center gap-2 py-1.5 px-3 rounded-full shadow-2xl backdrop-blur-xl border transition-all ${
                 isPlaying
-                  ? 'bg-emerald-950/95 border-emerald-500/50 text-emerald-300 shadow-emerald-950/50'
-                  : 'bg-slate-900/95 border-slate-700/80 text-slate-300'
+                  ? 'bg-[#142038]/95 border-[#D9B45A]/55 text-[#F6EFDD]'
+                  : 'bg-[#10161f]/95 border-slate-700/80 text-slate-300'
               }`}
             >
               <button
                 type="button"
                 onClick={() => setIsMinimizedInFullScreen(false)}
-                className="flex items-center gap-2 hover:text-white cursor-pointer"
+                className="min-h-[36px] flex items-center gap-2 hover:text-white cursor-pointer"
                 title="إظهار مشغل التلاوة الكامل"
               >
                 <div className="relative flex items-center justify-center">
-                  <Volume2 className="w-4 h-4 text-emerald-400" />
+                  <Volume2 className="w-4 h-4 text-[#D9B45A]" />
                   {isPlaying && (
                     <span className="w-2 h-2 rounded-full bg-emerald-400 mr-1" />
                   )}
                 </div>
                 <span className="text-xs font-bold font-kufi">{selectedReciter.name.split(' ')[0]}</span>
-                <span className="text-[10px] text-slate-400 font-mono tabular-nums">({currentAyahNumber})</span>
+                <span className="text-[11px] text-[#D9B45A] tabular-nums">({toArabicIndic(currentAyahNumber)})</span>
               </button>
               <button
                 type="button"
                 onClick={() => onPlayPauseToggle(!isPlaying)}
-                className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/40 flex items-center justify-center cursor-pointer"
+                aria-label={isPlaying ? 'إيقاف مؤقت' : 'تشغيل التلاوة'}
+                className="w-9 h-9 rounded-full bg-[#1F3A6E] text-[#F6EFDD] hover:bg-[#2E5499] border border-[#648CD4]/40 flex items-center justify-center cursor-pointer"
                 title={isPlaying ? 'إيقاف مؤقت' : 'تشغيل التلاوة'}
               >
-                {isPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3 ml-0.5" />}
+                {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
               </button>
               {onHideBar && (
                 <button
                   type="button"
                   onClick={onHideBar}
-                  className="p-1 rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                  aria-label="إخفاء الشريط الصوتي"
+                  className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
                   title="إخفاء الشريط الصوتي للقراءة بالعين"
                 >
                   <EyeOff className="w-3.5 h-3.5" />
@@ -387,22 +390,22 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
           </div>
         ) : (
           /* Floating Audio Capsule in Full-Screen */
-          <div className="fixed bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 z-[60] w-[calc(100vw-1.5rem)] sm:w-auto sm:min-w-[480px] max-w-xl bg-slate-900/95 border border-slate-700/80 shadow-2xl backdrop-blur-xl rounded-2xl p-2.5 sm:p-3 animate-in fade-in slide-in-from-bottom-3 space-y-2">
+          <div className="fixed bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 z-[60] w-[calc(100vw-1.5rem)] sm:w-auto sm:min-w-[480px] max-w-xl bg-[#10161f]/95 border border-[#D9B45A]/30 shadow-2xl backdrop-blur-xl rounded-2xl p-2 sm:p-3 animate-in fade-in slide-in-from-bottom-3 space-y-2">
             {/* Top Interactive Progress Line (LTR for accurate scrub positioning) */}
             <div
               dir="ltr"
               onClick={handleSeek}
-              className="w-full h-1 bg-slate-800 hover:h-1.5 rounded-full cursor-pointer transition-all relative overflow-hidden"
+              className="w-full h-1.5 bg-slate-800 hover:h-2 rounded-full cursor-pointer transition-all relative overflow-hidden"
               title="تقديم وتأخير التلاوة"
             >
               <div
-                className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all rounded-full"
+                className="h-full bg-gradient-to-r from-[#2E5499] to-[#D9B45A] transition-all rounded-full"
                 style={{ width: `${audioProgress}%` }}
               />
             </div>
 
-            {/* Mobile 2-row layout (<sm) preventing button collision */}
-            <div className="flex flex-col gap-2 sm:hidden">
+            {/* Mobile compact 2-row layout (<sm) */}
+            <div className="flex flex-col gap-1.5 sm:hidden">
               <div className="flex items-center justify-between gap-2">
                 <select
                   value={selectedReciter.id}
@@ -411,7 +414,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                     if (found) setSelectedReciter(found);
                   }}
                   aria-label="اختيار القارئ"
-                  className="bg-slate-950/80 border border-slate-700/80 rounded-lg text-xs font-bold text-slate-200 py-1 px-2 outline-none max-w-[165px] cursor-pointer"
+                  className="bg-slate-950/90 border border-slate-700/80 rounded-lg text-xs font-bold text-[#F6EFDD] py-1.5 px-2 outline-none max-w-[165px] cursor-pointer"
                 >
                   {RECITERS_LIST.map((r) => (
                     <option key={r.id} value={r.id}>
@@ -420,14 +423,15 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                   ))}
                 </select>
 
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-mono tabular-nums whitespace-nowrap px-2 py-0.5 rounded-md bg-slate-950 border border-slate-800 text-emerald-400 shrink-0">
-                    {currentAyahNumber} / {totalAyahs}
+                <div className="flex items-center gap-1">
+                  <span className="text-[11px] tabular-nums whitespace-nowrap px-2 py-1 rounded-md bg-slate-950 border border-slate-800 text-[#D9B45A] font-semibold shrink-0">
+                    {toArabicIndic(currentAyahNumber)} / {toArabicIndic(totalAyahs)}
                   </span>
                   <button
                     type="button"
                     onClick={() => setIsExpanded(!isExpanded)}
-                    className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                    aria-label="خيارات إضافية"
+                    className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
                     title="خيارات إضافية"
                   >
                     <SlidersHorizontal className="w-3.5 h-3.5" />
@@ -436,7 +440,8 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                     <button
                       type="button"
                       onClick={onHideBar}
-                      className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                      aria-label="إخفاء الشريط الصوتي"
+                      className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
                       title="إخفاء الشريط الصوتي"
                     >
                       <EyeOff className="w-3.5 h-3.5" />
@@ -450,8 +455,9 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                   type="button"
                   onClick={() => onAyahChange(Math.max(1, currentAyahNumber - 1))}
                   disabled={currentAyahNumber <= 1}
+                  aria-label="الآية السابقة"
                   title="الآية السابقة"
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 hover:bg-slate-800 transition-colors cursor-pointer"
+                  className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-slate-300 hover:text-white disabled:opacity-30 hover:bg-slate-800 transition-colors cursor-pointer"
                 >
                   <SkipForward className="w-4 h-4" />
                 </button>
@@ -459,18 +465,20 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                 <button
                   type="button"
                   onClick={() => onPlayPauseToggle(!isPlaying)}
-                  className="w-9 h-9 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-900/50 transition-transform active:scale-95 cursor-pointer"
+                  aria-label={isPlaying ? 'إيقاف مؤقت' : 'تشغيل التلاوة'}
+                  className="w-10 h-10 rounded-full bg-[#1F3A6E] hover:bg-[#2E5499] border border-[#648CD4]/50 text-[#F6EFDD] flex items-center justify-center shadow-lg transition-transform active:scale-95 cursor-pointer"
                   title={isPlaying ? 'إيقاف مؤقت' : 'تشغيل التلاوة'}
                 >
-                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5 text-[#D9B45A] fill-[#D9B45A]" />}
                 </button>
 
                 <button
                   type="button"
                   onClick={() => onAyahChange(Math.min(totalAyahs, currentAyahNumber + 1))}
                   disabled={currentAyahNumber >= totalAyahs}
+                  aria-label="الآية التالية"
                   title="الآية التالية"
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 hover:bg-slate-800 transition-colors cursor-pointer"
+                  className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-slate-300 hover:text-white disabled:opacity-30 hover:bg-slate-800 transition-colors cursor-pointer"
                 >
                   <SkipBack className="w-4 h-4" />
                 </button>
@@ -480,7 +488,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             {/* Desktop single-row layout (sm+) */}
             <div className="hidden sm:flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 min-w-0">
-                <div className="w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                <div className="w-8 h-8 rounded-lg bg-[#1F3A6E]/50 border border-[#648CD4]/40 flex items-center justify-center text-[#D9B45A] shrink-0">
                   <Volume2 className="w-4 h-4" />
                 </div>
                 <select
@@ -489,7 +497,8 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                     const found = RECITERS_LIST.find(r => r.id === e.target.value);
                     if (found) setSelectedReciter(found);
                   }}
-                  className="bg-slate-950/80 border border-slate-700/80 rounded-lg text-xs font-bold text-slate-200 py-1 px-1.5 outline-none max-w-[155px] cursor-pointer"
+                  aria-label="اختيار القارئ"
+                  className="bg-slate-950/90 border border-slate-700/80 rounded-lg text-xs font-bold text-[#F6EFDD] py-1.5 px-2 outline-none max-w-[155px] cursor-pointer"
                   title="اختيار القارئ"
                 >
                   {RECITERS_LIST.map((r) => (
@@ -505,8 +514,9 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                   type="button"
                   onClick={() => onAyahChange(Math.max(1, currentAyahNumber - 1))}
                   disabled={currentAyahNumber <= 1}
+                  aria-label="الآية السابقة"
                   title="الآية السابقة"
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 hover:bg-slate-800 transition-colors cursor-pointer"
+                  className="min-w-[38px] min-h-[38px] flex items-center justify-center rounded-lg text-slate-300 hover:text-white disabled:opacity-30 hover:bg-slate-800 transition-colors cursor-pointer"
                 >
                   <SkipForward className="w-4 h-4" />
                 </button>
@@ -514,32 +524,35 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                 <button
                   type="button"
                   onClick={() => onPlayPauseToggle(!isPlaying)}
-                  className="w-9 h-9 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-900/50 transition-transform active:scale-95 cursor-pointer"
+                  aria-label={isPlaying ? 'إيقاف مؤقت' : 'تشغيل التلاوة'}
+                  className="w-10 h-10 rounded-full bg-[#1F3A6E] hover:bg-[#2E5499] border border-[#648CD4]/50 text-[#F6EFDD] flex items-center justify-center shadow-lg transition-transform active:scale-95 cursor-pointer"
                   title={isPlaying ? 'إيقاف مؤقت' : 'تشغيل التلاوة'}
                 >
-                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5 text-[#D9B45A] fill-[#D9B45A]" />}
                 </button>
 
                 <button
                   type="button"
                   onClick={() => onAyahChange(Math.min(totalAyahs, currentAyahNumber + 1))}
                   disabled={currentAyahNumber >= totalAyahs}
+                  aria-label="الآية التالية"
                   title="الآية التالية"
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 hover:bg-slate-800 transition-colors cursor-pointer"
+                  className="min-w-[38px] min-h-[38px] flex items-center justify-center rounded-lg text-slate-300 hover:text-white disabled:opacity-30 hover:bg-slate-800 transition-colors cursor-pointer"
                 >
                   <SkipBack className="w-4 h-4" />
                 </button>
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0">
-                <span className="text-[11px] font-mono tabular-nums whitespace-nowrap px-2 py-0.5 rounded-md bg-slate-950 border border-slate-800 text-emerald-400 shrink-0">
-                  {currentAyahNumber} / {totalAyahs}
+                <span className="text-[11px] tabular-nums whitespace-nowrap px-2 py-1 rounded-md bg-slate-950 border border-slate-800 text-[#D9B45A] font-semibold shrink-0">
+                  {toArabicIndic(currentAyahNumber)} / {toArabicIndic(totalAyahs)}
                 </span>
 
                 <button
                   type="button"
                   onClick={() => setIsExpanded(!isExpanded)}
-                  className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                  aria-label="خيارات إضافية"
+                  className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
                   title="خيارات إضافية (تكرار، سرعة الصوت)"
                 >
                   <SlidersHorizontal className="w-3.5 h-3.5" />
@@ -548,7 +561,8 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsMinimizedInFullScreen(true)}
-                  className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                  aria-label="تصغير الشريط الصوتي"
+                  className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
                   title="تصغير شريط الصوت لأيقونة"
                 >
                   <ChevronDown className="w-4 h-4" />
@@ -558,7 +572,8 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                   <button
                     type="button"
                     onClick={onHideBar}
-                    className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                    aria-label="إخفاء الشريط الصوتي"
+                    className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
                     title="إخفاء الشريط الصوتي للقراءة بالعين"
                   >
                     <EyeOff className="w-3.5 h-3.5" />
@@ -574,16 +589,17 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                 <div className="flex items-center gap-1.5">
                   <span className="text-slate-400 text-[11px]">التكرار:</span>
                   <button
+                    type="button"
                     onClick={() => {
                       if (repeatMode === 'none') setRepeatMode('2-times');
                       else if (repeatMode === '2-times') setRepeatMode('3-times');
                       else if (repeatMode === '3-times') setRepeatMode('loop');
                       else setRepeatMode('none');
                     }}
-                    className={`py-0.5 px-2 rounded-md font-medium border text-[11px] flex items-center gap-1 cursor-pointer ${
+                    className={`min-h-[32px] py-1 px-2.5 rounded-md font-medium border text-[11px] flex items-center gap-1 cursor-pointer ${
                       repeatMode !== 'none'
-                        ? 'bg-amber-500/20 border-amber-500 text-amber-300'
-                        : 'bg-slate-950 border-slate-800 text-slate-400'
+                        ? 'bg-[#D9B45A]/20 border-[#D9B45A]/60 text-[#D9B45A]'
+                        : 'bg-slate-950 border-slate-800 text-slate-300'
                     }`}
                   >
                     <RotateCcw className="w-3 h-3" />
@@ -606,11 +622,12 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                     {[0.75, 1.0, 1.25].map((speed) => (
                       <button
                         key={speed}
+                        type="button"
                         onClick={() => setPlaybackSpeed(speed)}
-                        className={`py-0.5 px-1.5 rounded font-semibold text-[10px] cursor-pointer ${
+                        className={`min-h-[30px] py-0.5 px-2 rounded font-semibold text-[11px] cursor-pointer ${
                           playbackSpeed === speed
-                            ? 'bg-emerald-600 text-white'
-                            : 'bg-slate-950 text-slate-400 hover:text-white'
+                            ? 'bg-[#1F3A6E] text-[#F6EFDD] border border-[#648CD4]/50'
+                            : 'bg-slate-950 text-slate-300 hover:text-white'
                         }`}
                       >
                         {speed}x
@@ -621,11 +638,12 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
 
                 {/* Smart scroll toggle */}
                 <button
+                  type="button"
                   onClick={onToggleSmartScroll}
-                  className={`py-0.5 px-2 rounded-md font-medium border text-[11px] flex items-center gap-1 cursor-pointer ${
+                  className={`min-h-[32px] py-1 px-2.5 rounded-md font-medium border text-[11px] flex items-center gap-1 cursor-pointer ${
                     isSmartScrollEnabled
-                      ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
-                      : 'bg-slate-950 border-slate-800 text-slate-400'
+                      ? 'bg-[#1F3A6E]/50 border-[#648CD4]/50 text-[#D9B45A]'
+                      : 'bg-slate-950 border-slate-800 text-slate-300'
                   }`}
                   title="مزامنة نزول الصفحة مع تلاوة الشيخ"
                 >
@@ -638,7 +656,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
         )
       ) : (
         /* STANDARD DOCKED BOTTOM BAR (Normal View) */
-        <div className="fixed bottom-16 lg:bottom-0 left-0 right-0 z-30 bg-slate-950/95 border-t border-slate-800 backdrop-blur-md shadow-2xl transition-all">
+        <div className="fixed bottom-16 lg:bottom-0 left-0 right-0 z-30 bg-[#0d121a]/95 border-t border-slate-800 backdrop-blur-md shadow-2xl transition-all pb-[env(safe-area-inset-bottom)] lg:pb-0">
           {/* Progress line (LTR for accurate scrub positioning) */}
           <div
             dir="ltr"
@@ -646,21 +664,21 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             className="w-full h-1 bg-slate-800 hover:h-2 cursor-pointer transition-all relative"
           >
             <div
-              className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all"
+              className="h-full bg-gradient-to-r from-[#2E5499] to-[#D9B45A] transition-all"
               style={{ width: `${audioProgress}%` }}
             />
           </div>
 
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 py-2 sm:py-3 flex flex-col gap-2">
-        {/* Mobile Layout (< md): Clean 2-row player with visible Surah/Ayah & zero overlap */}
-        <div className="flex flex-col gap-2 md:hidden">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 py-1.5 sm:py-2.5 flex flex-col gap-1.5">
+        {/* Mobile Layout (< md): Clean compact bar leaving maximum vertical Mushaf space */}
+        <div className="flex flex-col gap-1.5 md:hidden">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="font-bold text-white text-xs truncate">
+              <span className="font-bold text-[#F6EFDD] text-xs truncate">
                 سورة {surahName}
               </span>
-              <span className="text-[11px] text-emerald-300 font-semibold tabular-nums whitespace-nowrap shrink-0">
-                الآية {currentAyahNumber} / {totalAyahs}
+              <span className="text-[11px] text-[#D9B45A] font-semibold tabular-nums whitespace-nowrap shrink-0">
+                الآية {toArabicIndic(currentAyahNumber)} / {toArabicIndic(totalAyahs)}
               </span>
             </div>
 
@@ -671,7 +689,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                 if (found) setSelectedReciter(found);
               }}
               aria-label="اختيار القارئ"
-              className="bg-slate-900 border border-slate-800 rounded-lg text-[11px] text-slate-200 py-1 px-2 outline-none max-w-[145px] shrink-0"
+              className="bg-slate-900 border border-slate-700/80 rounded-lg text-[11px] text-[#F6EFDD] py-1 px-2 outline-none max-w-[145px] shrink-0"
             >
               {RECITERS_LIST.map((r) => (
                 <option key={r.id} value={r.id}>
@@ -681,14 +699,15 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             </select>
           </div>
 
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5">
+          <div className="flex items-center justify-between gap-1.5">
+            <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={() => onAyahChange(Math.max(1, currentAyahNumber - 1))}
                 disabled={currentAyahNumber <= 1}
+                aria-label="الآية السابقة"
                 title="الآية السابقة"
-                className="p-2 rounded-lg text-slate-400 hover:text-white disabled:opacity-40 hover:bg-slate-800 transition-colors cursor-pointer"
+                className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-slate-300 hover:text-white disabled:opacity-40 hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <SkipForward className="w-4 h-4" />
               </button>
@@ -696,18 +715,20 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
               <button
                 type="button"
                 onClick={() => onPlayPauseToggle(!isPlaying)}
+                aria-label={isPlaying ? 'إيقاف مؤقت' : 'تشغيل التلاوة'}
                 title={isPlaying ? 'إيقاف مؤقت' : 'تشغيل التلاوة'}
-                className="w-9 h-9 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-900/40 transition-transform active:scale-95 cursor-pointer"
+                className="w-10 h-10 rounded-full bg-[#1F3A6E] hover:bg-[#2E5499] border border-[#648CD4]/50 text-[#F6EFDD] flex items-center justify-center shadow-lg transition-transform active:scale-95 cursor-pointer"
               >
-                {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+                {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5 text-[#D9B45A] fill-[#D9B45A]" />}
               </button>
 
               <button
                 type="button"
                 onClick={() => onAyahChange(Math.min(totalAyahs, currentAyahNumber + 1))}
                 disabled={currentAyahNumber >= totalAyahs}
+                aria-label="الآية التالية"
                 title="الآية التالية"
-                className="p-2 rounded-lg text-slate-400 hover:text-white disabled:opacity-40 hover:bg-slate-800 transition-colors cursor-pointer"
+                className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-slate-300 hover:text-white disabled:opacity-40 hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <SkipBack className="w-4 h-4" />
               </button>
@@ -717,21 +738,22 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
               <button
                 type="button"
                 onClick={onToggleSmartScroll}
-                className={`flex items-center gap-1 py-1.5 px-2.5 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer whitespace-nowrap ${
+                className={`min-h-[38px] flex items-center gap-1 py-1.5 px-2.5 rounded-xl text-[11px] font-semibold border transition-all cursor-pointer whitespace-nowrap ${
                   isSmartScrollEnabled
-                    ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
-                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                    ? 'bg-[#1F3A6E]/55 border-[#648CD4]/50 text-[#D9B45A]'
+                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white'
                 }`}
                 title="مزامنة التمرير مع التلاوة"
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>التمرير الذكي</span>
+                <span>المزامنة</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setIsExpanded(!isExpanded)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800 bg-slate-900 transition-colors cursor-pointer"
+                aria-label="خيارات الختمة والتكرار والسرعة"
+                className="min-w-[38px] min-h-[38px] flex items-center justify-center rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-800 bg-slate-900 transition-colors cursor-pointer"
                 title="خيارات الختمة والتكرار والسرعة"
               >
                 {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
@@ -741,7 +763,8 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                 <button
                   type="button"
                   onClick={onHideBar}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800 bg-slate-900 transition-colors cursor-pointer"
+                  aria-label="إخفاء الشريط الصوتي للقراءة بالعين"
+                  className="min-w-[38px] min-h-[38px] flex items-center justify-center rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-800 bg-slate-900 transition-colors cursor-pointer"
                   title="إخفاء الشريط الصوتي للقراءة بالعين"
                 >
                   <EyeOff className="w-4 h-4" />
@@ -755,30 +778,35 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
         <div className="hidden md:flex items-center justify-between gap-3">
           {/* Left: Ayah info & Reciter */}
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+            <div className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 ${
+              isPlaying
+                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400'
+                : 'bg-[#1F3A6E]/40 border-[#648CD4]/35 text-[#D9B45A]'
+            }`}>
               <Volume2 className="w-4 h-4" />
             </div>
             <div className="min-w-0">
-              <div className="font-bold text-white text-sm truncate flex items-center gap-2">
+              <div className="font-bold text-[#F6EFDD] text-sm truncate flex items-center gap-2">
                 <span className="truncate">سورة {surahName}</span>
-                <span className="text-[11px] text-emerald-300 font-medium tabular-nums whitespace-nowrap shrink-0">
-                  الآية {currentAyahNumber} / {totalAyahs}
+                <span className="text-[11px] text-[#D9B45A] font-medium tabular-nums whitespace-nowrap shrink-0">
+                  الآية {toArabicIndic(currentAyahNumber)} / {toArabicIndic(totalAyahs)}
                 </span>
               </div>
               <div className="text-[11px] text-slate-400 truncate">
-                بصوت: <strong className="text-slate-300">{selectedReciter.name}</strong> · {selectedReciter.style}
+                بصوت: <strong className="text-slate-200">{selectedReciter.name}</strong> · {selectedReciter.style}
               </div>
             </div>
           </div>
 
           {/* Center: Controls (Prev, Play/Pause, Next) */}
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2.5 shrink-0">
             <button
               type="button"
               onClick={() => onAyahChange(Math.max(1, currentAyahNumber - 1))}
               disabled={currentAyahNumber <= 1}
+              aria-label="الآية السابقة"
               title="الآية السابقة"
-              className="p-2 rounded-lg text-slate-400 hover:text-white disabled:opacity-40 hover:bg-slate-800 transition-colors cursor-pointer"
+              className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-slate-300 hover:text-white disabled:opacity-40 hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <SkipForward className="w-4 h-4" />
             </button>
@@ -786,18 +814,20 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             <button
               type="button"
               onClick={() => onPlayPauseToggle(!isPlaying)}
+              aria-label={isPlaying ? 'إيقاف مؤقت' : 'تشغيل التلاوة'}
               title={isPlaying ? 'إيقاف مؤقت' : 'تشغيل التلاوة'}
-              className="w-10 h-10 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-900/40 transition-transform active:scale-95 cursor-pointer"
+              className="w-10 h-10 rounded-full bg-[#1F3A6E] hover:bg-[#2E5499] border border-[#648CD4]/50 text-[#F6EFDD] flex items-center justify-center shadow-lg transition-transform active:scale-95 cursor-pointer"
             >
-              {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
+              {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5 text-[#D9B45A] fill-[#D9B45A]" />}
             </button>
 
             <button
               type="button"
               onClick={() => onAyahChange(Math.min(totalAyahs, currentAyahNumber + 1))}
               disabled={currentAyahNumber >= totalAyahs}
+              aria-label="الآية التالية"
               title="الآية التالية"
-              className="p-2 rounded-lg text-slate-400 hover:text-white disabled:opacity-40 hover:bg-slate-800 transition-colors cursor-pointer"
+              className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-slate-300 hover:text-white disabled:opacity-40 hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <SkipBack className="w-4 h-4" />
             </button>
@@ -808,10 +838,10 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             <button
               type="button"
               onClick={onToggleSmartScroll}
-              className={`flex items-center gap-1.5 py-1.5 px-2.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer whitespace-nowrap ${
+              className={`min-h-[38px] flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-xs font-semibold border transition-all cursor-pointer whitespace-nowrap ${
                 isSmartScrollEnabled
-                  ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300 shadow-sm'
-                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                  ? 'bg-[#1F3A6E]/55 border-[#648CD4]/50 text-[#D9B45A] shadow-sm'
+                  : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white'
               }`}
               title="تمرير تلقائي يتوقف عند رأس كل آية ﴿﴾ للتدبر"
             >
@@ -826,7 +856,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                 if (found) setSelectedReciter(found);
               }}
               aria-label="اختيار القارئ"
-              className="bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-200 py-1.5 px-2 outline-none max-w-[170px]"
+              className="min-h-[38px] bg-slate-900 border border-slate-700/80 rounded-xl text-xs text-[#F6EFDD] py-1.5 px-2.5 outline-none max-w-[175px] cursor-pointer"
             >
               {RECITERS_LIST.map((r) => (
                 <option key={r.id} value={r.id}>
@@ -838,7 +868,8 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             <button
               type="button"
               onClick={() => setIsExpanded(!isExpanded)}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              aria-label="خيارات الختمة والتكرار والسرعة"
+              className="min-w-[38px] min-h-[38px] flex items-center justify-center rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
               title="خيارات الختمة والتكرار والسرعة"
             >
               {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
@@ -848,7 +879,8 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
               <button
                 type="button"
                 onClick={onHideBar}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                aria-label="إخفاء الشريط الصوتي للقراءة بالعين"
+                className="min-w-[38px] min-h-[38px] flex items-center justify-center rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
                 title="إخفاء الشريط الصوتي للقراءة بالعين"
               >
                 <EyeOff className="w-4 h-4" />
@@ -864,16 +896,17 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             <div className="flex items-center gap-2">
               <span className="text-slate-400">تكرار الآية:</span>
               <button
+                type="button"
                 onClick={() => {
                   if (repeatMode === 'none') setRepeatMode('2-times');
                   else if (repeatMode === '2-times') setRepeatMode('3-times');
                   else if (repeatMode === '3-times') setRepeatMode('loop');
                   else setRepeatMode('none');
                 }}
-                className={`py-1 px-2.5 rounded-lg font-medium border flex items-center gap-1 cursor-pointer ${
+                className={`min-h-[34px] py-1 px-2.5 rounded-lg font-medium border flex items-center gap-1 cursor-pointer ${
                   repeatMode !== 'none'
-                    ? 'bg-amber-500/20 border-amber-500 text-amber-300'
-                    : 'bg-slate-900 border-slate-800 text-slate-400'
+                    ? 'bg-[#D9B45A]/20 border-[#D9B45A]/60 text-[#D9B45A]'
+                    : 'bg-slate-900 border-slate-800 text-slate-300'
                 }`}
               >
                 <RotateCcw className="w-3 h-3" />
@@ -896,11 +929,12 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                 {[0.75, 1.0, 1.25].map((speed) => (
                   <button
                     key={speed}
+                    type="button"
                     onClick={() => setPlaybackSpeed(speed)}
-                    className={`py-0.5 px-2 rounded-md font-semibold ${
+                    className={`min-h-[32px] py-0.5 px-2.5 rounded-md font-semibold cursor-pointer ${
                       playbackSpeed === speed
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-slate-800 text-slate-400 hover:text-white'
+                        ? 'bg-[#1F3A6E] text-[#F6EFDD] border border-[#648CD4]/50'
+                        : 'bg-slate-800 text-slate-300 hover:text-white'
                     }`}
                   >
                     {speed}x
@@ -916,7 +950,8 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
               <select
                 value={khatmaTimerMinutes}
                 onChange={(e) => setKhatmaTimerMinutes(Number(e.target.value))}
-                className="bg-slate-900 border border-slate-800 rounded-md text-slate-200 py-0.5 px-1.5 outline-none"
+                aria-label="مؤقت إيقاف الورد"
+                className="min-h-[34px] bg-slate-900 border border-slate-800 rounded-md text-[#F6EFDD] py-0.5 px-2 outline-none"
               >
                 <option value={0}>بدون إيقاف</option>
                 <option value={15}>15 دقيقة</option>
@@ -925,7 +960,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                 <option value={60}>ساعة كاملة</option>
               </select>
               {timeRemaining > 0 && (
-                <span className="text-emerald-400 font-mono text-[10px]">
+                <span className="text-[#D9B45A] font-mono text-[11px]">
                   ({Math.floor(timeRemaining / 60)}د)
                 </span>
               )}
@@ -934,14 +969,15 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             {/* Real Offline Audio Cache Download */}
             <div className="flex flex-col items-end justify-center gap-1">
               <button
+                type="button"
                 onClick={handleDownloadSurah}
                 disabled={isDownloaded || isDownloading}
-                className={`py-1 px-2.5 rounded-lg font-medium border flex items-center gap-1.5 transition-colors cursor-pointer ${
+                className={`min-h-[34px] py-1 px-2.5 rounded-lg font-medium border flex items-center gap-1.5 transition-colors cursor-pointer ${
                   isDownloaded
-                    ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                    ? 'bg-[#172848]/70 border-[#648CD4]/40 text-[#D9B45A]'
                     : downloadError
                     ? 'bg-rose-950/40 border-rose-500/40 text-rose-300 hover:bg-rose-950/60'
-                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                    : 'bg-slate-900 border-slate-800 text-slate-200 hover:border-slate-700'
                 }`}
                 title={
                   isDownloaded
@@ -951,26 +987,26 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
               >
                 {isDownloaded ? (
                   <>
-                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                    <span>محفوظة للاستماع دون إنترنت</span>
+                    <CheckCircle2 className="w-3.5 h-3.5 text-[#D9B45A]" />
+                    <span>محفوظة دون إنترنت</span>
                   </>
                 ) : isDownloading ? (
                   <>
-                    <Download className="w-3 h-3 animate-bounce text-emerald-400" />
+                    <Download className="w-3.5 h-3.5 animate-bounce text-[#D9B45A]" />
                     <span>
                       {downloadProgress
-                        ? `جارِ الحفظ (${downloadProgress.completed}/${downloadProgress.total})...`
+                        ? `جارٍ الحفظ (${downloadProgress.completed}/${downloadProgress.total})...`
                         : 'جارِ التخزين...'}
                     </span>
                   </>
                 ) : downloadError ? (
                   <>
-                    <AlertCircle className="w-3 h-3 text-rose-400" />
-                    <span>تعذر التحميل • أعد المحاولة</span>
+                    <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+                    <span>تعذر التحميل · أعد المحاولة</span>
                   </>
                 ) : (
                   <>
-                    <Download className="w-3 h-3 text-slate-400" />
+                    <Download className="w-3.5 h-3.5 text-[#648CD4]" />
                     <span>حفظ السورة دون إنترنت</span>
                   </>
                 )}

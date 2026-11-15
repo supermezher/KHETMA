@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
-export interface PartClaim {
+export interface PublicPartClaim {
   juzNumber: number;
   juzName: string;
   claimedBy: string | null;
@@ -11,22 +11,33 @@ export interface PartClaim {
   surahsCovered?: string;
 }
 
+export interface ServerPartClaim extends PublicPartClaim {
+  claimTokenHash?: string;
+}
+
 export interface KhatmaRoom {
   roomId: string;
+  isPublic: boolean;
   dedicationTitle: string;
   creatorName: string;
   deadlineDays: number;
-  adminPinHash: string;
-  parts: PartClaim[];
+  adminKeyHash: string;
+  parts: ServerPartClaim[];
   createdAt: string;
   updatedAt: string;
 }
 
-export interface KhatmaRoomsDatabase {
-  rooms: Record<string, KhatmaRoom>;
-}
-
 export const DEFAULT_ROOM_ID = 'public';
+const MAX_TOTAL_ROOMS = 400;
+const STALE_PRIVATE_ROOM_MS = 90 * 24 * 60 * 60 * 1000;
+const RESERVED_ROOM_IDS = new Set([
+  '__proto__',
+  'constructor',
+  'prototype',
+  'tostring',
+  'valueof',
+  'hasownproperty',
+]);
 
 export const DEFAULT_JUZ_SURAS: Record<number, string> = {
   1: 'من الفاتحة 1 إلى البقرة 141',
@@ -61,29 +72,58 @@ export const DEFAULT_JUZ_SURAS: Record<number, string> = {
   30: 'من النبأ 1 إلى الناس 6 (جزء عم)',
 };
 
-export function hashPin(pin: string): string {
-  return crypto.createHash('sha256').update(pin.trim()).digest('hex');
+export function generateCapabilitySecret(bytes = 16): string {
+  return crypto.randomBytes(bytes).toString('hex');
 }
 
-export function verifyPinHash(providedPin: string, storedHash: string): boolean {
-  const providedBuf = Buffer.from(hashPin(providedPin), 'utf8');
-  const storedBuf = Buffer.from(storedHash, 'utf8');
-  if (providedBuf.length !== storedBuf.length) return false;
-  return crypto.timingSafeEqual(providedBuf, storedBuf);
+export function hashSecret(secret: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derived = crypto.scryptSync(secret.trim(), salt, 32).toString('hex');
+  return `${salt}:${derived}`;
+}
+
+export function verifySecretHash(providedSecret: unknown, storedHash?: string): boolean {
+  if (typeof providedSecret !== 'string' || !providedSecret.trim() || typeof storedHash !== 'string') {
+    return false;
+  }
+  const parts = storedHash.split(':');
+  if (parts.length !== 2) {
+    // Reject unsalted legacy hashes (e.g. old SHA-256 defaults)
+    return false;
+  }
+  const [salt, expectedHex] = parts;
+  if (!salt || !expectedHex) return false;
+  try {
+    const derived = crypto.scryptSync(providedSecret.trim(), salt, 32);
+    const expectedBuf = Buffer.from(expectedHex, 'hex');
+    if (derived.length !== expectedBuf.length) return false;
+    return crypto.timingSafeEqual(derived, expectedBuf);
+  } catch {
+    return false;
+  }
 }
 
 export function isValidJuzNumber(val: unknown): val is number {
   return typeof val === 'number' && Number.isInteger(val) && val >= 1 && val <= 30;
 }
 
-export function normalizeRoomId(raw?: unknown): string {
-  if (typeof raw !== 'string') return DEFAULT_ROOM_ID;
+/**
+ * Normalizes a room ID and rejects prototype-pollution or reserved property keys.
+ * Returns null if an explicit invalid/reserved value was supplied.
+ */
+export function normalizeRoomId(raw?: unknown): string | null {
+  if (raw === undefined || raw === null || raw === '') {
+    return DEFAULT_ROOM_ID;
+  }
+  if (typeof raw !== 'string') return null;
   const cleaned = raw.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
-  if (!cleaned || cleaned.length < 2) return DEFAULT_ROOM_ID;
-  return cleaned.slice(0, 40);
+  if (!cleaned || cleaned.length < 2 || RESERVED_ROOM_IDS.has(cleaned)) {
+    return null;
+  }
+  return cleaned.slice(0, 64);
 }
 
-export function generateInitialParts(): PartClaim[] {
+export function generateInitialParts(): ServerPartClaim[] {
   return Array.from({ length: 30 }, (_, i) => {
     const num = i + 1;
     return {
@@ -97,31 +137,63 @@ export function generateInitialParts(): PartClaim[] {
   });
 }
 
+export function sanitizePartsForClient(parts: ServerPartClaim[]): PublicPartClaim[] {
+  return parts.map((p) => ({
+    juzNumber: p.juzNumber,
+    juzName: p.juzName,
+    claimedBy: p.claimedBy,
+    claimedAt: p.claimedAt,
+    isCompleted: p.isCompleted,
+    surahsCovered: p.surahsCovered,
+  }));
+}
+
 export function createDefaultPublicRoom(): KhatmaRoom {
   const now = new Date().toISOString();
+  const envSecret =
+    typeof process.env.KHATMA_ADMIN_SECRET === 'string' && process.env.KHATMA_ADMIN_SECRET.trim().length >= 8
+      ? process.env.KHATMA_ADMIN_SECRET.trim()
+      : generateCapabilitySecret(16);
+
   return {
     roomId: DEFAULT_ROOM_ID,
+    isPublic: true,
     dedicationTitle: 'ختمة البر والصدقة الجارية لجميع موتى المسلمين',
     creatorName: 'فاعل خير',
     deadlineDays: 3,
-    adminPinHash: hashPin('1234'),
+    adminKeyHash: hashSecret(envSecret),
     parts: generateInitialParts(),
     createdAt: now,
     updatedAt: now,
   };
 }
 
-export class PinRateLimiter {
-  private attempts = new Map<string, { count: number; blockedUntil: number }>();
+export class SecretRateLimiter {
+  private attempts = new Map<string, { count: number; blockedUntil: number; lastSeen: number }>();
   private readonly maxAttempts: number;
   private readonly windowMs: number;
+  private readonly maxEntries: number;
 
-  constructor(maxAttempts = 5, windowMs = 5 * 60 * 1000) {
+  constructor(maxAttempts = 5, windowMs = 5 * 60 * 1000, maxEntries = 5000) {
     this.maxAttempts = maxAttempts;
     this.windowMs = windowMs;
+    this.maxEntries = maxEntries;
+  }
+
+  private cleanupExpired(now: number): void {
+    for (const [k, entry] of this.attempts.entries()) {
+      const expiredBlock = entry.blockedUntil > 0 && entry.blockedUntil <= now;
+      const staleUnblocked = entry.blockedUntil === 0 && now - entry.lastSeen > this.windowMs;
+      if (expiredBlock || staleUnblocked) {
+        this.attempts.delete(k);
+      }
+    }
   }
 
   check(key: string, now = Date.now()): { allowed: boolean; retryAfterSec: number } {
+    if (this.attempts.size > this.maxEntries) {
+      this.cleanupExpired(now);
+    }
     const entry = this.attempts.get(key);
     if (!entry) return { allowed: true, retryAfterSec: 0 };
     if (entry.blockedUntil > now) {
@@ -134,10 +206,10 @@ export class PinRateLimiter {
   }
 
   recordFailure(key: string, now = Date.now()): void {
-    const entry = this.attempts.get(key) || { count: 0, blockedUntil: 0 };
+    const entry = this.attempts.get(key) || { count: 0, blockedUntil: 0, lastSeen: now };
     const nextCount = entry.count + 1;
     const blockedUntil = nextCount >= this.maxAttempts ? now + this.windowMs : 0;
-    this.attempts.set(key, { count: nextCount, blockedUntil });
+    this.attempts.set(key, { count: nextCount, blockedUntil, lastSeen: now });
   }
 
   reset(key: string): void {
@@ -146,89 +218,155 @@ export class PinRateLimiter {
 }
 
 export function createKhatmaDatabase(dataDir = path.resolve(process.cwd(), 'data')) {
-  const legacyFile = path.join(dataDir, 'collective_khatma.json');
   const roomsFile = path.join(dataDir, 'collective_khatmas.json');
 
-  const save = (db: KhatmaRoomsDatabase): void => {
+  const roomsMap = new Map<string, KhatmaRoom>();
+
+  const save = (): void => {
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
-    fs.writeFileSync(roomsFile, JSON.stringify(db, null, 2), 'utf-8');
+    const serializedObj: Record<string, KhatmaRoom> = Object.create(null);
+    for (const [id, room] of roomsMap.entries()) {
+      if (!RESERVED_ROOM_IDS.has(id)) {
+        serializedObj[id] = room;
+      }
+    }
+    const payload = JSON.stringify({ rooms: serializedObj }, null, 2);
+    const tmpFile = path.join(dataDir, `.collective_khatmas.${process.pid}.${Date.now()}.tmp`);
+    fs.writeFileSync(tmpFile, payload, 'utf-8');
+    fs.renameSync(tmpFile, roomsFile);
   };
 
-  const load = (): KhatmaRoomsDatabase => {
-    try {
-      if (fs.existsSync(roomsFile)) {
+  const pruneStalePrivateRooms = (): void => {
+    const now = Date.now();
+    for (const [id, room] of roomsMap.entries()) {
+      if (room.isPublic || id === DEFAULT_ROOM_ID) continue;
+      const updatedMs = new Date(room.updatedAt).getTime();
+      const anyClaimed = room.parts.some((p) => p.claimedBy !== null);
+      if (!anyClaimed && Number.isFinite(updatedMs) && now - updatedMs > STALE_PRIVATE_ROOM_MS) {
+        roomsMap.delete(id);
+      }
+    }
+  };
+
+  const load = (): void => {
+    if (fs.existsSync(roomsFile)) {
+      try {
         const raw = fs.readFileSync(roomsFile, 'utf-8');
         const parsed = JSON.parse(raw);
-        if (parsed && parsed.rooms && parsed.rooms[DEFAULT_ROOM_ID]) {
-          return parsed as KhatmaRoomsDatabase;
+        if (!parsed || typeof parsed !== 'object' || !parsed.rooms || typeof parsed.rooms !== 'object') {
+          throw new Error('Malformed rooms database root');
+        }
+
+        let needsResave = false;
+        for (const [key, value] of Object.entries(parsed.rooms as Record<string, unknown>)) {
+          if (RESERVED_ROOM_IDS.has(key.toLowerCase()) || !value || typeof value !== 'object') continue;
+          const r = value as Partial<KhatmaRoom> & { adminPinHash?: string };
+          const roomId = normalizeRoomId(r.roomId || key);
+          if (!roomId || !Array.isArray(r.parts) || r.parts.length !== 30) continue;
+
+          // Upgrade legacy SHA-256 / unsalted hashes so default '1234' can never be accepted
+          let adminKeyHash = typeof r.adminKeyHash === 'string' && r.adminKeyHash.includes(':')
+            ? r.adminKeyHash
+            : '';
+          if (!adminKeyHash) {
+            const replacement =
+              roomId === DEFAULT_ROOM_ID &&
+              typeof process.env.KHATMA_ADMIN_SECRET === 'string' &&
+              process.env.KHATMA_ADMIN_SECRET.trim().length >= 8
+                ? process.env.KHATMA_ADMIN_SECRET.trim()
+                : generateCapabilitySecret(16);
+            adminKeyHash = hashSecret(replacement);
+            needsResave = true;
+          }
+
+          roomsMap.set(roomId, {
+            roomId,
+            isPublic: typeof r.isPublic === 'boolean' ? r.isPublic : roomId === DEFAULT_ROOM_ID,
+            dedicationTitle: typeof r.dedicationTitle === 'string' ? r.dedicationTitle : 'ختمة جماعية مباركة',
+            creatorName: typeof r.creatorName === 'string' ? r.creatorName : 'فاعل خير',
+            deadlineDays: typeof r.deadlineDays === 'number' ? r.deadlineDays : 7,
+            adminKeyHash,
+            parts: r.parts,
+            createdAt: typeof r.createdAt === 'string' ? r.createdAt : new Date().toISOString(),
+            updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : new Date().toISOString(),
+          });
+        }
+
+        if (!roomsMap.has(DEFAULT_ROOM_ID)) {
+          roomsMap.set(DEFAULT_ROOM_ID, createDefaultPublicRoom());
+          needsResave = true;
+        }
+        if (needsResave) {
+          save();
+        }
+        return;
+      } catch (err) {
+        // Quarantine corrupted file cleanly instead of silently discarding user data
+        const quarantinePath = path.join(
+          dataDir,
+          `collective_khatmas.corrupted.${Date.now()}.json`
+        );
+        try {
+          fs.renameSync(roomsFile, quarantinePath);
+          console.error(
+            `[khatmaStore] Corrupted database quarantined to ${quarantinePath}:`,
+            err
+          );
+        } catch (quarantineErr) {
+          console.error('[khatmaStore] Failed to quarantine corrupted database:', quarantineErr);
         }
       }
-      // Migrate legacy single-room file if it exists
-      if (fs.existsSync(legacyFile)) {
-        const rawLegacy = fs.readFileSync(legacyFile, 'utf-8');
-        const legacy = JSON.parse(rawLegacy);
-        if (legacy && Array.isArray(legacy.parts) && legacy.parts.length === 30) {
-          const migrated: KhatmaRoomsDatabase = {
-            rooms: {
-              [DEFAULT_ROOM_ID]: {
-                roomId: DEFAULT_ROOM_ID,
-                dedicationTitle: legacy.dedicationTitle || 'ختمة البر والصدقة الجارية لجميع موتى المسلمين',
-                creatorName: legacy.creatorName || 'فاعل خير',
-                deadlineDays: typeof legacy.deadlineDays === 'number' ? legacy.deadlineDays : 3,
-                adminPinHash: legacy.adminPinHash || hashPin('1234'),
-                parts: legacy.parts,
-                createdAt: legacy.updatedAt || new Date().toISOString(),
-                updatedAt: legacy.updatedAt || new Date().toISOString(),
-              },
-            },
-          };
-          save(migrated);
-          return migrated;
-        }
-      }
-    } catch (err) {
-      console.error('Error loading khatma rooms database:', err);
     }
 
-    const fresh: KhatmaRoomsDatabase = {
-      rooms: {
-        [DEFAULT_ROOM_ID]: createDefaultPublicRoom(),
-      },
-    };
-    save(fresh);
-    return fresh;
+    roomsMap.set(DEFAULT_ROOM_ID, createDefaultPublicRoom());
+    save();
   };
 
-  const db = load();
+  load();
 
   return {
     getRoom(roomId?: string): KhatmaRoom | null {
       const normalized = normalizeRoomId(roomId);
-      return db.rooms[normalized] || null;
+      if (!normalized) return null;
+      return roomsMap.get(normalized) || null;
     },
-    listRoomSummaries() {
-      return Object.values(db.rooms).map((r) => ({
-        roomId: r.roomId,
-        dedicationTitle: r.dedicationTitle,
-        creatorName: r.creatorName,
-        deadlineDays: r.deadlineDays,
-        claimedCount: r.parts.filter((p) => p.claimedBy !== null).length,
-        completedCount: r.parts.filter((p) => p.isCompleted).length,
-        updatedAt: r.updatedAt,
-      }));
+    /** Lists ONLY public rooms; private rooms are strictly hidden from enumeration */
+    listPublicRoomSummaries() {
+      const result = [];
+      for (const r of roomsMap.values()) {
+        if (!r.isPublic) continue;
+        result.push({
+          roomId: r.roomId,
+          dedicationTitle: r.dedicationTitle,
+          creatorName: r.creatorName,
+          deadlineDays: r.deadlineDays,
+          claimedCount: r.parts.filter((p) => p.claimedBy !== null).length,
+          completedCount: r.parts.filter((p) => p.isCompleted).length,
+          updatedAt: r.updatedAt,
+        });
+      }
+      return result;
     },
     createRoom(params: {
       requestedSlug?: string;
       dedicationTitle: string;
       creatorName: string;
       deadlineDays?: number;
-      pin: string;
-    }): { ok: true; room: KhatmaRoom } | { ok: false; status: number; error: string } {
+      adminSecret?: string;
+    }): { ok: true; room: KhatmaRoom; adminKey: string } | { ok: false; status: number; error: string } {
+      pruneStalePrivateRooms();
+      if (roomsMap.size >= MAX_TOTAL_ROOMS) {
+        return {
+          ok: false,
+          status: 429,
+          error: 'تم بلوغ الحد الأقصى للغرف النشطة حالياً، يرجى المحاولة لاحقاً.',
+        };
+      }
+
       const title = typeof params.dedicationTitle === 'string' ? params.dedicationTitle.trim().slice(0, 160) : '';
       const creator = typeof params.creatorName === 'string' ? params.creatorName.trim().slice(0, 80) : '';
-      const pin = typeof params.pin === 'string' ? params.pin.trim() : '';
 
       if (!title || title.length < 3) {
         return { ok: false, status: 400, error: 'يرجى كتابة عنوان واضح للختمة (3 أحرف على الأقل)' };
@@ -236,24 +374,26 @@ export function createKhatmaDatabase(dataDir = path.resolve(process.cwd(), 'data
       if (!creator) {
         return { ok: false, status: 400, error: 'يرجى كتابة اسم منشئ الختمة' };
       }
-      if (pin.length < 4) {
-        return { ok: false, status: 400, error: 'يجب أن لا يقل رمز المشرف للختمة الخاصة عن 4 أحرف أو أرقام' };
-      }
 
       let roomId = '';
       if (params.requestedSlug && params.requestedSlug.trim()) {
-        const cleaned = params.requestedSlug.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
-        if (cleaned.length < 3) {
-          return { ok: false, status: 400, error: 'معرف الرابط المخصص يجب أن يحتوي على 3 أحرف أو أرقام إنجليزية على الأقل' };
+        const normalizedSlug = normalizeRoomId(params.requestedSlug);
+        if (!normalizedSlug || normalizedSlug.length < 6) {
+          return {
+            ok: false,
+            status: 400,
+            error: 'معرف الرابط المخصص يجب أن يحتوي على 6 أحرف أو أرقام إنجليزية على الأقل',
+          };
         }
-        if (cleaned === DEFAULT_ROOM_ID || db.rooms[cleaned]) {
-          return { ok: false, status: 409, error: 'هذا المعرف مستخدم بالفعل، يرجى اختيار معرف آخر' };
+        if (normalizedSlug === DEFAULT_ROOM_ID || roomsMap.has(normalizedSlug)) {
+          return { ok: false, status: 409, error: 'هذا المعرف غير متاح، يرجى اختيار معرف آخر' };
         }
-        roomId = cleaned.slice(0, 40);
+        roomId = normalizedSlug;
       } else {
-        roomId = `k-${crypto.randomBytes(3).toString('hex')}`;
-        while (db.rooms[roomId]) {
-          roomId = `k-${crypto.randomBytes(3).toString('hex')}`;
+        // High-entropy unguessable room ID (12 bytes = 24 hex chars)
+        roomId = `k-${crypto.randomBytes(12).toString('hex')}`;
+        while (roomsMap.has(roomId)) {
+          roomId = `k-${crypto.randomBytes(12).toString('hex')}`;
         }
       }
 
@@ -262,25 +402,40 @@ export function createKhatmaDatabase(dataDir = path.resolve(process.cwd(), 'data
         ? Math.round(parsedDays)
         : 7;
 
+      // Always issue a 128-bit cryptographic secret key for room administration (no weak 4-digit PINs)
+      const adminKey =
+        typeof params.adminSecret === 'string' && params.adminSecret.trim().length >= 12
+          ? params.adminSecret.trim()
+          : generateCapabilitySecret(16);
+
       const now = new Date().toISOString();
       const room: KhatmaRoom = {
         roomId,
+        isPublic: false,
         dedicationTitle: title,
         creatorName: creator,
         deadlineDays,
-        adminPinHash: hashPin(pin),
+        adminKeyHash: hashSecret(adminKey),
         parts: generateInitialParts(),
         createdAt: now,
         updatedAt: now,
       };
-      db.rooms[roomId] = room;
-      save(db);
-      return { ok: true, room };
+      roomsMap.set(roomId, room);
+      save();
+      return { ok: true, room, adminKey };
     },
     saveRoom(room: KhatmaRoom): void {
       room.updatedAt = new Date().toISOString();
-      db.rooms[room.roomId] = room;
-      save(db);
+      roomsMap.set(room.roomId, room);
+      save();
+    },
+    deletePrivateRoom(roomId: string): boolean {
+      if (roomId === DEFAULT_ROOM_ID) return false;
+      const room = roomsMap.get(roomId);
+      if (!room || room.isPublic) return false;
+      const deleted = roomsMap.delete(roomId);
+      if (deleted) save();
+      return deleted;
     },
   };
 }

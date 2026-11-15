@@ -1,12 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   BookOpen, Sparkles, Award, Heart, Calendar, HelpCircle,
-  PenLine, Cpu, Search, ChevronDown,
+  PenLine, Search, ChevronDown,
   ShieldCheck, Flame, Maximize2,
-  Menu, X, AlertCircle, RefreshCw
+  Menu, X, AlertCircle, RefreshCw, AlertTriangle
 } from 'lucide-react';
 import { SURAHS_LIST } from './data/quranMetadata';
-import { SurahData, Ayah, getSurahData, searchQuranAyahs, QuranSearchMatch } from './data/quranService';
+import {
+  SurahData,
+  Ayah,
+  getSurahData,
+  searchQuranAyahs,
+  QuranSearchMatch,
+  cleanupLegacySurahLocalStorage
+} from './data/quranService';
 import { recordAyahReadActivity, recordPageProgress } from './data/faithAnalyticsService';
 import { QuranReader } from './components/QuranReader';
 import { AudioPlayerBar } from './components/AudioPlayerBar';
@@ -26,6 +33,9 @@ import { RuqyahSection } from './components/RuqyahSection';
 import { PWAInstallButton, OfflineIndicator } from './components/PWAInstallButton';
 import { Reciter, RECITERS_LIST } from './data/reciters';
 import { safeLocalStorage } from './utils/safeStorage';
+import { idbGet, idbSet } from './utils/quranIndexedDb';
+import { BayanUserBackup, READER_PREFS_KEY, sanitizeJournalNotesList } from './utils/userBackup';
+import { toArabicIndic } from './components/khatma/KhatmaRing';
 
 // Exact Medina Mus'haf starting (surahNumber, ayahNumber) for all 30 Ajza
 const JUZ_START_COORDINATES: Record<number, { surah: number; ayah: number }> = {
@@ -106,15 +116,22 @@ export default function App() {
   });
   const [isLoadingSurah, setIsLoadingSurah] = useState<boolean>(true);
 
-  // Audio & Tajweed state
-  const [selectedReciter, setSelectedReciter] = useState<Reciter>(RECITERS_LIST[0]);
+  // Audio & Tajweed state (persisted in READER_PREFS_KEY)
+  const [selectedReciter, setSelectedReciter] = useState<Reciter>(() => {
+    const prefs = safeLocalStorage.getJSON<{ selectedReciterId?: string }>(READER_PREFS_KEY, {});
+    return RECITERS_LIST.find((r) => r.id === prefs?.selectedReciterId) || RECITERS_LIST[0];
+  });
   const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
   const [playTriggerNonce, setPlayTriggerNonce] = useState<number>(0);
   const [memorizationRepeatTarget, setMemorizationRepeatTarget] = useState<MemorizationRepeatTarget>(1);
   const [memorizationCurrentRepeat, setMemorizationCurrentRepeat] = useState<number>(1);
   const [audioCurrentTime, setAudioCurrentTime] = useState<number>(0);
   const [audioDuration, setAudioDuration] = useState<number>(1);
-  const [isTajweedActive, setIsTajweedActive] = useState<boolean>(true);
+  const [isTajweedActive, setIsTajweedActive] = useState<boolean>(() => {
+    const prefs = safeLocalStorage.getJSON<{ isTajweedActive?: boolean }>(READER_PREFS_KEY, {});
+    return typeof prefs?.isTajweedActive === 'boolean' ? prefs.isTajweedActive : true;
+  });
+  const [prefsReloadNonce, setPrefsReloadNonce] = useState<number>(0);
   const [isSmartScrollActive, setIsSmartScrollActive] = useState<boolean>(true);
   const [isFullScreenReading, setIsFullScreenReading] = useState<boolean>(false);
   const [isAudioBarVisible, setIsAudioBarVisible] = useState<boolean>(true);
@@ -138,9 +155,9 @@ export default function App() {
   const [ayahSearchResults, setAyahSearchResults] = useState<QuranSearchMatch[]>([]);
   const [isSearchingAyahs, setIsSearchingAyahs] = useState<boolean>(false);
 
-  // Journal notes stored locally (no hardcoded fake notes)
+  // Journal notes stored locally (no hardcoded fake notes) + hydrated with IndexedDB
   const [journalNotes, setJournalNotes] = useState<JournalNote[]>(() => {
-    return safeLocalStorage.getJSON<JournalNote[]>('bayan_journal_notes', []);
+    return sanitizeJournalNotesList(safeLocalStorage.getJSON<unknown[]>('bayan_journal_notes', []));
   });
 
   // Pending target ayah when switching surah (stored in ref so clearing it never retriggers load effect)
@@ -156,6 +173,38 @@ export default function App() {
 
   const [surahError, setSurahError] = useState<string | null>(null);
   const [plannerToast, setPlannerToast] = useState<string | null>(null);
+  const [storageWarning, setStorageWarning] = useState<string | null>(null);
+
+  // Cleanup legacy large surah localStorage entries, listen for quota write failures, and hydrate journal notes from IndexedDB
+  useEffect(() => {
+    cleanupLegacySurahLocalStorage();
+
+    idbGet<unknown[]>('user_data', 'bayan_journal_notes')
+      .then((idbNotes) => {
+        const sanitized = sanitizeJournalNotesList(idbNotes);
+        if (sanitized.length > 0) {
+          setJournalNotes((prev) => (prev.length === 0 ? sanitized : prev));
+        }
+      })
+      .catch(() => {});
+
+    const handleStorageError = (e: Event) => {
+      const detail = (e as CustomEvent<{ message?: string }>).detail;
+      setStorageWarning(detail?.message || 'تعذر حفظ التغييرات محلياً: قد تكون سعة التخزين ممتلئة.');
+    };
+    window.addEventListener('bayan:storage-error', handleStorageError);
+    return () => window.removeEventListener('bayan:storage-error', handleStorageError);
+  }, []);
+
+  // Persist Tajweed toggle and selected Reciter cleanly
+  useEffect(() => {
+    const prev = safeLocalStorage.getJSON<Record<string, unknown>>(READER_PREFS_KEY, {});
+    safeLocalStorage.setJSON(READER_PREFS_KEY, {
+      ...prev,
+      isTajweedActive,
+      selectedReciterId: selectedReciter.id,
+    });
+  }, [isTajweedActive, selectedReciter.id]);
 
   // Close Surah Picker on Escape key
   useEffect(() => {
@@ -278,7 +327,7 @@ export default function App() {
     }
   };
 
-  // Handle saving journal note with direct self-contained payload
+  // Handle saving journal note with direct self-contained payload (localStorage + IndexedDB)
   const handleSaveJournalNote = (payload: JournalNotePayload) => {
     const updated: JournalNote[] = [
       {
@@ -293,12 +342,28 @@ export default function App() {
     ];
     setJournalNotes(updated);
     safeLocalStorage.setJSON('bayan_journal_notes', updated);
+    idbSet('user_data', 'bayan_journal_notes', updated).catch(() => {});
   };
 
   const handleDeleteJournalNote = (ayahId: number) => {
     const updated = journalNotes.filter(n => n.ayahId !== ayahId);
     setJournalNotes(updated);
     safeLocalStorage.setJSON('bayan_journal_notes', updated);
+    idbSet('user_data', 'bayan_journal_notes', updated).catch(() => {});
+  };
+
+  const handleBackupRestored = (backup: BayanUserBackup) => {
+    setJournalNotes(backup.journalNotes);
+    if (backup.readerPrefs) {
+      if (typeof backup.readerPrefs.isTajweedActive === 'boolean') {
+        setIsTajweedActive(backup.readerPrefs.isTajweedActive);
+      }
+      if (typeof backup.readerPrefs.selectedReciterId === 'string') {
+        const found = RECITERS_LIST.find((r) => r.id === backup.readerPrefs?.selectedReciterId);
+        if (found) setSelectedReciter(found);
+      }
+      setPrefsReloadNonce((n) => n + 1);
+    }
   };
 
   const handleNavigateToAyah = (surahNum: number, ayahNum: number) => {
@@ -350,12 +415,33 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen bg-[#0b1117] text-slate-100 flex flex-col font-sans selection:bg-emerald-500/30 selection:text-emerald-200">
+    <div className="min-h-screen bg-[#10161f] text-[#E9E3D3] flex flex-col font-sans selection:bg-[#D9B45A]/30 selection:text-[#F6EFDD]">
       <OfflineIndicator />
+
+      {/* Visible Storage / Quota Failure Warning Banner (F4) */}
+      {storageWarning && (
+        <div
+          role="alert"
+          className="bg-rose-950/95 border-b border-rose-500/40 px-4 py-2 text-xs text-rose-100 flex items-center justify-between gap-3 z-50"
+        >
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+            <span>{storageWarning}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setStorageWarning(null)}
+            aria-label="إغلاق التنبيه"
+            className="p-1 rounded-lg hover:bg-rose-900/50 text-rose-200 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Top Main Navigation Bar (Hidden when in full screen reading) */}
       {!isFullScreenReading && (
-        <header className="sticky top-0 z-30 bg-[#090f14]/95 border-b border-slate-800/80 backdrop-blur-md">
+        <header className="sticky top-0 z-30 bg-[#0d121a]/95 border-b border-slate-800/80 backdrop-blur-md">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4 sm:gap-6">
             {/* Zone 1: Brand Wordmark */}
             <button
@@ -364,12 +450,12 @@ export default function App() {
                 setActiveView('mushaf');
                 setIsDesktopMoreOpen(false);
               }}
-              className="flex items-center gap-2.5 cursor-pointer group whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 rounded-xl p-1 -mr-1"
+              className="flex items-center gap-2.5 cursor-pointer group whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D9B45A] rounded-xl p-1 -mr-1"
             >
-              <span className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-md shadow-emerald-950/70 font-bold text-lg font-kufi group-hover:scale-105 transition-transform">
+              <span className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#1F3A6E] to-[#2E5499] border border-[#D9B45A]/45 flex items-center justify-center text-[#D9B45A] shadow-md font-bold text-lg font-kufi group-hover:scale-105 transition-transform">
                 ب
               </span>
-              <span className="font-bold text-lg text-white font-kufi tracking-tight">
+              <span className="font-bold text-lg text-[#F6EFDD] font-kufi tracking-tight">
                 بَيَان
               </span>
             </button>
@@ -395,16 +481,16 @@ export default function App() {
                       setActiveView(tab.id as ActiveView);
                       setIsDesktopMoreOpen(false);
                     }}
-                    className={`relative h-full px-3.5 text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
+                    className={`relative h-full px-3.5 text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D9B45A] ${
                       isActive
-                        ? 'text-emerald-300 font-bold'
-                        : 'text-slate-400 hover:text-slate-100'
+                        ? 'text-[#D9B45A] font-bold'
+                        : 'text-slate-300 hover:text-[#F6EFDD]'
                     }`}
                   >
                     <Icon className="w-3.5 h-3.5 shrink-0" />
                     <span>{tab.label}</span>
                     {isActive && (
-                      <span className="absolute bottom-0 inset-x-2 h-0.5 bg-emerald-400 rounded-full" />
+                      <span className="absolute bottom-0 inset-x-2 h-0.5 bg-[#D9B45A] rounded-full" />
                     )}
                   </button>
                 );
@@ -415,10 +501,9 @@ export default function App() {
                 {(() => {
                   const secondaryTabs: { id: ActiveView; label: string; sub: string; icon: typeof Heart }[] = [
                     { id: 'mood', label: 'القرآن حياتي', sub: 'آيات بحسب المشاعر والحال', icon: Heart },
-                    { id: 'analytics', label: 'سجل الختمات', sub: 'إحصاءات القراءة والإنجاز', icon: Calendar },
+                    { id: 'analytics', label: 'سجل الختمات', sub: 'إحصاءات القراءة والنسخ الاحتياطي', icon: Calendar },
                     { id: 'tajweed', label: 'موسوعة التجويد', sub: 'أحكام التلاوة والأمثلة', icon: HelpCircle },
                     { id: 'journal', label: 'مفكرتي', sub: 'ملاحظات التدبر المحفوظة', icon: PenLine },
-                    { id: 'flutter-arch', label: 'هندسة Flutter', sub: 'بنية تطبيق الجوال', icon: Cpu },
                   ];
                   const activeSecondary = secondaryTabs.find((t) => t.id === activeView);
                   return (
@@ -428,12 +513,12 @@ export default function App() {
                         onClick={() => setIsDesktopMoreOpen((o) => !o)}
                         aria-expanded={isDesktopMoreOpen}
                         aria-haspopup="menu"
-                        className={`relative h-full px-3.5 text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
+                        className={`relative h-full px-3.5 text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D9B45A] ${
                           activeSecondary
-                            ? 'text-emerald-300 font-bold'
+                            ? 'text-[#D9B45A] font-bold'
                             : isDesktopMoreOpen
-                            ? 'text-white'
-                            : 'text-slate-400 hover:text-slate-100'
+                            ? 'text-[#F6EFDD]'
+                            : 'text-slate-300 hover:text-[#F6EFDD]'
                         }`}
                       >
                         <span>{activeSecondary ? activeSecondary.label : 'المزيد'}</span>
@@ -443,14 +528,14 @@ export default function App() {
                           }`}
                         />
                         {activeSecondary && (
-                          <span className="absolute bottom-0 inset-x-2 h-0.5 bg-emerald-400 rounded-full" />
+                          <span className="absolute bottom-0 inset-x-2 h-0.5 bg-[#D9B45A] rounded-full" />
                         )}
                       </button>
 
                       {isDesktopMoreOpen && (
                         <div
                           role="menu"
-                          className="absolute top-full left-0 mt-1.5 w-64 rounded-2xl bg-slate-900 border border-slate-700/80 shadow-2xl p-1.5 z-50 space-y-0.5"
+                          className="absolute top-full end-0 mt-1.5 w-64 rounded-2xl bg-[#10161f] border border-[#D9B45A]/30 shadow-2xl p-1.5 z-50 space-y-0.5"
                         >
                           {secondaryTabs.map((item) => {
                             const Icon = item.icon;
@@ -466,15 +551,15 @@ export default function App() {
                                 }}
                                 className={`w-full text-right p-2.5 rounded-xl flex items-center gap-3 transition-colors cursor-pointer ${
                                   isSelected
-                                    ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/30'
-                                    : 'text-slate-200 hover:bg-slate-800/80 border border-transparent'
+                                    ? 'bg-[#1F3A6E]/60 text-[#D9B45A] border border-[#648CD4]/45'
+                                    : 'text-[#E9E3D3] hover:bg-slate-800/80 border border-transparent'
                                 }`}
                               >
                                 <span
                                   className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                                     isSelected
-                                      ? 'bg-emerald-500/20 text-emerald-300'
-                                      : 'bg-slate-950 text-slate-400'
+                                      ? 'bg-[#D9B45A]/15 text-[#D9B45A]'
+                                      : 'bg-slate-950 text-slate-300'
                                   }`}
                                 >
                                   <Icon className="w-4 h-4" />
@@ -504,10 +589,10 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setIsKhatmaPlannerOpen(true)}
-                className="flex items-center gap-1.5 py-2 px-3 sm:px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold whitespace-nowrap shrink-0 shadow-sm shadow-emerald-950/60 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+                className="min-h-[38px] flex items-center gap-1.5 py-2 px-3 sm:px-3.5 rounded-xl bg-[#1F3A6E] hover:bg-[#2E5499] border border-[#648CD4]/45 text-[#F6EFDD] text-xs font-bold whitespace-nowrap shrink-0 shadow-sm transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D9B45A]"
                 title="مخطط الورد والختمة الذكية"
               >
-                <Flame className="w-3.5 h-3.5 shrink-0" />
+                <Flame className="w-3.5 h-3.5 shrink-0 text-[#D9B45A]" />
                 <span className="sm:hidden">الورد</span>
                 <span className="hidden sm:inline">مخطط الورد</span>
               </button>
@@ -521,22 +606,22 @@ export default function App() {
         isFullScreenReading
           ? 'p-0 max-w-full m-0'
           : isAudioBarVisible
-          ? 'max-w-7xl p-3 sm:p-6 pb-52 md:pb-36 lg:pb-28'
-          : 'max-w-7xl p-3 sm:p-6 pb-24 lg:pb-12'
+          ? 'max-w-7xl p-3 sm:p-5 pb-48 md:pb-32 lg:pb-24'
+          : 'max-w-7xl p-3 sm:p-5 pb-24 lg:pb-12'
       }`}>
         {activeView === 'mushaf' && (
           <div className="relative">
             {isLoadingSurah && surahData && (
-              <div className="mb-2 flex items-center justify-center gap-2 py-1 px-3 rounded-xl bg-emerald-950/70 border border-emerald-500/30 text-xs text-emerald-300 max-w-fit mx-auto">
-                <div className="w-3 h-3 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin" />
-                <span>جارٍ تحميل السورة الكريمة...</span>
+              <div className="mb-2 flex items-center justify-center gap-2 py-1 px-3 rounded-xl bg-[#142038] border border-[#D9B45A]/30 text-xs text-[#D9B45A] max-w-fit mx-auto">
+                <div className="w-3 h-3 rounded-full border-2 border-[#D9B45A] border-t-transparent animate-spin" />
+                <span>جارٍ تحميل السورة الكريمة…</span>
               </div>
             )}
 
             {isLoadingSurah && !surahData ? (
-              <div className="p-16 text-center rounded-2xl bg-slate-900/40 border border-slate-800 flex flex-col items-center justify-center space-y-3">
-                <div className="w-10 h-10 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
-                <p className="text-xs text-slate-400 font-medium">جارٍ تحميل آيات السورة الكريمة بالرسم العثماني المعتمد...</p>
+              <div className="p-16 text-center rounded-2xl bg-[#10161f]/60 border border-slate-800 flex flex-col items-center justify-center space-y-3">
+                <div className="w-10 h-10 rounded-full border-2 border-[#D9B45A] border-t-transparent animate-spin" />
+                <p className="text-xs text-slate-300 font-medium">جارٍ تحميل السورة بالرسم العثماني المعتمد…</p>
               </div>
             ) : surahError && !surahData ? (
               <div className="p-10 text-center rounded-2xl bg-rose-950/20 border border-rose-500/30 flex flex-col items-center justify-center space-y-4 max-w-lg mx-auto my-12 shadow-2xl">
@@ -544,12 +629,13 @@ export default function App() {
                   <AlertCircle className="w-6 h-6" />
                 </div>
                 <div className="space-y-1">
-                  <h3 className="text-base font-bold text-white">تعذر تحميل السورة الكريمة</h3>
+                  <h3 className="text-base font-bold text-[#F6EFDD]">تعذر تحميل السورة الكريمة</h3>
                   <p className="text-xs text-slate-300 leading-relaxed">{surahError}</p>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setSurahReloadTrigger(c => c + 1)}
-                  className="py-2.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-950 transition-all cursor-pointer"
+                  className="min-h-[42px] py-2.5 px-6 rounded-xl bg-[#1F3A6E] hover:bg-[#2E5499] border border-[#648CD4]/45 text-[#F6EFDD] font-bold text-xs flex items-center gap-2 shadow-lg transition-all cursor-pointer"
                 >
                   <RefreshCw className="w-4 h-4" />
                   <span>إعادة المحاولة الآن</span>
@@ -605,6 +691,7 @@ export default function App() {
                   setIsPlayingAudio(next);
                   if (next) setIsAudioBarVisible(true);
                 }}
+                prefsReloadNonce={prefsReloadNonce}
               />
             ) : null}
           </div>
@@ -632,9 +719,9 @@ export default function App() {
               currentRepeat={memorizationCurrentRepeat}
             />
           ) : (
-            <div className="p-16 text-center rounded-2xl bg-slate-900/40 border border-slate-800 flex flex-col items-center justify-center space-y-3">
-              <div className="w-10 h-10 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
-              <p className="text-xs text-slate-400 font-medium">جارٍ تجهيز آيات السورة لحلقة الحفظ...</p>
+            <div className="p-16 text-center rounded-2xl bg-[#10161f]/60 border border-slate-800 flex flex-col items-center justify-center space-y-3">
+              <div className="w-10 h-10 rounded-full border-2 border-[#D9B45A] border-t-transparent animate-spin" />
+              <p className="text-xs text-slate-300 font-medium">جارٍ تجهيز آيات السورة لحلقة الحفظ…</p>
             </div>
           )
         )}
@@ -653,7 +740,7 @@ export default function App() {
         )}
 
         {activeView === 'analytics' && (
-          <FaithAnalytics />
+          <FaithAnalytics onBackupRestored={handleBackupRestored} />
         )}
 
         {activeView === 'khatma' && (
@@ -719,55 +806,61 @@ export default function App() {
 
       {/* Mobile Bottom Navigation Bar (Hidden in full-screen reading and on desktop) */}
       {!isFullScreenReading && (
-        <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 h-16 bg-slate-950/95 border-t border-slate-800 backdrop-blur-xl shadow-2xl flex items-center justify-around px-2 select-none">
+        <nav
+          aria-label="التنقل السفلي"
+          className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0d121a]/95 border-t border-slate-800 backdrop-blur-xl shadow-2xl flex items-center justify-around px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] select-none"
+        >
           {[
             { id: 'mushaf', label: 'المصحف', icon: BookOpen },
             { id: 'memorization', label: 'الحفظ', icon: Award },
+            { id: 'ruqyah', label: 'الرقية', icon: ShieldCheck },
             { id: 'khatma', label: 'الختمات', icon: Sparkles },
-            { id: 'journal', label: 'مفكرتي', icon: PenLine },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeView === tab.id;
             return (
               <button
                 key={tab.id}
+                type="button"
                 onClick={() => {
                   setActiveView(tab.id as ActiveView);
                   setIsMobileMoreOpen(false);
                 }}
-                className={`flex flex-col items-center justify-center flex-1 py-1 rounded-xl transition-all cursor-pointer ${
+                className={`min-h-[44px] flex flex-col items-center justify-center flex-1 py-1 rounded-xl transition-all cursor-pointer ${
                   isActive
-                    ? 'text-emerald-400 font-bold scale-105'
-                    : 'text-slate-400 hover:text-slate-200'
+                    ? 'text-[#D9B45A] font-bold'
+                    : 'text-slate-300 hover:text-white'
                 }`}
               >
                 <div className={`p-1 rounded-lg transition-colors ${
-                  isActive ? 'bg-emerald-500/15 text-emerald-400' : ''
+                  isActive ? 'bg-[#1F3A6E]/60 text-[#D9B45A]' : ''
                 }`}>
                   <Icon className="w-5 h-5" />
                 </div>
-                <span className="text-[10px] mt-0.5 tracking-tight font-medium">{tab.label}</span>
+                <span className="text-[11px] mt-0.5 tracking-tight font-medium">{tab.label}</span>
               </button>
             );
           })}
 
           {/* More Drawer Button */}
           <button
+            type="button"
             onClick={() => setIsMobileMoreOpen(!isMobileMoreOpen)}
-            className={`flex flex-col items-center justify-center flex-1 py-1 rounded-xl transition-all cursor-pointer ${
-              isMobileMoreOpen || ['ruqyah', 'mood', 'analytics', 'tajweed', 'flutter-arch'].includes(activeView)
-                ? 'text-amber-400 font-bold scale-105'
-                : 'text-slate-400 hover:text-slate-200'
+            aria-expanded={isMobileMoreOpen}
+            className={`min-h-[44px] flex flex-col items-center justify-center flex-1 py-1 rounded-xl transition-all cursor-pointer ${
+              isMobileMoreOpen || ['mood', 'analytics', 'tajweed', 'journal'].includes(activeView)
+                ? 'text-[#D9B45A] font-bold'
+                : 'text-slate-300 hover:text-white'
             }`}
           >
             <div className={`p-1 rounded-lg transition-colors ${
-              isMobileMoreOpen || ['ruqyah', 'mood', 'analytics', 'tajweed', 'flutter-arch'].includes(activeView)
-                ? 'bg-amber-500/15 text-amber-400'
+              isMobileMoreOpen || ['mood', 'analytics', 'tajweed', 'journal'].includes(activeView)
+                ? 'bg-[#1F3A6E]/60 text-[#D9B45A]'
                 : ''
             }`}>
               <Menu className="w-5 h-5" />
             </div>
-            <span className="text-[10px] mt-0.5 tracking-tight font-medium">المزيد</span>
+            <span className="text-[11px] mt-0.5 tracking-tight font-medium">المزيد</span>
           </button>
         </nav>
       )}
@@ -775,79 +868,69 @@ export default function App() {
       {/* Mobile "More" Bottom Sheet Drawer */}
       {isMobileMoreOpen && !isFullScreenReading && (
         <>
-          {/* Backdrop */}
           <div
             className="lg:hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
             onClick={() => setIsMobileMoreOpen(false)}
           />
 
-          {/* Drawer Sheet */}
-          <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 max-h-[85vh] bg-slate-900 border-t border-slate-700/80 rounded-t-3xl shadow-2xl p-5 overflow-y-auto animate-in slide-from-bottom duration-250 space-y-4">
-            {/* Drag Handle */}
+          <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 max-h-[85vh] bg-[#10161f] border-t border-[#D9B45A]/30 rounded-t-3xl shadow-2xl p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] overflow-y-auto animate-in slide-from-bottom duration-250 space-y-4">
             <div className="w-12 h-1.5 bg-slate-700 rounded-full mx-auto" />
 
-            {/* Header */}
             <div className="flex items-center justify-between pb-2 border-b border-slate-800">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-amber-400" />
-                <h3 className="font-bold text-white text-sm font-kufi">أقسام ومميزات بيان الإضافية</h3>
+                <Sparkles className="w-4 h-4 text-[#D9B45A]" />
+                <h3 className="font-bold text-[#F6EFDD] text-sm font-kufi">أقسام بيان القرآنية</h3>
               </div>
               <button
+                type="button"
                 onClick={() => setIsMobileMoreOpen(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                aria-label="إغلاق القائمة"
+                className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Grid of Features */}
             <div className="grid grid-cols-2 gap-2.5">
               {[
-                {
-                  id: 'ruqyah',
-                  label: 'الرقية الشرعية',
-                  sub: 'آيات وأدعية الشفاء والتحصين',
-                  icon: ShieldCheck,
-                  color: 'text-teal-400 bg-teal-500/10 border-teal-500/20'
-                },
                 {
                   id: 'mood',
                   label: 'القرآن حياتي',
                   sub: 'آيات بحسب مشاعرك وحالك',
                   icon: Heart,
-                  color: 'text-rose-400 bg-rose-500/10 border-rose-500/20'
+                  color: 'text-[#D9B45A] bg-[#D9B45A]/15 border-[#D9B45A]/30'
                 },
                 {
                   id: 'analytics',
                   label: 'سجل الختمات',
-                  sub: 'إحصاءات التدبر والإنجاز',
+                  sub: 'إحصاءات التدبر والنسخ الاحتياطي',
                   icon: Calendar,
-                  color: 'text-sky-400 bg-sky-500/10 border-sky-500/20'
+                  color: 'text-[#648CD4] bg-[#1F3A6E]/40 border-[#648CD4]/35'
                 },
                 {
                   id: 'tajweed',
                   label: 'موسوعة التجويد',
-                  sub: 'أحكام التلاوة والتجويد الملون',
+                  sub: 'أحكام التلاوة والأمثلة',
                   icon: HelpCircle,
-                  color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                  color: 'text-[#D9B45A] bg-[#D9B45A]/15 border-[#D9B45A]/30'
+                },
+                {
+                  id: 'journal',
+                  label: 'مفكرتي',
+                  sub: 'خواطر التدبر المحفوظة',
+                  icon: PenLine,
+                  color: 'text-[#648CD4] bg-[#1F3A6E]/40 border-[#648CD4]/35'
                 },
                 {
                   id: 'planner',
                   label: 'مخطط الورد',
-                  sub: 'جدول الختمة الميسرة في 30 يوماً',
+                  sub: 'جدول الختمة الميسرة في ٣٠ يوماً',
                   icon: Flame,
-                  color: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
+                  color: 'text-[#D9B45A] bg-[#D9B45A]/15 border-[#D9B45A]/30',
                   action: () => {
                     setIsMobileMoreOpen(false);
                     setIsKhatmaPlannerOpen(true);
                   }
-                },
-                {
-                  id: 'flutter-arch',
-                  label: 'هندسة Flutter',
-                  sub: 'دليل تطبيق الجوال الأصلي',
-                  icon: Cpu,
-                  color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20'
                 },
               ].map((item) => {
                 const Icon = item.icon;
@@ -855,6 +938,7 @@ export default function App() {
                 return (
                   <button
                     key={item.id}
+                    type="button"
                     onClick={() => {
                       if (item.action) {
                         item.action();
@@ -865,31 +949,31 @@ export default function App() {
                     }}
                     className={`p-3 rounded-2xl border text-right transition-all flex flex-col gap-2 cursor-pointer ${
                       isActive
-                        ? 'bg-emerald-500/15 border-emerald-500 text-white shadow-md'
-                        : 'bg-slate-950/70 border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-slate-800/60'
+                        ? 'bg-[#1F3A6E]/55 border-[#D9B45A] text-[#F6EFDD] shadow-md'
+                        : 'bg-slate-950/70 border-slate-800 text-slate-200 hover:border-slate-700 hover:bg-slate-800/60'
                     }`}
                   >
                     <div className={`w-8 h-8 rounded-xl border flex items-center justify-center ${item.color}`}>
                       <Icon className="w-4 h-4" />
                     </div>
                     <div>
-                      <div className="font-bold text-xs text-white">{item.label}</div>
-                      <div className="text-[10px] text-slate-400 leading-tight mt-0.5">{item.sub}</div>
+                      <div className="font-bold text-xs text-[#F6EFDD]">{item.label}</div>
+                      <div className="text-[11px] text-slate-400 leading-tight mt-0.5">{item.sub}</div>
                     </div>
                   </button>
                 );
               })}
             </div>
 
-            {/* Quick Action in Bottom Sheet */}
             <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
-              <span className="text-[11px]">وقف خيري إسلامي مجاني 100% بدون إعلانات</span>
+              <span className="text-[11px]">وقف خيري لوجه الله تعالى</span>
               <button
+                type="button"
                 onClick={() => {
                   setIsMobileMoreOpen(false);
                   if (!isFullScreenReading) handleToggleFullScreen();
                 }}
-                className="py-1 px-3 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold text-xs flex items-center gap-1 cursor-pointer"
+                className="min-h-[36px] py-1 px-3 rounded-xl bg-[#D9B45A]/15 border border-[#D9B45A]/35 text-[#D9B45A] font-bold text-xs flex items-center gap-1 cursor-pointer"
               >
                 <Maximize2 className="w-3.5 h-3.5" />
                 <span>ملء الشاشة</span>
@@ -907,28 +991,28 @@ export default function App() {
           aria-label="فهرس السور والبحث في القرآن"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
         >
-          <div className="relative w-full max-w-2xl max-h-[85vh] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-            <div className="p-4 border-b border-slate-800 bg-slate-950 flex items-center justify-between">
+          <div className="relative w-full max-w-2xl max-h-[85vh] bg-[#10161f] border border-[#D9B45A]/30 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-slate-800 bg-[#0b1018] flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setPickerTab('surahs')}
-                  className={`py-1.5 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  className={`min-h-[38px] py-1.5 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
                     pickerTab === 'surahs'
-                      ? 'bg-emerald-600 text-white shadow'
-                      : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                      ? 'bg-[#1F3A6E] text-[#F6EFDD] border border-[#648CD4]/50 shadow'
+                      : 'bg-slate-900 text-slate-300 hover:text-white border border-slate-800'
                   }`}
                 >
                   <BookOpen className="w-3.5 h-3.5" />
-                  <span>فهرس السور (114)</span>
+                  <span>فهرس السور (١١٤)</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setPickerTab('ayahs')}
-                  className={`py-1.5 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  className={`min-h-[38px] py-1.5 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
                     pickerTab === 'ayahs'
-                      ? 'bg-amber-600 text-white shadow'
-                      : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                      ? 'bg-[#D9B45A] text-[#1B1A17] shadow'
+                      : 'bg-slate-900 text-slate-300 hover:text-white border border-slate-800'
                   }`}
                 >
                   <Search className="w-3.5 h-3.5" />
@@ -936,8 +1020,10 @@ export default function App() {
                 </button>
               </div>
               <button
+                type="button"
                 onClick={() => setIsSurahPickerOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                aria-label="إغلاق الفهرس"
+                className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -945,15 +1031,16 @@ export default function App() {
 
             {pickerTab === 'surahs' ? (
               <>
-                <div className="p-3 border-b border-slate-800 bg-slate-900">
+                <div className="p-3 border-b border-slate-800 bg-[#10161f]">
                   <div className="relative">
-                    <Search className="absolute right-3.5 top-3 w-4 h-4 text-slate-500" />
+                    <Search className="absolute right-3.5 top-3 w-4 h-4 text-slate-400" />
                     <input
                       type="text"
                       value={surahSearchTerm}
                       onChange={(e) => setSurahSearchTerm(e.target.value)}
                       placeholder="ابحث باسم السورة، رقمها، أو الجزء..."
-                      className="w-full pr-10 pl-4 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 outline-none focus:border-emerald-500"
+                      aria-label="ابحث باسم السورة، رقمها، أو الجزء"
+                      className="w-full min-h-[42px] pr-10 pl-4 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
                     />
                   </div>
                 </div>
@@ -964,27 +1051,28 @@ export default function App() {
                     return (
                       <button
                         key={s.number}
+                        type="button"
                         onClick={() => {
                           setCurrentSurahNumber(s.number);
                           setIsSurahPickerOpen(false);
                           setSurahSearchTerm('');
                         }}
-                        className={`p-2.5 rounded-xl border text-right transition-all flex items-center justify-between ${
+                        className={`min-h-[48px] p-2.5 rounded-xl border text-right transition-all flex items-center justify-between cursor-pointer ${
                           isSelected
-                            ? 'bg-emerald-950/70 border-emerald-500 text-emerald-300 font-bold'
-                            : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-slate-900'
+                            ? 'bg-[#1F3A6E]/60 border-[#D9B45A] text-[#F6EFDD] font-bold'
+                            : 'bg-slate-950/60 border-slate-800 text-slate-200 hover:border-slate-700 hover:bg-slate-900'
                         }`}
                       >
                         <div className="flex items-center gap-2.5">
-                          <span className="w-7 h-7 rounded-lg bg-slate-800/80 text-emerald-400 font-bold text-xs tabular-nums flex items-center justify-center shrink-0">
-                            {s.number}
+                          <span className="w-7 h-7 rounded-lg bg-slate-800/80 text-[#D9B45A] font-bold text-xs tabular-nums flex items-center justify-center shrink-0">
+                            {toArabicIndic(s.number)}
                           </span>
                           <div>
-                            <div className="font-bold text-xs text-white">سورة {s.name}</div>
-                            <div className="text-[10px] text-slate-400 tabular-nums">{s.revelationTypeAr} · {s.numberOfAyahs} آيات</div>
+                            <div className="font-bold text-xs text-[#F6EFDD]">سورة {s.name}</div>
+                            <div className="text-[11px] text-slate-400 tabular-nums">{s.revelationTypeAr} · {toArabicIndic(s.numberOfAyahs)} آيات</div>
                           </div>
                         </div>
-                        <span className="text-[10px] text-slate-500 tabular-nums">جـ {s.juzNumber}</span>
+                        <span className="text-[11px] text-slate-400 tabular-nums">جـ {toArabicIndic(s.juzNumber)}</span>
                       </button>
                     );
                   })}
@@ -992,15 +1080,16 @@ export default function App() {
               </>
             ) : (
               <>
-                <div className="p-3 border-b border-slate-800 bg-slate-900">
+                <div className="p-3 border-b border-slate-800 bg-[#10161f]">
                   <div className="relative">
-                    <Search className="absolute right-3.5 top-3 w-4 h-4 text-amber-400" />
+                    <Search className="absolute right-3.5 top-3 w-4 h-4 text-[#D9B45A]" />
                     <input
                       type="text"
                       value={ayahSearchQuery}
                       onChange={(e) => setAyahSearchQuery(e.target.value)}
-                      placeholder="اكتب كلمة أو جزءاً من آية للبحث في المصحف الشريف كله (دون الحاجة للتشكيل)..."
-                      className="w-full pr-10 pl-4 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 outline-none focus:border-amber-500"
+                      placeholder="اكتب كلمة أو جزءاً من آية للبحث في المصحف الشريف كله..."
+                      aria-label="البحث في آيات القرآن"
+                      className="w-full min-h-[42px] pr-10 pl-4 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
                     />
                   </div>
                 </div>
@@ -1008,13 +1097,13 @@ export default function App() {
                 <div className="p-3 overflow-y-auto space-y-2 min-h-[260px]">
                   {ayahSearchQuery.trim().length < 2 ? (
                     <div className="text-center py-12 text-xs text-slate-400 space-y-1.5">
-                      <p className="font-semibold text-slate-300">ابحث في آيات القرآن الكريم</p>
+                      <p className="font-semibold text-slate-200">ابحث في آيات القرآن الكريم</p>
                       <p>أدخل حرفين على الأقل للبحث الفوري في السور المخزنة محلياً وعبر خادم المصحف المعتمد</p>
                     </div>
                   ) : isSearchingAyahs ? (
                     <div className="py-12 text-center flex flex-col items-center gap-2.5 text-xs text-slate-400">
-                      <div className="w-7 h-7 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />
-                      <span>جارٍ البحث في آيات المصحف الشريف...</span>
+                      <div className="w-7 h-7 rounded-full border-2 border-[#D9B45A] border-t-transparent animate-spin" />
+                      <span>جارٍ البحث في آيات المصحف الشريف…</span>
                     </div>
                   ) : ayahSearchResults.length === 0 ? (
                     <div className="text-center py-12 text-xs text-slate-400">
@@ -1022,8 +1111,8 @@ export default function App() {
                     </div>
                   ) : (
                     <>
-                      <div className="text-[11px] text-amber-400 font-semibold px-1">
-                        تم العثور على {ayahSearchResults.length} نتيجة
+                      <div className="text-[11px] text-[#D9B45A] font-semibold px-1">
+                        تم العثور على {toArabicIndic(ayahSearchResults.length)} نتيجة
                       </div>
                       {ayahSearchResults.map((match) => (
                         <button
@@ -1033,15 +1122,15 @@ export default function App() {
                             handleNavigateToAyah(match.surahNumber, match.ayahNumber);
                             setIsSurahPickerOpen(false);
                           }}
-                          className="w-full p-3 rounded-xl bg-slate-950/70 hover:bg-slate-800/80 border border-slate-800 hover:border-amber-500/40 text-right transition-all space-y-1.5 cursor-pointer"
+                          className="w-full p-3 rounded-xl bg-slate-950/70 hover:bg-slate-800/80 border border-slate-800 hover:border-[#D9B45A]/45 text-right transition-all space-y-1.5 cursor-pointer"
                         >
                           <div className="flex items-center justify-between text-[11px]">
-                            <span className="font-bold text-emerald-400">
-                              سورة {match.surahName} • الآية {match.ayahNumber}
+                            <span className="font-bold text-[#D9B45A]">
+                              سورة {match.surahName} · الآية {toArabicIndic(match.ayahNumber)}
                             </span>
-                            <span className="text-slate-500">انتقال للقراءة ↵</span>
+                            <span className="text-slate-400">انتقال للقراءة ↵</span>
                           </div>
-                          <p className="font-quran text-base sm:text-lg text-slate-100 leading-relaxed">
+                          <p className="font-quran text-base sm:text-lg text-[#F6EFDD] leading-relaxed">
                             {match.text}
                           </p>
                         </button>
@@ -1115,8 +1204,8 @@ export default function App() {
 
       {/* Planner Success Toast */}
       {plannerToast && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900 border border-emerald-500/50 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 text-xs sm:text-sm tabular-nums animate-in fade-in slide-in-from-top-2">
-          <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-[#10161f] border border-[#D9B45A]/50 text-[#F6EFDD] px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 text-xs sm:text-sm tabular-nums animate-in fade-in slide-in-from-top-2">
+          <Sparkles className="w-4 h-4 text-[#D9B45A] shrink-0" />
           <span>{plannerToast}</span>
         </div>
       )}

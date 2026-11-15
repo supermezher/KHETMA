@@ -1,24 +1,29 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: 'Cairo', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-serif: 'Noto Naskh Arabic', 'Amiri', serif;
+}
+
 @layer base {
   :root {
     --font-quran: 'Amiri Quran', 'Amiri', serif;
-    --font-naskh: 'Noto Naskh Arabic', serif;
-    --font-cairo: 'Cairo', sans-serif;
-    --font-kufi: 'Reem Kufi', sans-serif;
+    --font-naskh: 'Noto Naskh Arabic', 'Amiri', serif;
+    --font-cairo: 'Cairo', ui-sans-serif, system-ui, sans-serif;
+    --font-kufi: 'Reem Kufi', 'Cairo', sans-serif;
   }
 
   body {
     font-family: var(--font-cairo);
-    background-color: #0b1117;
-    color: #e2e8f0;
+    background-color: #10161f;
+    color: #e9e3d3;
     overflow-x: hidden;
   }
 }
 
 .font-quran {
   font-family: 'Amiri Quran', 'Amiri', serif;
-  line-height: 2.5;
+  line-height: 2.45;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
@@ -28,26 +33,26 @@
 }
 
 .font-kufi {
-  font-family: 'Reem Kufi', sans-serif;
+  font-family: 'Reem Kufi', 'Cairo', sans-serif;
 }
 
-/* Custom Scrollbar for Quran reader */
+/* Subtle Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(16, 22, 31, 0.7);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(16, 185, 129, 0.3);
+  background: rgba(217, 180, 90, 0.3);
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(16, 185, 129, 0.6);
+  background: rgba(217, 180, 90, 0.55);
 }
 
 /* Standard Approved Tajweed Highlighting Classes (مصحف التجويد الملون القياسي) */
@@ -57,7 +62,7 @@
 }
 
 .tajweed-ikhfa {
-  color: #4ade80; /* أخضر فاتح: الإخفاء الحقيقي والشفوي */
+  color: #4ade80; /* أخضر: الإخفاء الحقيقي والشفوي */
 }
 
 .tajweed-idgham {
@@ -96,77 +101,94 @@
   color: #60a5fa; /* أزرق ملكي: حروف التفخيم والاستعلاء */
 }
 
-/* Silent / Unpronounced & completely assimilated letters (الحروف التي لا تُلفظ) */
+/* Silent / Unpronounced & completely assimilated letters (>= 4.5:1 on #10161f) */
 .tajweed-silent {
-  color: #64748b; /* رمادي: لا تُلفظ (بدون opacity للحفاظ على اتصال الحروف العربية) */
+  color: #94a3b8;
 }
 
-/* High-contrast palette overrides for Ivory / Sepia & Light Mushaf Paper */
+/* High-contrast palette overrides for Warm Parchment (#F6EFDD), Sepia & Light Mushaf Paper (>= 4.5:1 WCAG AA) */
+.mushaf-paper-parchment .tajweed-ghunnah,
 .mushaf-paper-sepia .tajweed-ghunnah,
 .mushaf-paper-light .tajweed-ghunnah {
+  color: #146c36;
+}
+
+.mushaf-paper-parchment .tajweed-ikhfa,
+.mushaf-paper-sepia .tajweed-ikhfa,
+.mushaf-paper-light .tajweed-ikhfa {
   color: #15803d;
 }
 
-.mushaf-paper-sepia .tajweed-ikhfa,
-.mushaf-paper-light .tajweed-ikhfa {
-  color: #16a34a;
-}
-
+.mushaf-paper-parchment .tajweed-idgham,
 .mushaf-paper-sepia .tajweed-idgham,
 .mushaf-paper-light .tajweed-idgham {
-  color: #0d9488;
+  color: #0f766e;
 }
 
+.mushaf-paper-parchment .tajweed-iqlab,
 .mushaf-paper-sepia .tajweed-iqlab,
 .mushaf-paper-light .tajweed-iqlab {
-  color: #059669;
+  color: #047857;
 }
 
+.mushaf-paper-parchment .tajweed-qalqalah,
 .mushaf-paper-sepia .tajweed-qalqalah,
 .mushaf-paper-light .tajweed-qalqalah {
-  color: #0284c7;
+  color: #0369a1;
 }
 
+.mushaf-paper-parchment .tajweed-madd-wajib,
 .mushaf-paper-sepia .tajweed-madd-wajib,
 .mushaf-paper-light .tajweed-madd-wajib {
-  color: #e11d48;
+  color: #be123c;
 }
 
+.mushaf-paper-parchment .tajweed-madd-lazim,
 .mushaf-paper-sepia .tajweed-madd-lazim,
 .mushaf-paper-light .tajweed-madd-lazim {
-  color: #b91c1c;
+  color: #991b1b;
 }
 
+.mushaf-paper-parchment .tajweed-madd-arid,
 .mushaf-paper-sepia .tajweed-madd-arid,
 .mushaf-paper-light .tajweed-madd-arid {
-  color: #ea580c;
+  color: #c2410c;
 }
 
+.mushaf-paper-parchment .tajweed-madd-tabeei,
 .mushaf-paper-sepia .tajweed-madd-tabeei,
 .mushaf-paper-light .tajweed-madd-tabeei {
-  color: #b45309;
+  color: #92400e;
 }
 
+.mushaf-paper-parchment .tajweed-madd-badal,
 .mushaf-paper-sepia .tajweed-madd-badal,
 .mushaf-paper-light .tajweed-madd-badal {
-  color: #a16207;
+  color: #854d0e;
 }
 
+.mushaf-paper-parchment .tajweed-tafkheem,
 .mushaf-paper-sepia .tajweed-tafkheem,
 .mushaf-paper-light .tajweed-tafkheem {
-  color: #1d4ed8;
+  color: #1e40af;
 }
 
+.mushaf-paper-parchment .tajweed-silent,
 .mushaf-paper-sepia .tajweed-silent,
 .mushaf-paper-light .tajweed-silent {
-  color: #9ca3af;
+  color: #5c6573;
 }
 
 .mushaf-paper-emerald .tajweed-silent {
-  color: #64748b;
+  color: #94a3b8;
 }
 
-/* Page Paper Texture for Mus'haf Mode */
+/* Page Paper Textures for Mus'haf Mode */
+.mushaf-paper-parchment {
+  background-color: #F6EFDD;
+  color: #1B1A17;
+}
+
 .mushaf-paper-light {
   background-color: #fbf7ee;
   color: #1c1917;
@@ -178,8 +200,8 @@
 }
 
 .mushaf-paper-dark {
-  background-color: #0d151c;
-  color: #f1f5f9;
+  background-color: #10161F;
+  color: #E9E3D3;
 }
 
 .mushaf-paper-emerald {
@@ -250,11 +272,20 @@
 .duration-300 { animation-duration: 300ms; }
 
 @media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
   .animate-in,
   .animate-pulse,
   .animate-ping,
-  .animate-bounce {
+  .animate-bounce,
+  .animate-spin {
     animation: none !important;
   }
 }
-

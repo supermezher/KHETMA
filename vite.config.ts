@@ -14,11 +14,11 @@ export default defineConfig(() => {
         includeAssets: ['icon.svg', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
         manifest: {
           id: '/',
-          name: 'بيان | مصحف وقف ذكي بالرسم العثماني',
+          name: 'بيان — مصحف وقف',
           short_name: 'بيان للقرآن',
-          description: 'تطبيق قرآن كريم وقفي متكامل بالرسم العثماني، التجويد الملون، التفسير، الحفظ، والختمات الجماعية.',
-          theme_color: '#0c1319',
-          background_color: '#0c1319',
+          description: 'تطبيق قرآن كريم وقفي بالرسم العثماني، أحكام التجويد الملون، التفسير الميسر، الحفظ، والختمات الجماعية.',
+          theme_color: '#10161f',
+          background_color: '#10161f',
           display: 'standalone',
           dir: 'rtl',
           lang: 'ar',
@@ -46,7 +46,7 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
-          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+          globPatterns: ['**/*.{js,css,html,ico,png,jpg,svg,woff,woff2}'],
           runtimeCaching: [
             {
               urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
@@ -109,6 +109,9 @@ export default defineConfig(() => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      fs: {
+        deny: ['data', 'data/**', '.env*', 'server.ts', 'src/server/**'],
+      },
     },
   };
 });
