@@ -1157,7 +1157,7 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
 
             {/* End: Essential Controls + Collapsible Display Settings Sheet */}
             <div className="flex items-center gap-1.5 sm:gap-2">
-              {renderAutoScrollSplitButton(false)}
+              {isAudioBarVisible && renderAutoScrollSplitButton(false)}
 
               {onOpenAyahSearch && (
                 <button

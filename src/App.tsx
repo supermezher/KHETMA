@@ -36,6 +36,11 @@ import { safeLocalStorage } from './utils/safeStorage';
 import { idbGet, idbSet } from './utils/quranIndexedDb';
 import { BayanUserBackup, READER_PREFS_KEY, sanitizeJournalNotesList } from './utils/userBackup';
 import { toArabicIndic } from './components/khatma/KhatmaRing';
+import {
+  KhatmaPlan,
+  loadPersonalKhatmaPlan,
+  savePersonalKhatmaPlan,
+} from './utils/personalKhatma';
 
 // Exact Medina Mus'haf starting (surahNumber, ayahNumber) for all 30 Ajza
 const JUZ_START_COORDINATES: Record<number, { surah: number; ayah: number }> = {
@@ -148,6 +153,7 @@ export default function App() {
   const [shareSurahNumber, setShareSurahNumber] = useState<number | null>(null);
   const [isTajweedLegendOpen, setIsTajweedLegendOpen] = useState<boolean>(false);
   const [isKhatmaPlannerOpen, setIsKhatmaPlannerOpen] = useState<boolean>(false);
+  const [personalKhatmaPlan, setPersonalKhatmaPlan] = useState<KhatmaPlan | null>(() => loadPersonalKhatmaPlan());
   const [isSurahPickerOpen, setIsSurahPickerOpen] = useState<boolean>(false);
   const [pickerTab, setPickerTab] = useState<'surahs' | 'ayahs'>('surahs');
   const [surahSearchTerm, setSurahSearchTerm] = useState<string>('');
@@ -588,7 +594,10 @@ export default function App() {
 
               <button
                 type="button"
-                onClick={() => setIsKhatmaPlannerOpen(true)}
+                onClick={() => {
+                  setPersonalKhatmaPlan(loadPersonalKhatmaPlan());
+                  setIsKhatmaPlannerOpen(true);
+                }}
                 className="min-h-[38px] flex items-center gap-1.5 py-2 px-3 sm:px-3.5 rounded-xl bg-[#1F3A6E] hover:bg-[#2E5499] border border-[#648CD4]/45 text-[#F6EFDD] text-xs font-bold whitespace-nowrap shrink-0 shadow-sm transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D9B45A]"
                 title="مخطط الورد والختمة الذكية"
               >
@@ -744,7 +753,14 @@ export default function App() {
         )}
 
         {activeView === 'khatma' && (
-          <CollectiveKhatma onNavigateToJuz={handleNavigateToJuz} />
+          <CollectiveKhatma
+            onNavigateToJuz={handleNavigateToJuz}
+            onNavigateToAyah={handleNavigateToAyah}
+            onOpenPersonalPlanner={() => {
+              setPersonalKhatmaPlan(loadPersonalKhatmaPlan());
+              setIsKhatmaPlannerOpen(true);
+            }}
+          />
         )}
 
         {activeView === 'tajweed' && (
@@ -929,6 +945,7 @@ export default function App() {
                   color: 'text-[#D9B45A] bg-[#D9B45A]/15 border-[#D9B45A]/30',
                   action: () => {
                     setIsMobileMoreOpen(false);
+                    setPersonalKhatmaPlan(loadPersonalKhatmaPlan());
                     setIsKhatmaPlannerOpen(true);
                   }
                 },
@@ -1194,10 +1211,20 @@ export default function App() {
       <KhatmaPlannerModal
         isOpen={isKhatmaPlannerOpen}
         onClose={() => setIsKhatmaPlannerOpen(false)}
+        initialPlan={personalKhatmaPlan}
         onApplyPlan={(plan) => {
-          safeLocalStorage.setJSON('bayan_khatma_plan', plan);
+          const saved = savePersonalKhatmaPlan(plan);
+          setPersonalKhatmaPlan(saved);
           setIsKhatmaPlannerOpen(false);
-          setPlannerToast(`تم اعتماد خطة الختمة المباركة: ${plan.pagesPerDay} صفحات يومياً لإنهاء الختمة في ${plan.targetDays} يوماً`);
+          const targetDesc =
+            saved.goalMode === 'juz'
+              ? `${toArabicIndic(saved.targetJuzCount || 30)} جزءاً`
+              : (saved.targetKhatmas || 1) === 1
+              ? 'ختمة واحدة'
+              : `${toArabicIndic(saved.targetKhatmas || 1)} ختمات`;
+          setPlannerToast(
+            `تم اعتماد خطتك (${targetDesc}): ${toArabicIndic(saved.pagesPerDay)} صفحة يومياً خلال ${toArabicIndic(saved.targetDays)} يوماً`
+          );
           setTimeout(() => setPlannerToast(null), 4000);
         }}
       />

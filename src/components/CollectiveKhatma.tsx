@@ -20,6 +20,8 @@ import {
 } from '../data/khatmaApiService';
 import { safeLocalStorage } from '../utils/safeStorage';
 import { KhatmaRing, toArabicIndic } from './khatma/KhatmaRing';
+import { PersonalKhatmaTracker } from './khatma/PersonalKhatmaTracker';
+import { loadPersonalKhatmaPlan, PERSONAL_KHATMA_EVENT } from '../utils/personalKhatma';
 
 const DEFAULT_JUZ_SURAS: Record<number, string> = {
   1: 'من الفاتحة 1 إلى البقرة 141',
@@ -88,9 +90,34 @@ function extractAdminKeyInput(raw: string): string {
 
 interface CollectiveKhatmaProps {
   onNavigateToJuz?: (juzNumber: number) => void;
+  onNavigateToAyah?: (surahNumber: number, ayahNumber: number) => void;
+  onOpenPersonalPlanner?: () => void;
 }
 
-export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateToJuz }) => {
+export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
+  onNavigateToJuz,
+  onNavigateToAyah,
+  onOpenPersonalPlanner,
+}) => {
+  const [khatmaSubTab, setKhatmaSubTab] = useState<'personal' | 'collective'>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('khatma')) return 'collective';
+    }
+    return loadPersonalKhatmaPlan() ? 'personal' : 'collective';
+  });
+
+  useEffect(() => {
+    const onPlanEvent = (e: Event) => {
+      const custom = e as CustomEvent;
+      if (custom.detail) {
+        setKhatmaSubTab('personal');
+      }
+    };
+    window.addEventListener(PERSONAL_KHATMA_EVENT, onPlanEvent);
+    return () => window.removeEventListener(PERSONAL_KHATMA_EVENT, onPlanEvent);
+  }, []);
+
   const [activeRoomId, setActiveRoomId] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -797,6 +824,52 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
         </div>
       )}
 
+      {/* Sub-view Switcher: Personal Khatma (Local) vs Collective Khatma (Rooms) */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div
+          role="tablist"
+          aria-label="نوع الختمة"
+          className="inline-flex items-center p-1 rounded-2xl bg-[#10161f] border border-slate-800"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={khatmaSubTab === 'personal'}
+            onClick={() => setKhatmaSubTab('personal')}
+            className={`min-h-[40px] px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap ${
+              khatmaSubTab === 'personal'
+                ? 'bg-[#1f3a6e] text-white border border-[#D9B45A]/50'
+                : 'text-slate-300 hover:text-white border border-transparent'
+            }`}
+          >
+            <BookOpen className="w-4 h-4 text-[#D9B45A]" />
+            <span>ختمتي الفردية</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={khatmaSubTab === 'collective'}
+            onClick={() => setKhatmaSubTab('collective')}
+            className={`min-h-[40px] px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap ${
+              khatmaSubTab === 'collective'
+                ? 'bg-[#1f3a6e] text-white border border-[#D9B45A]/50'
+                : 'text-slate-300 hover:text-white border border-transparent'
+            }`}
+          >
+            <Users className="w-4 h-4 text-[#648cd4]" />
+            <span>الختمات الجماعية</span>
+          </button>
+        </div>
+      </div>
+
+      {khatmaSubTab === 'personal' ? (
+        <PersonalKhatmaTracker
+          onOpenPlanner={() => onOpenPersonalPlanner?.()}
+          onNavigateToJuz={onNavigateToJuz}
+          onNavigateToAyah={onNavigateToAyah}
+        />
+      ) : (
+        <>
       {/* Room Switcher & Create Unlisted Private Khatma */}
       <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 flex-wrap">
@@ -1678,6 +1751,8 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({ onNavigateTo
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );
