@@ -254,24 +254,36 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
 
     if (!audioRef.current) {
       const audio = new Audio();
+      audio.onloadedmetadata = () => {
+        if (audioRef.current) {
+          audioRef.current.playbackRate = playbackSpeedRef.current;
+        }
+      };
       audio.onended = () => {
         const currentId = playingItemIdRef.current;
         if (!currentId) return;
         const item = allItemsRef.current.find((i) => i.id === currentId);
-        if (!item || !item.audioSequence) {
+        const resolvedSequence: AudioAyahRef[] | undefined =
+          item?.audioSequence && item.audioSequence.length > 0
+            ? item.audioSequence
+            : item?.surahNumber && item?.ayahNumber
+            ? [{ surah: item.surahNumber, ayah: item.ayahNumber }]
+            : undefined;
+
+        if (!item || !resolvedSequence) {
           stopAllAudio();
           return;
         }
 
         const nextIndex = playingAyahIndexRef.current + 1;
-        if (nextIndex < item.audioSequence.length) {
-          playAyah(item.id, item.audioSequence, nextIndex);
+        if (nextIndex < resolvedSequence.length) {
+          playAyah(item.id, resolvedSequence, nextIndex);
         } else {
           handleIncrement(item);
 
           const nextCount = (countersRef.current[item.id] || 0) + 1;
           if (autoLoopRef.current && nextCount < item.repeatTarget) {
-            playAyah(item.id, item.audioSequence, 0);
+            playAyah(item.id, resolvedSequence, 0);
           } else {
             setIsPlayingAudio(false);
             setPlayingAyahIndex(0);
@@ -306,6 +318,11 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
       audioRef.current.playbackRate = playbackSpeed;
     }
   }, [playbackSpeed]);
+
+  // Reset paused/active audio when user changes reciter so next play loads the new reciter
+  useEffect(() => {
+    stopAllAudio();
+  }, [selectedReciter.serverKey, stopAllAudio]);
 
   useEffect(() => {
     return () => {

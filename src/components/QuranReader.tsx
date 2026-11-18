@@ -10,7 +10,8 @@ import {
   WordSegment
 } from '../data/quranService';
 import { recordPageProgress } from '../data/faithAnalyticsService';
-import { renderTajweedText } from '../utils/tajweedParser';
+import { renderTajweedText, getSpokenWordRawIndices } from '../utils/tajweedParser';
+import { resolveActiveWordIndex } from '../utils/kidsHifzStore';
 import { safeLocalStorage } from '../utils/safeStorage';
 import {
   BookOpen, Sparkles, Columns, Search,
@@ -184,7 +185,20 @@ const AyahSpan = React.memo<AyahSpanProps>(({
       </button>
     </span>
   );
-});
+}, (prev, next) =>
+  prev.ayah.numberInSurah === next.ayah.numberInSurah &&
+  prev.ayah.text === next.ayah.text &&
+  prev.ayah.tajweedText === next.ayah.tajweedText &&
+  prev.surahNumber === next.surahNumber &&
+  prev.surahName === next.surahName &&
+  prev.isActive === next.isActive &&
+  prev.isBookmarked === next.isBookmarked &&
+  prev.isPlayingAudio === next.isPlayingAudio &&
+  prev.isLightPaper === next.isLightPaper &&
+  prev.fontSize === next.fontSize &&
+  prev.isTajweedActive === next.isTajweedActive &&
+  prev.activeWordIndex === next.activeWordIndex
+);
 
 export const QuranReader: React.FC<QuranReaderProps> = ({
   surahData,
@@ -246,13 +260,14 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const ayahRefs = useRef<Record<string, HTMLElement | null>>({});
 
-  // Keep latest audio timing in refs so 60fps auto-scroll engine doesn't re-mount 4 times/sec
+  // Keep latest audio timing & active ayah in refs so 60fps engines don't tear down smoothly running loops
   const currentTimeRef = useRef(currentTime);
   const durationRef = useRef(duration);
-  useEffect(() => {
-    currentTimeRef.current = currentTime;
-    durationRef.current = duration;
-  }, [currentTime, duration]);
+  const activeAyahNumberRef = useRef(activeAyahNumber);
+  currentTimeRef.current = currentTime;
+  durationRef.current = duration;
+  activeAyahNumberRef.current = activeAyahNumber;
+  const fetchedSegmentKeysRef = useRef<Set<string>>(new Set());
 
   // Keep mushafPageNumber aligned with active ayah's page while in Surah mode
   useEffect(() => {
@@ -309,18 +324,28 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
     let cancelled = false;
     targetSurahs.forEach((sNum) => {
       const cacheKey = `${recId}:${sNum}`;
-      if (segmentsBySurahKey[cacheKey]) return;
-      getSurahAudioSegments(recId, sNum).then((segs) => {
-        if (!cancelled && Object.keys(segs).length > 0) {
-          setSegmentsBySurahKey((prev) => ({ ...prev, [cacheKey]: segs }));
-        }
-      });
+      if (fetchedSegmentKeysRef.current.has(cacheKey)) return;
+      fetchedSegmentKeysRef.current.add(cacheKey);
+
+      getSurahAudioSegments(recId, sNum)
+        .then((segs) => {
+          if (Object.keys(segs).length === 0) {
+            fetchedSegmentKeysRef.current.delete(cacheKey);
+            return;
+          }
+          if (!cancelled) {
+            setSegmentsBySurahKey((prev) => ({ ...prev, [cacheKey]: segs }));
+          }
+        })
+        .catch(() => {
+          fetchedSegmentKeysRef.current.delete(cacheKey);
+        });
     });
 
     return () => {
       cancelled = true;
     };
-  }, [selectedReciter?.quranComRecitationId, surahData.meta.number, readerMode, pageData, segmentsBySurahKey]);
+  }, [selectedReciter?.quranComRecitationId, surahData.meta.number, readerMode, pageData]);
 
   // Unified Auto-Scroll Engine state (Dual-Mode: Reciter-Adaptive Sync OR Manual Self-Reading)
   const [isAutoScrolling, setIsAutoScrolling] = useState<boolean>(false);
@@ -537,7 +562,7 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
       // MODE 1: VOICE RECITATION TRACKER (المزامنة الذكية مع صوت وتلاوة الشيخ)
       if (isPlayingAudio && scrollMode === 'reciter-sync') {
 
-        const el = ayahRefs.current[`${surahData.meta.number}:${activeAyahNumber}`];
+        const el = ayahRefs.current[`${surahData.meta.number}:${activeAyahNumberRef.current}`];
         if (el) {
           const containerRect = container.getBoundingClientRect();
           const elRect = el.getBoundingClientRect();
@@ -641,7 +666,6 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
     scrollMode,
     isAutoScrollPaused,
     isPausedAtAyah,
-    activeAyahNumber,
     autoScrollSpeed,
     pauseAtAyahEnds,
     surahData.meta.number,
@@ -660,13 +684,14 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
 
   const handleToggleBookmark = (ayahNum: number, targetSurahNum = surahData.meta.number) => {
     if (targetSurahNum === surahData.meta.number) {
-      if (bookmarkedAyah === ayahNum) {
-        setBookmarkedAyah(null);
-        safeLocalStorage.removeItem(`bayan_bookmark_${targetSurahNum}`);
-      } else {
-        setBookmarkedAyah(ayahNum);
+      setBookmarkedAyah((prev) => {
+        if (prev === ayahNum) {
+          safeLocalStorage.removeItem(`bayan_bookmark_${targetSurahNum}`);
+          return null;
+        }
         safeLocalStorage.setItem(`bayan_bookmark_${targetSurahNum}`, String(ayahNum));
-      }
+        return ayahNum;
+      });
       return;
     }
 
@@ -742,34 +767,28 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
     return groups;
   }, [pageData]);
 
-  // Helper to resolve active word index (authentic segment timestamp first, proportional fallback)
+  // Helper to resolve active word index (authentic 1-based segment timestamps first, waqf-aware proportional fallback)
   const computeActiveWordIndex = (ayah: Ayah, targetSurahNum: number): number | undefined => {
     const isActive = targetSurahNum === surahData.meta.number && activeAyahNumber === ayah.numberInSurah;
     if (!isActive || !isPlayingAudio || !duration || duration <= 0) return undefined;
 
     const cleanText = sanitizeAyahText(ayah.text, targetSurahNum, ayah.numberInSurah);
-    const words = cleanText.trim().split(/\s+/);
+    const words = cleanText.trim().split(/\s+/).filter(Boolean);
     if (words.length === 0) return undefined;
 
+    const spokenIndices = getSpokenWordRawIndices(words);
     const recId = selectedReciter?.quranComRecitationId;
     const segs = recId ? segmentsBySurahKey[`${recId}:${targetSurahNum}`]?.[ayah.numberInSurah] : undefined;
 
-    if (segs && segs.length > 0) {
-      const curMs = (currentTime || 0) * 1000;
-      const exactMatch = segs.find(([, , startMs, endMs]) => curMs >= startMs && curMs <= endMs);
-      if (exactMatch) {
-        return Math.max(0, Math.min(words.length - 1, exactMatch[0]));
-      }
-      // Within brief pauses between words, hold the most recently started word
-      let lastIdx = 0;
-      for (const [wordStart, , startMs] of segs) {
-        if (curMs >= startMs) lastIdx = wordStart;
-      }
-      return Math.max(0, Math.min(words.length - 1, lastIdx));
-    }
+    const spokenIdx = resolveActiveWordIndex(
+      segs,
+      (currentTime || 0) * 1000,
+      duration * 1000,
+      spokenIndices.length
+    );
 
-    const progress = Math.max(0, Math.min(0.99, (currentTime || 0) / duration));
-    return Math.floor(progress * words.length);
+    if (spokenIdx < 0) return undefined;
+    return spokenIndices[spokenIdx];
   };
 
   const handleStepMushafPage = (delta: number) => {

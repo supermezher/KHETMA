@@ -83,6 +83,8 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playingExampleKey, setPlayingExampleKey] = useState<string | null>(null);
   const [playbackRate, setPlaybackRate] = useState<0.75 | 1>(1);
+  const playbackRateRef = useRef<0.75 | 1>(playbackRate);
+  playbackRateRef.current = playbackRate;
   const [audioError, setAudioError] = useState<string | null>(null);
 
   const activeReciter = selectedReciter || RECITERS_LIST[0];
@@ -191,6 +193,11 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
     if (!audioRef.current) {
       audioRef.current = new Audio();
       audioRef.current.onended = () => setPlayingExampleKey(null);
+      audioRef.current.onloadedmetadata = () => {
+        if (audioRef.current) {
+          audioRef.current.playbackRate = playbackRateRef.current;
+        }
+      };
       audioRef.current.onerror = () => {
         setPlayingExampleKey(null);
         setAudioError('تعذر تشغيل التلاوة الصوتية حالياً.');

@@ -3,7 +3,7 @@ import {
   BookOpen, Sparkles, Award, Heart, Calendar, HelpCircle,
   PenLine, Search, ChevronDown,
   ShieldCheck, Flame, Maximize2,
-  Menu, X, AlertCircle, RefreshCw, AlertTriangle
+  Menu, X, AlertCircle, RefreshCw, AlertTriangle, Sprout
 } from 'lucide-react';
 import { SURAHS_LIST } from './data/quranMetadata';
 import {
@@ -19,7 +19,7 @@ import { QuranReader } from './components/QuranReader';
 import { AudioPlayerBar } from './components/AudioPlayerBar';
 import { TadabburModal, JournalNotePayload } from './components/TadabburModal';
 import { SocialShareModal } from './components/SocialShareModal';
-import { MemorizationMode, MemorizationRepeatTarget } from './components/MemorizationMode';
+import { MemorizationMode, MemorizationRepeatTarget, PlaybackCycleEvent } from './components/MemorizationMode';
 import { FaithAnalytics } from './components/FaithAnalytics';
 import { CollectiveKhatma } from './components/CollectiveKhatma';
 import { TajweedEncyclopedia } from './components/TajweedEncyclopedia';
@@ -30,6 +30,7 @@ import { TajweedLegendModal } from './components/TajweedLegendModal';
 import { KhatmaPlannerModal } from './components/KhatmaPlannerModal';
 import { AmbientAudioBar } from './components/AmbientAudioBar';
 import { RuqyahSection } from './components/RuqyahSection';
+import { KidsHifzSection } from './components/KidsHifzSection';
 import { PWAInstallButton, OfflineIndicator } from './components/PWAInstallButton';
 import { Reciter, RECITERS_LIST } from './data/reciters';
 import { safeLocalStorage } from './utils/safeStorage';
@@ -79,6 +80,7 @@ const JUZ_START_COORDINATES: Record<number, { surah: number; ayah: number }> = {
 type ActiveView =
   | 'mushaf'
   | 'memorization'
+  | 'kids'
   | 'ruqyah'
   | 'mood'
   | 'analytics'
@@ -92,7 +94,7 @@ export default function App() {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get('tab') as ActiveView;
-      if (tab && ['mushaf', 'memorization', 'ruqyah', 'mood', 'analytics', 'khatma', 'tajweed', 'journal', 'flutter-arch'].includes(tab)) {
+      if (tab && ['mushaf', 'memorization', 'kids', 'ruqyah', 'mood', 'analytics', 'khatma', 'tajweed', 'journal', 'flutter-arch'].includes(tab)) {
         return tab;
       }
     }
@@ -130,6 +132,7 @@ export default function App() {
   const [playTriggerNonce, setPlayTriggerNonce] = useState<number>(0);
   const [memorizationRepeatTarget, setMemorizationRepeatTarget] = useState<MemorizationRepeatTarget>(1);
   const [memorizationCurrentRepeat, setMemorizationCurrentRepeat] = useState<number>(1);
+  const [memorizationPlaybackCycle, setMemorizationPlaybackCycle] = useState<PlaybackCycleEvent | null>(null);
   const [audioCurrentTime, setAudioCurrentTime] = useState<number>(0);
   const [audioDuration, setAudioDuration] = useState<number>(1);
   const [isTajweedActive, setIsTajweedActive] = useState<boolean>(() => {
@@ -211,6 +214,13 @@ export default function App() {
       selectedReciterId: selectedReciter.id,
     });
   }, [isTajweedActive, selectedReciter.id]);
+
+  // Pause main Mushaf audio bar when switching into Kids Hifz view
+  useEffect(() => {
+    if (activeView === 'kids') {
+      setIsPlayingAudio(false);
+    }
+  }, [activeView]);
 
   // Close Surah Picker on Escape key
   useEffect(() => {
@@ -506,6 +516,7 @@ export default function App() {
               <div ref={desktopMoreRef} className="relative h-full flex items-center">
                 {(() => {
                   const secondaryTabs: { id: ActiveView; label: string; sub: string; icon: typeof Heart }[] = [
+                    { id: 'kids', label: 'تحفيظ الصغار', sub: 'تلقين صوتي ونجوم للأطفال', icon: Sprout },
                     { id: 'mood', label: 'القرآن حياتي', sub: 'آيات بحسب المشاعر والحال', icon: Heart },
                     { id: 'analytics', label: 'سجل الختمات', sub: 'إحصاءات القراءة والنسخ الاحتياطي', icon: Calendar },
                     { id: 'tajweed', label: 'موسوعة التجويد', sub: 'أحكام التلاوة والأمثلة', icon: HelpCircle },
@@ -707,7 +718,7 @@ export default function App() {
         )}
 
         {activeView === 'memorization' && (
-          surahData ? (
+          surahData && surahData.meta.number === currentSurahNumber ? (
             <MemorizationMode
               ayahs={surahData.ayahs}
               surahNumber={surahData.meta.number}
@@ -719,6 +730,13 @@ export default function App() {
               onPlayAyah={(ayahNum) => handlePlayAyahAudio(ayahNum)}
               onPauseAudio={() => setIsPlayingAudio(false)}
               onFocusAyah={(ayahNum) => setActiveAyahNumber(ayahNum)}
+              onChangeSurah={(surahNum) => {
+                if (surahNum !== currentSurahNumber) {
+                  setIsPlayingAudio(false);
+                  pendingTargetAyahRef.current = 1;
+                  setCurrentSurahNumber(surahNum);
+                }
+              }}
               activeAudioAyahNumber={activeAyahNumber}
               isPlayingAudio={isPlayingAudio}
               repeatTarget={memorizationRepeatTarget}
@@ -726,6 +744,8 @@ export default function App() {
                 setMemorizationRepeatTarget(target);
               }}
               currentRepeat={memorizationCurrentRepeat}
+              playbackCycleEvent={memorizationPlaybackCycle}
+              reciterName={selectedReciter.name}
             />
           ) : (
             <div className="p-16 text-center rounded-2xl bg-[#10161f]/60 border border-slate-800 flex flex-col items-center justify-center space-y-3">
@@ -733,6 +753,10 @@ export default function App() {
               <p className="text-xs text-slate-300 font-medium">جارٍ تجهيز آيات السورة لحلقة الحفظ…</p>
             </div>
           )
+        )}
+
+        {activeView === 'kids' && (
+          <KidsHifzSection />
         )}
 
         {activeView === 'ruqyah' && (
@@ -783,8 +807,8 @@ export default function App() {
         )}
       </main>
 
-      {/* Floating Audio Player Bar (Persistent so recitation is never cut off, supports full-screen floating mode) */}
-      {surahData && (
+      {/* Floating Audio Player Bar (Persistent so recitation is never cut off, hidden in Kids mode) */}
+      {surahData && activeView !== 'kids' && (
         <AudioPlayerBar
           surahNumber={surahData.meta.number}
           surahName={surahData.meta.name}
@@ -817,6 +841,14 @@ export default function App() {
           stopAfterAyahMode={activeView === 'memorization'}
           memorizationRepeatTarget={memorizationRepeatTarget}
           onMemorizationRepeatChange={setMemorizationCurrentRepeat}
+          onPlaybackCycleComplete={(ayahNum) => {
+            if (activeView === 'memorization') {
+              setMemorizationPlaybackCycle((prev) => ({
+                ayahNumber: ayahNum,
+                nonce: (prev?.nonce ?? 0) + 1,
+              }));
+            }
+          }}
         />
       )}
 
@@ -864,13 +896,13 @@ export default function App() {
             onClick={() => setIsMobileMoreOpen(!isMobileMoreOpen)}
             aria-expanded={isMobileMoreOpen}
             className={`min-h-[44px] flex flex-col items-center justify-center flex-1 py-1 rounded-xl transition-all cursor-pointer ${
-              isMobileMoreOpen || ['mood', 'analytics', 'tajweed', 'journal'].includes(activeView)
+              isMobileMoreOpen || ['kids', 'mood', 'analytics', 'tajweed', 'journal'].includes(activeView)
                 ? 'text-[#D9B45A] font-bold'
                 : 'text-slate-300 hover:text-white'
             }`}
           >
             <div className={`p-1 rounded-lg transition-colors ${
-              isMobileMoreOpen || ['mood', 'analytics', 'tajweed', 'journal'].includes(activeView)
+              isMobileMoreOpen || ['kids', 'mood', 'analytics', 'tajweed', 'journal'].includes(activeView)
                 ? 'bg-[#1F3A6E]/60 text-[#D9B45A]'
                 : ''
             }`}>
@@ -909,6 +941,13 @@ export default function App() {
 
             <div className="grid grid-cols-2 gap-2.5">
               {[
+                {
+                  id: 'kids',
+                  label: 'تحفيظ الصغار',
+                  sub: 'تلقين صوتي ونجوم للأطفال',
+                  icon: Sprout,
+                  color: 'text-emerald-300 bg-emerald-950/60 border-emerald-500/40'
+                },
                 {
                   id: 'mood',
                   label: 'القرآن حياتي',

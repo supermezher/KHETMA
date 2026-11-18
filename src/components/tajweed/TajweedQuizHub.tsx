@@ -87,6 +87,8 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
   const [playbackRate, setPlaybackRate] = useState<0.75 | 1>(1);
+  const playbackRateRef = useRef<0.75 | 1>(playbackRate);
+  playbackRateRef.current = playbackRate;
   const [audioError, setAudioError] = useState<string | null>(null);
 
   const activeReciter = selectedReciter || RECITERS_LIST[0];
@@ -178,6 +180,11 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
     if (!audioRef.current) {
       audioRef.current = new Audio();
       audioRef.current.onended = () => setIsPlayingAudio(false);
+      audioRef.current.onloadedmetadata = () => {
+        if (audioRef.current) {
+          audioRef.current.playbackRate = playbackRateRef.current;
+        }
+      };
       audioRef.current.onerror = () => {
         setIsPlayingAudio(false);
         setAudioError('تعذر تشغيل التلاوة الصوتية حالياً.');

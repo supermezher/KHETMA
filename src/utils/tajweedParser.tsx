@@ -52,7 +52,21 @@ export const TANZIL_RULE_MAP: Record<string, { rule: TajweedRuleType; tooltip: s
 };
 
 const COMBINING_MARK_RE = /[\u064B-\u065F\u0670\u06D6-\u06ED\u200C]/;
-const WAQF_ONLY_RE = /^[\u06D6-\u06ED]+$/;
+export const WAQF_ONLY_RE = /^[\u06D6-\u06ED]+$/;
+
+/**
+ * Returns the indices inside a whitespace-split ayah `words` array that represent
+ * actual spoken Arabic words (excluding standalone Quranic waqf stop marks like ۛ ۖ ۗ ۚ).
+ */
+export function getSpokenWordRawIndices(words: string[]): number[] {
+  const indices: number[] = [];
+  for (let i = 0; i < words.length; i++) {
+    if (!WAQF_ONLY_RE.test(words[i])) {
+      indices.push(i);
+    }
+  }
+  return indices.length > 0 ? indices : words.map((_, i) => i);
+}
 
 /**
  * Splits a single Arabic word into atomic grapheme clusters (base letter + combining diacritics)

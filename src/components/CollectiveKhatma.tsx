@@ -126,6 +126,8 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
     }
     return 'public';
   });
+  const activeRoomIdRef = useRef<string>(activeRoomId);
+  activeRoomIdRef.current = activeRoomId;
 
   const STORAGE_KEY = `bayan_collective_khatma_v2_${activeRoomId}`;
   const CLAIM_TOKENS_KEY = `bayan_khatma_claim_tokens_${activeRoomId}`;
@@ -227,10 +229,36 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
     };
   }, []);
 
-  // Load claimTokens when room changes + check URL for ?adminKey= once & scrub URL bar
+  // Load claimTokens, reset cached room parts, & verify adminKey when switching rooms
   useEffect(() => {
+    let cancelled = false;
     setClaimTokens(safeLocalStorage.getJSON<Record<string, string>>(`bayan_khatma_claim_tokens_${activeRoomId}`, {}));
     const savedAdminKey = safeLocalStorage.getItem(`bayan_khatma_admin_key_${activeRoomId}`) || '';
+
+    const cachedRoom = safeLocalStorage.getJSON<{ parts?: PartClaim[]; dedicationTitle?: string; creatorName?: string; deadlineDays?: number } | null>(
+      `bayan_collective_khatma_v2_${activeRoomId}`,
+      null
+    );
+    if (cachedRoom?.parts && Array.isArray(cachedRoom.parts)) {
+      setParts(cachedRoom.parts);
+      if (cachedRoom.dedicationTitle) setDedicationTitle(cachedRoom.dedicationTitle);
+      if (cachedRoom.creatorName) setCreatorName(cachedRoom.creatorName);
+      if (cachedRoom.deadlineDays) setDeadlineDays(cachedRoom.deadlineDays);
+    } else {
+      setParts(
+        Array.from({ length: 30 }, (_, i) => {
+          const num = i + 1;
+          return {
+            juzNumber: num,
+            juzName: `الجزء ${num}`,
+            claimedBy: null,
+            claimedAt: undefined,
+            isCompleted: false,
+            surahsCovered: DEFAULT_JUZ_SURAS[num],
+          };
+        })
+      );
+    }
 
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
@@ -243,19 +271,35 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
 
         verifyAdminKeyApi(cleanKey, activeRoomId)
           .then((res) => {
-            if (res.success && res.verified) {
+            if (!cancelled && res.success && res.verified) {
               setAdminSessionKey(cleanKey);
               setIsAdminMode(true);
               showToast('تم تفعيل صلاحيات مشرف الغرفة عبر الرابط السري');
             }
           })
           .catch(() => {});
-        return;
+        return () => {
+          cancelled = true;
+        };
       }
     }
 
     setAdminSessionKey(savedAdminKey);
-    setIsAdminMode(false);
+    if (savedAdminKey && savedAdminKey.trim().length >= 8) {
+      verifyAdminKeyApi(savedAdminKey, activeRoomId)
+        .then((res) => {
+          if (!cancelled) {
+            setIsAdminMode(Boolean(res.success && res.verified));
+          }
+        })
+        .catch(() => {});
+    } else {
+      setIsAdminMode(false);
+    }
+
+    return () => {
+      cancelled = true;
+    };
   }, [activeRoomId]);
 
   // Close dialogs on Escape
@@ -313,6 +357,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
       if (!silent) setIsSyncing(true);
       setRoomLoadError(null);
       const data = await fetchKhatmaState(targetRoom);
+      if (targetRoom !== activeRoomIdRef.current) return;
       if (data.success && Array.isArray(data.parts)) {
         setParts(data.parts);
         setIsPublicRoom(Boolean(data.isPublic ?? targetRoom === 'public'));
@@ -333,12 +378,15 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
         );
       }
     } catch (err) {
+      if (targetRoom !== activeRoomIdRef.current) return;
       setIsOnline(false);
       if (!silent) {
         setRoomLoadError(err instanceof Error ? err.message : 'تعذر تحميل بيانات الغرفة');
       }
     } finally {
-      setIsSyncing(false);
+      if (targetRoom === activeRoomIdRef.current) {
+        setIsSyncing(false);
+      }
     }
   }, [activeRoomId]);
 

@@ -12,10 +12,18 @@ import {
   normalizeRoomId,
   sanitizePartsForClient,
 } from './src/server/khatmaStore';
+import {
+  createKidsCircleDatabase,
+  normalizeCircleCode,
+  sanitizeMemberForClient,
+} from './src/server/kidsCircleStore';
 
 const khatmaDb = createKhatmaDatabase();
+const kidsCircleDb = createKidsCircleDatabase();
 const adminRateLimiter = new SecretRateLimiter(5, 5 * 60 * 1000);
 const roomCreateRateLimiter = new SecretRateLimiter(6, 60 * 60 * 1000);
+const kidsCircleAdminLimiter = new SecretRateLimiter(6, 5 * 60 * 1000);
+const kidsCircleCreateLimiter = new SecretRateLimiter(8, 60 * 60 * 1000);
 
 function getClientIp(req: express.Request): string {
   return req.ip || req.socket?.remoteAddress || '127.0.0.1';
@@ -49,14 +57,21 @@ async function startServer() {
 
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
-  app.use(express.json({ limit: '64kb' }));
+  const json64kb = express.json({ limit: '64kb' });
+  const json2mb = express.json({ limit: '2mb' });
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api/kids-circle')) {
+      return json2mb(req, res, next);
+    }
+    return json64kb(req, res, next);
+  });
 
   // Baseline Security Headers
   app.use((_req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(self), geolocation=()');
     next();
   });
 
@@ -457,6 +472,303 @@ async function startServer() {
     }
 
     return res.status(400).json({ success: false, error: 'إجراء غير معروف' });
+  });
+
+  // ---------------------------------------------------------------------------
+  // API ROUTES FOR KIDS HIFZ CIRCLES (REMOTE LINKING & ASYNC VOICE INBOX)
+  // ---------------------------------------------------------------------------
+
+  // 1. Create a Kids Hifz Circle (returns 6-digit circleCode & 128-bit adminKey once)
+  app.post('/api/kids-circle/create', (req, res) => {
+    const clientIp = getClientIp(req);
+    const rateKey = `kids-create:${clientIp}`;
+    const limitCheck = kidsCircleCreateLimiter.check(rateKey);
+    if (!limitCheck.allowed) {
+      return res.status(429).json({
+        success: false,
+        error: `تم تجاوز حد إنشاء حلقات الأطفال مؤقتاً. يرجى المحاولة بعد ${limitCheck.retryAfterSec} ثانية`,
+      });
+    }
+
+    const { title, supervisorName } = req.body || {};
+    const result = kidsCircleDb.createCircle({ title, supervisorName });
+    if (!result.ok) {
+      return res.status(result.status).json({ success: false, error: result.error });
+    }
+
+    kidsCircleCreateLimiter.recordFailure(rateKey);
+    const { circle, adminKey } = result;
+    return res.status(201).json({
+      success: true,
+      circleCode: circle.circleCode,
+      title: circle.title,
+      supervisorName: circle.supervisorName,
+      adminKey,
+      kids: [],
+      submissions: [],
+      updatedAt: circle.updatedAt,
+    });
+  });
+
+  // 2. Fetch Circle State (Admin sees all kids + voice inbox; authenticated kid sees own profile + own clips)
+  app.get('/api/kids-circle/:code', (req, res) => {
+    const code = normalizeCircleCode(req.params.code);
+    if (!code) {
+      return res.status(400).json({ success: false, error: 'كود الحلقة يجب أن يتكون من ٦ أرقام' });
+    }
+    const circle = kidsCircleDb.getCircle(code);
+    if (!circle) {
+      return res.status(404).json({ success: false, error: 'لم يتم العثور على حلقة بهذا الكود' });
+    }
+
+    const adminKey = req.get('x-admin-key');
+    const kidToken = req.get('x-kid-token');
+    const kidId = typeof req.query.kidId === 'string' ? req.query.kidId : '';
+
+    if (adminKey) {
+      const rateKey = `kids-get-admin:${getClientIp(req)}:${circle.circleCode}`;
+      const limitCheck = kidsCircleAdminLimiter.check(rateKey);
+      if (!limitCheck.allowed) {
+        return res.status(429).json({
+          success: false,
+          error: `تم تجاوز عدد المحاولات المسموح بها. يرجى الانتظار ${limitCheck.retryAfterSec} ثانية`,
+        });
+      }
+      if (verifySecretHash(adminKey, circle.adminKeyHash)) {
+        kidsCircleAdminLimiter.reset(rateKey);
+        return res.json({
+          success: true,
+          role: 'admin',
+          circleCode: circle.circleCode,
+          title: circle.title,
+          supervisorName: circle.supervisorName,
+          kidsCount: circle.kids.length,
+          kids: circle.kids.map(sanitizeMemberForClient),
+          submissions: circle.submissions,
+          updatedAt: circle.updatedAt,
+        });
+      }
+      kidsCircleAdminLimiter.recordFailure(rateKey);
+      return res.status(403).json({ success: false, error: 'مفتاح المشرف غير صحيح' });
+    }
+
+    if (kidId && kidToken) {
+      const member = circle.kids.find((k) => k.kidId === kidId);
+      if (!member || !verifySecretHash(kidToken, member.kidTokenHash)) {
+        return res.status(403).json({ success: false, error: 'تعذر التحقق من جلسة الطفل في الحلقة' });
+      }
+      const mySubmissions = circle.submissions.filter((s) => s.kidId === member.kidId);
+      return res.json({
+        success: true,
+        role: 'kid',
+        circleCode: circle.circleCode,
+        title: circle.title,
+        supervisorName: circle.supervisorName,
+        kidsCount: circle.kids.length,
+        member: sanitizeMemberForClient(member),
+        submissions: mySubmissions,
+        updatedAt: circle.updatedAt,
+      });
+    }
+
+    return res.json({
+      success: true,
+      role: 'preview',
+      circleCode: circle.circleCode,
+      title: circle.title,
+      supervisorName: circle.supervisorName,
+      kidsCount: circle.kids.length,
+      updatedAt: circle.updatedAt,
+    });
+  });
+
+  // 3. Join a Circle as a Child (receives kidId & 128-bit kidToken once)
+  app.post('/api/kids-circle/:code/join', (req, res) => {
+    const code = normalizeCircleCode(req.params.code);
+    if (!code) {
+      return res.status(400).json({ success: false, error: 'كود الحلقة يجب أن يتكون من ٦ أرقام' });
+    }
+    const { name, avatarId, initialWird } = req.body || {};
+    const result = kidsCircleDb.joinCircle(code, { name, avatarId, initialWird });
+    if (!result.ok) {
+      return res.status(result.status).json({ success: false, error: result.error });
+    }
+    return res.status(201).json({
+      success: true,
+      circleCode: result.circle.circleCode,
+      title: result.circle.title,
+      supervisorName: result.circle.supervisorName,
+      member: result.member,
+      kidToken: result.kidToken,
+      updatedAt: result.circle.updatedAt,
+    });
+  });
+
+  // 4. Verify Circle Supervisor Admin Key
+  app.post('/api/kids-circle/:code/verify-admin', (req, res) => {
+    const code = normalizeCircleCode(req.params.code);
+    if (!code) {
+      return res.status(400).json({ success: false, error: 'كود الحلقة غير صالح' });
+    }
+    const circle = kidsCircleDb.getCircle(code);
+    if (!circle) {
+      return res.status(404).json({ success: false, error: 'الحلقة غير موجودة' });
+    }
+    const adminKey = req.body?.adminKey ?? req.get('x-admin-key');
+    if (typeof adminKey !== 'string' || !adminKey.trim()) {
+      return res.status(400).json({ success: false, error: 'مفتاح المشرف مطلوب' });
+    }
+
+    const rateKey = `kids-verify:${getClientIp(req)}:${circle.circleCode}`;
+    const limitCheck = kidsCircleAdminLimiter.check(rateKey);
+    if (!limitCheck.allowed) {
+      return res.status(429).json({
+        success: false,
+        verified: false,
+        error: `تم تجاوز عدد المحاولات المسموح بها. يرجى الانتظار ${limitCheck.retryAfterSec} ثانية`,
+      });
+    }
+
+    if (kidsCircleDb.verifyAdmin(circle.circleCode, adminKey)) {
+      kidsCircleAdminLimiter.reset(rateKey);
+      return res.json({
+        success: true,
+        verified: true,
+        circleCode: circle.circleCode,
+        title: circle.title,
+        supervisorName: circle.supervisorName,
+      });
+    }
+
+    kidsCircleAdminLimiter.recordFailure(rateKey);
+    return res.status(401).json({ success: false, verified: false, error: 'مفتاح المشرف غير صحيح' });
+  });
+
+  // 5. Update Kid Daily Wird Remotely (Supervisor Admin Key Required)
+  app.post('/api/kids-circle/:code/wird', (req, res) => {
+    const code = normalizeCircleCode(req.params.code);
+    if (!code) {
+      return res.status(400).json({ success: false, error: 'كود الحلقة غير صالح' });
+    }
+    const { kidId, wird } = req.body || {};
+    const adminKey = req.body?.adminKey ?? req.get('x-admin-key');
+    if (typeof kidId !== 'string' || !kidId.trim()) {
+      return res.status(400).json({ success: false, error: 'معرف الطفل مطلوب' });
+    }
+
+    const rateKey = `kids-wird:${getClientIp(req)}:${code}`;
+    const limitCheck = kidsCircleAdminLimiter.check(rateKey);
+    if (!limitCheck.allowed) {
+      return res.status(429).json({
+        success: false,
+        error: `تم تجاوز عدد المحاولات المسموح بها. يرجى الانتظار ${limitCheck.retryAfterSec} ثانية`,
+      });
+    }
+
+    const result = kidsCircleDb.updateKidWird(code, adminKey, kidId, wird || {});
+    if (!result.ok) {
+      if (result.status === 403) kidsCircleAdminLimiter.recordFailure(rateKey);
+      return res.status(result.status).json({ success: false, error: result.error });
+    }
+    kidsCircleAdminLimiter.reset(rateKey);
+    return res.json({ success: true, member: result.member });
+  });
+
+  // 6. Sync Kid Progress (Kid Token or Admin Key Required)
+  app.post('/api/kids-circle/:code/progress', (req, res) => {
+    const code = normalizeCircleCode(req.params.code);
+    if (!code) {
+      return res.status(400).json({ success: false, error: 'كود الحلقة غير صالح' });
+    }
+    const { kidId, stars, masteredAyahKeys, completedSurahs, ayahRepeatCounts } = req.body || {};
+    const kidToken = req.body?.kidToken ?? req.get('x-kid-token');
+    const adminKey = req.body?.adminKey ?? req.get('x-admin-key');
+
+    if (typeof kidId !== 'string' || !kidId.trim()) {
+      return res.status(400).json({ success: false, error: 'معرف الطفل مطلوب' });
+    }
+
+    const result = kidsCircleDb.syncKidProgress(
+      code,
+      kidId,
+      { kidToken, adminKey },
+      { stars, masteredAyahKeys, completedSurahs, ayahRepeatCounts }
+    );
+    if (!result.ok) {
+      return res.status(result.status).json({ success: false, error: result.error });
+    }
+    return res.json({ success: true, member: result.member });
+  });
+
+  // 7. Submit Async Child Voice Recitation (Kid Token Required)
+  app.post('/api/kids-circle/:code/submissions', (req, res) => {
+    const code = normalizeCircleCode(req.params.code);
+    if (!code) {
+      return res.status(400).json({ success: false, error: 'كود الحلقة غير صالح' });
+    }
+    const {
+      kidId,
+      surahNumber,
+      ayahNumber,
+      endAyahNumber,
+      audioDataUrl,
+      mimeType,
+      durationSec,
+    } = req.body || {};
+    const kidToken = req.body?.kidToken ?? req.get('x-kid-token');
+
+    if (typeof kidId !== 'string' || !kidId.trim()) {
+      return res.status(400).json({ success: false, error: 'معرف الطفل مطلوب' });
+    }
+
+    const result = kidsCircleDb.addVoiceSubmission(code, kidId, kidToken, {
+      surahNumber,
+      ayahNumber,
+      endAyahNumber,
+      audioDataUrl,
+      mimeType,
+      durationSec,
+    });
+    if (!result.ok) {
+      return res.status(result.status).json({ success: false, error: result.error });
+    }
+    return res.status(201).json({ success: true, submission: result.submission });
+  });
+
+  // 8. Review Voice Submission (Supervisor Admin Key Required)
+  app.post('/api/kids-circle/:code/submissions/:subId/review', (req, res) => {
+    const code = normalizeCircleCode(req.params.code);
+    if (!code) {
+      return res.status(400).json({ success: false, error: 'كود الحلقة غير صالح' });
+    }
+    const subId = req.params.subId;
+    const { decision, feedbackText, supervisorAudioDataUrl } = req.body || {};
+    const adminKey = req.body?.adminKey ?? req.get('x-admin-key');
+
+    const rateKey = `kids-review:${getClientIp(req)}:${code}`;
+    const limitCheck = kidsCircleAdminLimiter.check(rateKey);
+    if (!limitCheck.allowed) {
+      return res.status(429).json({
+        success: false,
+        error: `تم تجاوز عدد المحاولات المسموح بها. يرجى الانتظار ${limitCheck.retryAfterSec} ثانية`,
+      });
+    }
+
+    const result = kidsCircleDb.reviewSubmission(code, adminKey, subId, {
+      decision: decision === 'approved' ? 'approved' : 'retry',
+      feedbackText,
+      supervisorAudioDataUrl,
+    });
+    if (!result.ok) {
+      if (result.status === 403) kidsCircleAdminLimiter.recordFailure(rateKey);
+      return res.status(result.status).json({ success: false, error: result.error });
+    }
+    kidsCircleAdminLimiter.reset(rateKey);
+    return res.json({
+      success: true,
+      submission: result.submission,
+      member: result.member,
+    });
   });
 
   // Unknown /api/* routes must return JSON 404 rather than SPA HTML fallback

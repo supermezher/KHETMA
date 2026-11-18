@@ -107,6 +107,8 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
   const [playbackRate, setPlaybackRate] = useState<0.75 | 1>(1);
+  const playbackRateRef = useRef<0.75 | 1>(playbackRate);
+  playbackRateRef.current = playbackRate;
   const [audioError, setAudioError] = useState<string | null>(null);
 
   const activeReciter = selectedReciter || RECITERS_LIST[0];
@@ -217,6 +219,11 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
     if (!audioRef.current) {
       audioRef.current = new Audio();
       audioRef.current.onended = () => setIsPlayingAudio(false);
+      audioRef.current.onloadedmetadata = () => {
+        if (audioRef.current) {
+          audioRef.current.playbackRate = playbackRateRef.current;
+        }
+      };
       audioRef.current.onerror = () => {
         setIsPlayingAudio(false);
         setAudioError('تعذر تشغيل التلاوة الصوتية حالياً، تأكد من اتصال الإنترنت.');

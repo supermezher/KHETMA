@@ -25,6 +25,7 @@ interface AudioPlayerBarProps {
   stopAfterAyahMode?: boolean;
   memorizationRepeatTarget?: 1 | 2 | 3 | 'loop';
   onMemorizationRepeatChange?: (currentCount: number) => void;
+  onPlaybackCycleComplete?: (ayahNumber: number) => void;
 }
 
 export interface AudioEndTransitionInput {
@@ -100,6 +101,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
   stopAfterAyahMode = false,
   memorizationRepeatTarget = 1,
   onMemorizationRepeatChange,
+  onPlaybackCycleComplete,
 }) => {
   const [internalReciter, setInternalReciter] = useState<Reciter>(RECITERS_LIST[0]);
   const selectedReciter = propSelectedReciter || internalReciter;
@@ -115,7 +117,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const [downloadProgress, setDownloadProgress] = useState<{ completed: number; total: number } | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
-  const [cachedBlobSrc, setCachedBlobSrc] = useState<string | null>(null);
+  const [resolvedAudioSource, setResolvedAudioSource] = useState<{ forUrl: string; src: string } | null>(null);
   const [isMinimizedInFullScreen, setIsMinimizedInFullScreen] = useState<boolean>(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -126,10 +128,15 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
   stopAfterAyahModeRef.current = stopAfterAyahMode;
   const memRepeatTargetRef = useRef<1 | 2 | 3 | 'loop'>(memorizationRepeatTarget);
   memRepeatTargetRef.current = memorizationRepeatTarget;
+  const playbackSpeedRef = useRef<number>(playbackSpeed);
+  playbackSpeedRef.current = playbackSpeed;
+  const onPlaybackProgressRef = useRef(onPlaybackProgress);
+  onPlaybackProgressRef.current = onPlaybackProgress;
   const [audioProgress, setAudioProgress] = useState(0);
 
   // Audio source URL
   const audioUrl = getAyahAudioUrl(selectedReciter.serverKey, surahNumber, currentAyahNumber);
+  const activeAudioSrc = resolvedAudioSource?.forUrl === audioUrl ? resolvedAudioSource.src : undefined;
 
   // Check if current surah is already cached offline
   useEffect(() => {
@@ -143,21 +150,26 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
     };
   }, [selectedReciter.serverKey, surahNumber, totalAyahs]);
 
-  // Attempt to load from offline cache first (and cleanly revoke previous ObjectURL)
+  // Attempt to load from offline cache first before setting <audio src> (avoids online network error before cache resolves)
   useEffect(() => {
     let isMounted = true;
-    setCachedBlobSrc(null);
-    getCachedAudioBlobUrl(audioUrl).then((blobUrl) => {
-      if (!isMounted) {
-        if (blobUrl) URL.revokeObjectURL(blobUrl);
-        return;
-      }
-      if (activeBlobUrlRef.current && activeBlobUrlRef.current !== blobUrl) {
-        URL.revokeObjectURL(activeBlobUrlRef.current);
-      }
-      activeBlobUrlRef.current = blobUrl;
-      setCachedBlobSrc(blobUrl);
-    });
+    getCachedAudioBlobUrl(audioUrl)
+      .then((blobUrl) => {
+        if (!isMounted) {
+          if (blobUrl) URL.revokeObjectURL(blobUrl);
+          return;
+        }
+        if (activeBlobUrlRef.current && activeBlobUrlRef.current !== blobUrl) {
+          URL.revokeObjectURL(activeBlobUrlRef.current);
+        }
+        activeBlobUrlRef.current = blobUrl;
+        setResolvedAudioSource({ forUrl: audioUrl, src: blobUrl || audioUrl });
+      })
+      .catch(() => {
+        if (isMounted) {
+          setResolvedAudioSource({ forUrl: audioUrl, src: audioUrl });
+        }
+      });
     return () => {
       isMounted = false;
     };
@@ -185,6 +197,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
     }
 
     if (isPlaying) {
+      if (!activeAudioSrc) return;
       audioRef.current.playbackRate = playbackSpeed;
       audioRef.current.play().catch(err => {
         if (err?.name === 'AbortError') return;
@@ -194,7 +207,31 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
     } else {
       audioRef.current.pause();
     }
-  }, [isPlaying, cachedBlobSrc, audioUrl, playbackSpeed, playTriggerNonce]);
+  }, [isPlaying, activeAudioSrc, playbackSpeed, playTriggerNonce]);
+
+  // 60fps playback progress updates while playing so word highlighting glides smoothly
+  useEffect(() => {
+    if (!isPlaying) return;
+    let rafId = 0;
+    let lastReportedTime = -1;
+
+    const tick = () => {
+      const audio = audioRef.current;
+      if (audio && Number.isFinite(audio.duration) && audio.duration > 0) {
+        const cur = audio.currentTime;
+        const dur = audio.duration;
+        if (Math.abs(cur - lastReportedTime) >= 0.012) {
+          lastReportedTime = cur;
+          setAudioProgress((cur / dur) * 100);
+          onPlaybackProgressRef.current?.(cur, dur);
+        }
+      }
+      rafId = window.requestAnimationFrame(tick);
+    };
+
+    rafId = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(rafId);
+  }, [isPlaying, activeAudioSrc]);
 
   // Khatma sleep timer countdown
   useEffect(() => {
@@ -253,6 +290,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
       }
       if (audioRef.current) {
         audioRef.current.currentTime = 0;
+        audioRef.current.playbackRate = playbackSpeedRef.current;
         audioRef.current.play().catch((err) => {
           if (err?.name !== 'AbortError') onPlayPauseToggle(false);
         });
@@ -270,6 +308,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
       onAyahChange(action.nextAyahNumber);
     } else {
       onPlayPauseToggle(false);
+      onPlaybackCycleComplete?.(currentAyahNumber);
     }
   };
 
@@ -311,7 +350,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
           URL.revokeObjectURL(activeBlobUrlRef.current);
         }
         activeBlobUrlRef.current = blobUrl;
-        setCachedBlobSrc(blobUrl);
+        setResolvedAudioSource({ forUrl: audioUrl, src: blobUrl });
       }
     } catch (err: any) {
       console.error('Audio download caching failed:', err);
@@ -328,12 +367,18 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
     onPlayPauseToggle(false);
   };
 
+  const syncPlaybackRate = (e: React.SyntheticEvent<HTMLAudioElement, Event>) => {
+    e.currentTarget.playbackRate = playbackSpeedRef.current;
+  };
+
   return (
     <>
       {/* Hidden Persistent Audio Element - Always mounted so recitation never cuts off */}
       <audio
         ref={audioRef}
-        src={cachedBlobSrc || audioUrl}
+        src={activeAudioSrc}
+        onLoadedMetadata={syncPlaybackRate}
+        onPlay={syncPlaybackRate}
         onEnded={handleAudioEnded}
         onTimeUpdate={handleTimeUpdate}
         onError={handleAudioError}
@@ -399,7 +444,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
               title="تقديم وتأخير التلاوة"
             >
               <div
-                className="h-full bg-gradient-to-r from-[#2E5499] to-[#D9B45A] transition-all rounded-full"
+                className="h-full bg-gradient-to-r from-[#2E5499] to-[#D9B45A] rounded-full"
                 style={{ width: `${audioProgress}%` }}
               />
             </div>
@@ -664,7 +709,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             className="w-full h-1 bg-slate-800 hover:h-2 cursor-pointer transition-all relative"
           >
             <div
-              className="h-full bg-gradient-to-r from-[#2E5499] to-[#D9B45A] transition-all"
+              className="h-full bg-gradient-to-r from-[#2E5499] to-[#D9B45A]"
               style={{ width: `${audioProgress}%` }}
             />
           </div>
