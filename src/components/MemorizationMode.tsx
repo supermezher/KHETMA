@@ -27,7 +27,7 @@ import {
   findSurahForMushafPageFallback,
   findSurahsStartingOnMushafPage,
   setPendingMushafPageTarget,
-  consumePendingMushafPageTarget,
+  consumePendingMushafPageState,
 } from '../utils/memorizationHelpers';
 import {
   Eye,
@@ -240,12 +240,13 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
   useEffect(() => {
     clearPendingAdvanceTimers();
     cleanupRecordingResources(true);
-    const pendingPage = consumePendingMushafPageTarget(surahNumber);
-    if (pendingPage !== null && surahPageSpans.length > 0) {
+    const pendingTarget = consumePendingMushafPageState(surahNumber);
+    if (pendingTarget !== null && surahPageSpans.length > 0) {
       const matchedSpan =
-        surahPageSpans.find((sp) => sp.pageNumber === pendingPage) ?? surahPageSpans[0];
+        surahPageSpans.find((sp) => sp.pageNumber === pendingTarget.pageNumber) ?? surahPageSpans[0];
       setScopeMode('mushaf-page');
       scopeModeRef.current = 'mushaf-page';
+      setReciteViewMode(pendingTarget.reciteViewMode);
       setSelectedPageNumber(matchedSpan.pageNumber);
       setPageJumpInput(String(matchedSpan.pageNumber));
       setRangeStart(matchedSpan.startAyah);
@@ -653,7 +654,11 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
       clearPendingAdvanceTimers();
       cleanupRecordingResources(true);
       if (isPlayingAudio) onPauseAudio?.();
-      setPendingMushafPageTarget({ surahNumber: overrideSurahNum, pageNumber: safePage });
+      setPendingMushafPageTarget({
+        surahNumber: overrideSurahNum,
+        pageNumber: safePage,
+        reciteViewMode,
+      });
       onChangeSurah(overrideSurahNum);
       return;
     }
@@ -694,7 +699,11 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
           onFocusAyah?.(fallbackLocal.startAyah);
         }
       } else {
-        setPendingMushafPageTarget({ surahNumber: targetSurah, pageNumber: safePage });
+        setPendingMushafPageTarget({
+          surahNumber: targetSurah,
+          pageNumber: safePage,
+          reciteViewMode,
+        });
         onChangeSurah(targetSurah);
       }
     } finally {
@@ -709,6 +718,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
     if (isPlayingAudio) onPauseAudio?.();
     setScopeMode(nextScope);
     if (nextScope === 'mushaf-page') {
+      setReciteViewMode('full-page');
       const anchorPage = currentAyah?.page ?? surahPageSpans[0]?.pageNumber ?? 1;
       const targetSpan =
         surahPageSpans.find((sp) => sp.pageNumber === anchorPage) ?? surahPageSpans[0];

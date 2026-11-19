@@ -14,6 +14,7 @@ import {
   getNextHiddenWordIndex,
   isMemorizationWordHidden,
   setPendingMushafPageTarget,
+  consumePendingMushafPageState,
   SrsRecord,
 } from '../utils/memorizationHelpers';
 
@@ -220,6 +221,13 @@ describe('Memorization Circle helpers', () => {
     expect(consumePendingMushafPageTarget(2)).toBeNull();
     expect(consumePendingMushafPageTarget(18)).toBe(295);
     expect(consumePendingMushafPageTarget(18)).toBeNull();
+
+    setPendingMushafPageTarget({ surahNumber: 2, pageNumber: 3, reciteViewMode: 'full-page' });
+    expect(consumePendingMushafPageState(2)).toEqual({
+      pageNumber: 3,
+      reciteViewMode: 'full-page',
+    });
+    expect(consumePendingMushafPageState(2)).toBeNull();
   });
 });
 

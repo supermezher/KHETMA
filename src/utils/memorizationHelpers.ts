@@ -392,6 +392,7 @@ export function findSurahsStartingOnMushafPage(pageNumber: number): SurahMeta[] 
 export interface PendingMushafPageTarget {
   surahNumber: number;
   pageNumber: number;
+  reciteViewMode?: ReciteViewMode;
 }
 
 let pendingMushafPageTarget: PendingMushafPageTarget | null = null;
@@ -405,6 +406,18 @@ export function consumePendingMushafPageTarget(surahNumber: number): number | nu
     const page = pendingMushafPageTarget.pageNumber;
     pendingMushafPageTarget = null;
     return page;
+  }
+  return null;
+}
+
+export function consumePendingMushafPageState(
+  surahNumber: number
+): { pageNumber: number; reciteViewMode: ReciteViewMode } | null {
+  if (pendingMushafPageTarget && pendingMushafPageTarget.surahNumber === surahNumber) {
+    const pageNumber = pendingMushafPageTarget.pageNumber;
+    const reciteViewMode = pendingMushafPageTarget.reciteViewMode ?? 'full-page';
+    pendingMushafPageTarget = null;
+    return { pageNumber, reciteViewMode };
   }
   return null;
 }
