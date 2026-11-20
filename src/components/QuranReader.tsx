@@ -22,7 +22,7 @@ import {
   Award, MoreHorizontal, ChevronsDown, Sun, Moon, ShieldCheck, Calendar,
   Heart, Sprout, Compass, AlignJustify, LayoutGrid
 } from 'lucide-react';
-import { APP_THEME_EVENT, AppTheme, LastReadingPosition } from '../utils/appTheme';
+import { APP_THEME_EVENT, AppTheme, LastReadingPosition, loadAppTheme, saveAppTheme } from '../utils/appTheme';
 import { Reciter } from '../data/reciters';
 import { toArabicIndic } from './khatma/KhatmaRing';
 import { READER_PREFS_KEY } from '../utils/userBackup';
@@ -50,6 +50,7 @@ import {
   getArabicJuzLabel,
   isInteractiveTapTarget,
   resolveAutoScrollEndAction,
+  resolvePairedPaperTheme,
   resolveRtlPageSwipeDelta,
   resolveVisiblePageFromOffsets,
   shouldToggleImmersiveTap,
@@ -71,15 +72,11 @@ interface StoredReaderPrefs {
 
 function getDefaultTheme(): ReaderTheme {
   const saved = safeLocalStorage.getJSON<StoredReaderPrefs | null>(READER_PREFS_KEY, null);
+  const currentAppTheme = loadAppTheme();
   if (saved?.theme && ['parchment', 'sepia', 'dark', 'emerald'].includes(saved.theme)) {
-    return saved.theme;
+    return resolvePairedPaperTheme(saved.theme, currentAppTheme);
   }
-  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
-    if (window.matchMedia('(prefers-color-scheme: light)').matches) {
-      return 'parchment';
-    }
-  }
-  return 'dark';
+  return currentAppTheme === 'light' ? 'parchment' : 'dark';
 }
 
 function getDefaultFontSize(): number {
@@ -430,18 +427,20 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
     }
   }, [prefsReloadNonce]);
 
-  // Pair parchment/dark paper automatically when user switches global app theme
+  // Pair all Mushaf paper themes (including sepia/emerald) cleanly when user switches global Day/Night toggle
   useEffect(() => {
     const handleGlobalTheme = (e: Event) => {
       const nextAppTheme = (e as CustomEvent<AppTheme>).detail;
-      setTheme((prev) => {
-        if (nextAppTheme === 'light' && prev === 'dark') return 'parchment';
-        if (nextAppTheme === 'dark' && prev === 'parchment') return 'dark';
-        return prev;
-      });
+      setTheme((prev) => resolvePairedPaperTheme(prev, nextAppTheme));
     };
     window.addEventListener(APP_THEME_EVENT, handleGlobalTheme);
     return () => window.removeEventListener(APP_THEME_EVENT, handleGlobalTheme);
+  }, []);
+
+  const handleSelectPaperTheme = useCallback((nextPaper: ReaderTheme) => {
+    setTheme(nextPaper);
+    const nextAppTheme: AppTheme = nextPaper === 'parchment' || nextPaper === 'sepia' ? 'light' : 'dark';
+    saveAppTheme(nextAppTheme);
   }, []);
 
   // Persist fontSize, theme, readerMode, ruled lines, and autoAdvancePage cleanly
@@ -1575,7 +1574,7 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
       >
         {/* Ultra-Slim Row 1: Bayan Mobile Utility Strip (also shown in desktop if needed, minimal height) */}
         <div
-          className={`max-w-5xl mx-auto px-3 sm:px-5 pt-[max(0.25rem,env(safe-area-inset-top))] h-9 flex items-center justify-between gap-2 text-[11px] border-b ${
+          className={`max-w-5xl mx-auto px-3 sm:px-5 pt-[max(0.25rem,env(safe-area-inset-top))] pb-1 min-h-9 flex items-center justify-between gap-2 text-[11px] border-b ${
             isLightPaper ? 'border-[#8A6418]/12' : 'border-[#D9B45A]/12'
           } ${!isChromeHidden ? 'lg:hidden' : ''}`}
         >
@@ -1628,14 +1627,16 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
               <button
                 type="button"
                 onClick={onToggleAppTheme}
-                aria-label={appTheme === 'dark' ? 'الوضع النهاري' : 'الوضع الليلي'}
-                className="min-w-[34px] min-h-[32px] flex items-center justify-center rounded-lg hover:bg-current/5 cursor-pointer"
+                aria-label={appTheme === 'dark' ? 'التبديل إلى الوضع النهاري' : 'التبديل إلى الوضع الليلي'}
+                title={appTheme === 'dark' ? 'التبديل إلى الوضع النهاري' : 'التبديل إلى الوضع الليلي'}
+                className="min-h-[32px] px-2 flex items-center justify-center gap-1 rounded-lg hover:bg-current/5 font-bold cursor-pointer"
               >
                 {appTheme === 'dark' ? (
                   <Sun className="w-3.5 h-3.5 text-[#D9B45A]" />
                 ) : (
                   <Moon className="w-3.5 h-3.5 text-[#1F3A6E]" />
                 )}
+                <span>{appTheme === 'dark' ? 'نهاري' : 'ليلي'}</span>
               </button>
             )}
           </div>
@@ -2841,7 +2842,7 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setTheme('parchment')}
+                      onClick={() => handleSelectPaperTheme('parchment')}
                       aria-label="ورق نهاري دافئ"
                       className={`w-7 h-7 rounded-lg bg-[#F6EFDD] border cursor-pointer ${
                         theme === 'parchment' ? 'ring-2 ring-[#D9B45A] border-[#1B1A17]' : 'border-slate-400'
@@ -2849,7 +2850,7 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
                     />
                     <button
                       type="button"
-                      onClick={() => setTheme('sepia')}
+                      onClick={() => handleSelectPaperTheme('sepia')}
                       aria-label="ورق عاجي"
                       className={`w-7 h-7 rounded-lg bg-[#f4eedb] border cursor-pointer ${
                         theme === 'sepia' ? 'ring-2 ring-[#D9B45A] border-amber-900' : 'border-amber-700/60'
@@ -2857,7 +2858,7 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
                     />
                     <button
                       type="button"
-                      onClick={() => setTheme('dark')}
+                      onClick={() => handleSelectPaperTheme('dark')}
                       aria-label="حبر ليلي"
                       className={`w-7 h-7 rounded-lg bg-[#10161F] border cursor-pointer ${
                         theme === 'dark' ? 'ring-2 ring-[#D9B45A] border-white' : 'border-slate-600'
@@ -2865,7 +2866,7 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
                     />
                     <button
                       type="button"
-                      onClick={() => setTheme('emerald')}
+                      onClick={() => handleSelectPaperTheme('emerald')}
                       aria-label="الزمرد الليلي"
                       className={`w-7 h-7 rounded-lg bg-[#061914] border cursor-pointer ${
                         theme === 'emerald' ? 'ring-2 ring-[#D9B45A] border-white' : 'border-emerald-800'

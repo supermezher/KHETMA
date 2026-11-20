@@ -8,6 +8,7 @@ import {
   computeTrimmedPageStream,
   getArabicJuzLabel,
   resolveAutoScrollEndAction,
+  resolvePairedPaperTheme,
   resolveRtlPageSwipeDelta,
   resolveVisiblePageFromOffsets,
   shouldToggleImmersiveTap,
@@ -236,5 +237,16 @@ describe('mushafGestures helpers', () => {
     const trimmed = computeTrimmedPageStream(longStream, 16, 6);
     expect(trimmed.trimmedPageNumbers).toEqual([10, 11]);
     expect(trimmed.kept.map((p) => p.pageNumber)).toEqual([12, 13, 14, 15, 16, 17]);
+  });
+
+  it('pairs all 4 Mushaf paper themes (including sepia and emerald) when switching global Day/Night mode', () => {
+    expect(resolvePairedPaperTheme('dark', 'light')).toBe('parchment');
+    expect(resolvePairedPaperTheme('emerald', 'light')).toBe('parchment');
+    expect(resolvePairedPaperTheme('parchment', 'dark')).toBe('dark');
+    expect(resolvePairedPaperTheme('sepia', 'dark')).toBe('dark');
+
+    // Keeps user's preferred shade when global theme matches brightness polarity
+    expect(resolvePairedPaperTheme('sepia', 'light')).toBe('sepia');
+    expect(resolvePairedPaperTheme('emerald', 'dark')).toBe('emerald');
   });
 });

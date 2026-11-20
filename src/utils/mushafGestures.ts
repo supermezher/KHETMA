@@ -213,3 +213,18 @@ export function computeTrimmedPageStream<T extends { pageNumber: number }>(
 
   return { kept, trimmedPageNumbers };
 }
+
+export type MushafPaperTheme = 'parchment' | 'sepia' | 'dark' | 'emerald';
+
+export function resolvePairedPaperTheme(
+  currentPaper: MushafPaperTheme,
+  nextAppTheme: 'light' | 'dark'
+): MushafPaperTheme {
+  if (nextAppTheme === 'light' && (currentPaper === 'dark' || currentPaper === 'emerald')) {
+    return 'parchment';
+  }
+  if (nextAppTheme === 'dark' && (currentPaper === 'parchment' || currentPaper === 'sepia')) {
+    return 'dark';
+  }
+  return currentPaper;
+}

@@ -18,7 +18,15 @@ export const LAST_READING_EVENT = 'bayan:last-reading-updated';
 
 export function loadAppTheme(): AppTheme {
   const raw = safeLocalStorage.getItem(APP_THEME_KEY);
-  return raw === 'light' ? 'light' : 'dark';
+  if (raw === 'light' || raw === 'dark') {
+    return raw;
+  }
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    if (window.matchMedia('(prefers-color-scheme: light)').matches) {
+      return 'light';
+    }
+  }
+  return 'dark';
 }
 
 export function applyAppTheme(theme: AppTheme): void {
