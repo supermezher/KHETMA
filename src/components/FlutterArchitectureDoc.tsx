@@ -14,22 +14,22 @@ export const FlutterArchitectureDoc: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Banner */}
-      <div className="p-6 rounded-2xl bg-gradient-to-r from-sky-950/70 via-slate-900 to-slate-950 border border-sky-500/20 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div className="p-6 rounded-2xl bg-gradient-to-l from-[#EFE6D1] via-[#FBF7EE] to-[#F6EFDD] dark:from-[#142038] dark:via-[#151d29] dark:to-[#10161f] border border-[#D4C7AE] dark:border-[#2E5499]/35 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/20 text-sky-300 text-xs font-bold mb-2">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-[#1F3A6E]/10 dark:bg-[#1F3A6E]/50 border border-[#1F3A6E]/25 dark:border-[#648CD4]/35 text-[#1F3A6E] dark:text-[#D9B45A] text-xs font-bold mb-2">
             <Cpu className="w-3.5 h-3.5" />
             <span>المعمارية التقنية والتوجيه الهندسي (Flutter Architecture)</span>
           </div>
-          <h2 className="text-xl sm:text-2xl font-bold text-white mb-1">
+          <h2 className="text-xl sm:text-2xl font-bold text-[#1B1A17] dark:text-[#F6EFDD] mb-1">
             دليل هندسة وتطوير تطبيق "بيان" كوقف خيري مفتوح المصدر
           </h2>
-          <p className="text-xs sm:text-sm text-slate-300 max-w-2xl">
+          <p className="text-xs sm:text-sm text-[#5E584E] dark:text-slate-300 max-w-2xl">
             توثيق تقني متكامل يشمل Clean Architecture، قواعد البيانات المشفرة (Isar / SQLCipher)، محرك الرسم العثماني والتجويد في Flutter، والتمرير الذكي.
           </p>
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex flex-wrap gap-1.5 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
+        <div className="flex flex-wrap gap-1.5 bg-[#EFE6D1] dark:bg-[#0d131c] p-1.5 rounded-xl border border-[#D4C7AE] dark:border-slate-800">
           {[
             { id: 'architecture', label: 'هيكل المشروع المعماري', icon: Layers },
             { id: 'database', label: 'قاعدة البيانات والتشفير', icon: Database },
@@ -41,11 +41,12 @@ export const FlutterArchitectureDoc: React.FC = () => {
             return (
               <button
                 key={t.id}
-                onClick={() => setActiveTab(t.id as any)}
-                className={`py-2 px-3 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                type="button"
+                onClick={() => setActiveTab(t.id as 'architecture' | 'database' | 'flutter-code' | 'roadmap')}
+                className={`py-2 px-3 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                   isActive
-                    ? 'bg-sky-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-[#1F3A6E] text-[#FBF7EE] dark:text-[#F6EFDD] shadow-sm'
+                    : 'text-[#5E584E] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
@@ -58,45 +59,46 @@ export const FlutterArchitectureDoc: React.FC = () => {
 
       {/* Tab 1: Clean Architecture Directory Structure */}
       {activeTab === 'architecture' && (
-        <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-6">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-lg text-white flex items-center gap-2">
-              <Layers className="w-5 h-5 text-sky-400" />
+        <div className="p-6 rounded-2xl bg-[#FBF7EE] dark:bg-[#151d29] border border-[#E3D9C3] dark:border-slate-800 space-y-6">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <h3 className="font-bold text-lg text-[#1B1A17] dark:text-[#F6EFDD] flex items-center gap-2">
+              <Layers className="w-5 h-5 text-[#1F3A6E] dark:text-[#648CD4]" />
               <span>هيكل المجلدات النظيف (Clean Architecture & BLoC / Riverpod)</span>
             </h3>
             <button
+              type="button"
               onClick={() => handleCopy(cleanArchStructure, 1)}
-              className="py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1 transition-colors"
+              className="py-1.5 px-3 rounded-lg bg-[#EFE6D1] hover:bg-[#E3D9C3] dark:bg-slate-800 dark:hover:bg-slate-700 text-[#1B1A17] dark:text-slate-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
             >
-              {copiedIndex === 1 ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              {copiedIndex === 1 ? <Check className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
               <span>{copiedIndex === 1 ? 'تم النسخ' : 'نسخ الهيكل'}</span>
             </button>
           </div>
 
-          <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+          <p className="text-xs sm:text-sm text-[#5E584E] dark:text-slate-300 leading-relaxed">
             تم تصميم تطبيق <strong>"بيان"</strong> في Flutter وفق مبادئ <strong>Domain-Driven Design (DDD)</strong> و <strong>Clean Architecture</strong> لعزل منطق العمل القرآني عن الواجهات، مع ضمان إمكانية استبدال مصادر البيانات (Offline SQLite / Isar / Remote API) دون كسر طبقة العرض.
           </p>
 
-          <pre className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono text-emerald-300 overflow-x-auto leading-relaxed" dir="ltr">
+          <pre className="p-4 rounded-xl bg-[#10161f] border border-[#D4C7AE] dark:border-slate-800 text-xs font-mono text-[#D9B45A] overflow-x-auto leading-relaxed" dir="ltr">
             {cleanArchStructure}
           </pre>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs pt-2">
-            <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800">
-              <strong className="text-sky-400 block mb-1">1. طبقة النطاق (Domain Layer):</strong>
-              <p className="text-slate-400">
+            <div className="p-4 rounded-xl bg-[#F6EFDD] dark:bg-slate-950/70 border border-[#E3D9C3] dark:border-slate-800">
+              <strong className="text-[#1F3A6E] dark:text-[#648CD4] block mb-1">1. طبقة النطاق (Domain Layer):</strong>
+              <p className="text-[#5E584E] dark:text-slate-400">
                 تحتوي على الكيانات النقية (Entities)، العقود المجردة (Repositories Interfaces)، وحالات الاستخدام (UseCases) مثل <code>GetAyahWithTajweedUseCase</code> و <code>CalculateKhatmaPaceUseCase</code>.
               </p>
             </div>
-            <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800">
-              <strong className="text-emerald-400 block mb-1">2. طبقة البيانات (Data Layer):</strong>
-              <p className="text-slate-400">
+            <div className="p-4 rounded-xl bg-[#F6EFDD] dark:bg-slate-950/70 border border-[#E3D9C3] dark:border-slate-800">
+              <strong className="text-[#8A6418] dark:text-[#D9B45A] block mb-1">2. طبقة البيانات (Data Layer):</strong>
+              <p className="text-[#5E584E] dark:text-slate-400">
                 تحتوي على تطبيق المستودعات، ومحرك التخزين المحلي Offline-first (Isar / Drift)، والتشفير (AES-256 عبر flutter_secure_storage)، وإدارة الكاش والملفات الصوتية.
               </p>
             </div>
-            <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800">
-              <strong className="text-purple-400 block mb-1">3. طبقة العرض (Presentation Layer):</strong>
-              <p className="text-slate-400">
+            <div className="p-4 rounded-xl bg-[#F6EFDD] dark:bg-slate-950/70 border border-[#E3D9C3] dark:border-slate-800">
+              <strong className="text-[#1F3A6E] dark:text-[#9CB7E8] block mb-1">3. طبقة العرض (Presentation Layer):</strong>
+              <p className="text-[#5E584E] dark:text-slate-400">
                 مبنية بـ BLoC / Cubit لإدارة حالات التلاوة والتمرير الذكي، مع واجهات متكيفة تدعم الهواتف والـ Tablets (وضع صفحتين متقابلتين).
               </p>
             </div>
@@ -106,26 +108,27 @@ export const FlutterArchitectureDoc: React.FC = () => {
 
       {/* Tab 2: Database Schema & Local Encryption */}
       {activeTab === 'database' && (
-        <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-6">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-lg text-white flex items-center gap-2">
-              <Database className="w-5 h-5 text-emerald-400" />
+        <div className="p-6 rounded-2xl bg-[#FBF7EE] dark:bg-[#151d29] border border-[#E3D9C3] dark:border-slate-800 space-y-6">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <h3 className="font-bold text-lg text-[#1B1A17] dark:text-[#F6EFDD] flex items-center gap-2">
+              <Database className="w-5 h-5 text-[#8A6418] dark:text-[#D9B45A]" />
               <span>مخطط قاعدة البيانات المحلية المشفرة (Isar NoSQL & Drift SQLite)</span>
             </h3>
             <button
+              type="button"
               onClick={() => handleCopy(databaseSchemaCode, 2)}
-              className="py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1 transition-colors"
+              className="py-1.5 px-3 rounded-lg bg-[#EFE6D1] hover:bg-[#E3D9C3] dark:bg-slate-800 dark:hover:bg-slate-700 text-[#1B1A17] dark:text-slate-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
             >
-              {copiedIndex === 2 ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              {copiedIndex === 2 ? <Check className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
               <span>{copiedIndex === 2 ? 'تم النسخ' : 'نسخ الكود'}</span>
             </button>
           </div>
 
-          <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+          <p className="text-xs sm:text-sm text-[#5E584E] dark:text-slate-300 leading-relaxed">
             لضمان <strong>سرعة استجابة فائقة (60 FPS)</strong> بدون أي تأخير، يتم تخزين نصوص القرآن بالرسم العثماني وعلامات التجويد محلياً، بينما تُشفّر مفكرة الخواطر الشخصية وسجل القراءة باستخدام مفتاح عشوائي 256-bit مخزن في <strong>Keychain (iOS)</strong> أو <strong>Keystore (Android)</strong>.
           </p>
 
-          <pre className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono text-emerald-300 overflow-x-auto leading-relaxed" dir="ltr">
+          <pre className="p-4 rounded-xl bg-[#10161f] border border-[#D4C7AE] dark:border-slate-800 text-xs font-mono text-[#E9E3D3] overflow-x-auto leading-relaxed" dir="ltr">
             {databaseSchemaCode}
           </pre>
         </div>
@@ -133,26 +136,27 @@ export const FlutterArchitectureDoc: React.FC = () => {
 
       {/* Tab 3: Complete Flutter Reading Screen Code */}
       {activeTab === 'flutter-code' && (
-        <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-6">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-lg text-white flex items-center gap-2">
-              <Code className="w-5 h-5 text-amber-400" />
+        <div className="p-6 rounded-2xl bg-[#FBF7EE] dark:bg-[#151d29] border border-[#E3D9C3] dark:border-slate-800 space-y-6">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <h3 className="font-bold text-lg text-[#1B1A17] dark:text-[#F6EFDD] flex items-center gap-2">
+              <Code className="w-5 h-5 text-[#8A6418] dark:text-[#D9B45A]" />
               <span>كود صفحة القراءة والتجويد الملون والتمرير الذكي (Dart/Flutter)</span>
             </h3>
             <button
+              type="button"
               onClick={() => handleCopy(flutterReadingPageCode, 3)}
-              className="py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1 transition-colors"
+              className="py-1.5 px-3 rounded-lg bg-[#EFE6D1] hover:bg-[#E3D9C3] dark:bg-slate-800 dark:hover:bg-slate-700 text-[#1B1A17] dark:text-slate-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
             >
-              {copiedIndex === 3 ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              {copiedIndex === 3 ? <Check className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
               <span>{copiedIndex === 3 ? 'تم النسخ' : 'نسخ كود Flutter'}</span>
             </button>
           </div>
 
-          <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+          <p className="text-xs sm:text-sm text-[#5E584E] dark:text-slate-300 leading-relaxed">
             الكود يوضح بناء <code>TextSpan</code> عالي الأداء مع تحليل قواعد التجويد (Regex & Tokenization)، خط الرسم العثماني <code>Amiri Quran</code>، والتحكم في التمرير التلقائي السلس مع <strong>فيزياء التوقف التلقائي عند رؤوس الآيات ﴿﴾</strong>.
           </p>
 
-          <pre className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono text-emerald-300 overflow-x-auto max-h-[500px] leading-relaxed" dir="ltr">
+          <pre className="p-4 rounded-xl bg-[#10161f] border border-[#D4C7AE] dark:border-slate-800 text-xs font-mono text-[#E9E3D3] overflow-x-auto max-h-[500px] leading-relaxed" dir="ltr">
             {flutterReadingPageCode}
           </pre>
         </div>
@@ -160,10 +164,10 @@ export const FlutterArchitectureDoc: React.FC = () => {
 
       {/* Tab 4: 5-Phase Roadmap & Waqf Governance */}
       {activeTab === 'roadmap' && (
-        <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-6">
+        <div className="p-6 rounded-2xl bg-[#FBF7EE] dark:bg-[#151d29] border border-[#E3D9C3] dark:border-slate-800 space-y-6">
           <div className="flex items-center justify-between">
-            <h3 className="font-bold text-lg text-white flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-purple-400" />
+            <h3 className="font-bold text-lg text-[#1B1A17] dark:text-[#F6EFDD] flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-[#1F3A6E] dark:text-[#648CD4]" />
               <span>الخطة الزمنية والتقنية لتنفيذ التطبيق كوقف خيري مفتوح المصدر</span>
             </h3>
           </div>
@@ -196,17 +200,17 @@ export const FlutterArchitectureDoc: React.FC = () => {
                 deliverables: 'تطبيق منشور على App Store و Google Play وكود متاح على GitHub وقفاً لله.'
               }
             ].map((p, idx) => (
-              <div key={idx} className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+              <div key={idx} className="p-4 rounded-xl bg-[#F6EFDD] dark:bg-slate-950/80 border border-[#E3D9C3] dark:border-slate-800 space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-bold text-xs flex items-center justify-center border border-emerald-500/40">
+                  <span className="w-6 h-6 rounded-full bg-[#1F3A6E] text-[#FBF7EE] font-bold text-xs flex items-center justify-center border border-[#8A6418]/40 dark:border-[#D9B45A]/40">
                     {idx + 1}
                   </span>
-                  <h4 className="font-bold text-white text-sm sm:text-base">{p.phase}</h4>
+                  <h4 className="font-bold text-[#1B1A17] dark:text-[#F6EFDD] text-sm sm:text-base">{p.phase}</h4>
                 </div>
-                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed pr-8">
+                <p className="text-xs sm:text-sm text-[#5E584E] dark:text-slate-300 leading-relaxed pr-8">
                   {p.desc}
                 </p>
-                <div className="pr-8 text-xs text-emerald-400 flex items-center gap-1.5 font-medium">
+                <div className="pr-8 text-xs text-[#8A6418] dark:text-[#D9B45A] flex items-center gap-1.5 font-medium">
                   <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                   <span>المخرجات: {p.deliverables}</span>
                 </div>

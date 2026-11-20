@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
   --font-sans: 'Cairo', ui-sans-serif, system-ui, -apple-system, sans-serif;
@@ -11,14 +12,58 @@
     --font-naskh: 'Noto Naskh Arabic', 'Amiri', serif;
     --font-cairo: 'Cairo', ui-sans-serif, system-ui, sans-serif;
     --font-kufi: 'Reem Kufi', 'Cairo', sans-serif;
+    --bayan-bg: #F6EFDD;
+    --bayan-surface: #FBF7EE;
+    --bayan-surface-alt: #EFE6D1;
+    --bayan-ink: #1B1A17;
+    --bayan-muted: #5C5549;
+    --bayan-border: rgba(138, 100, 24, 0.22);
+    --bayan-gold: #8A6418;
+    --bayan-navy: #1F3A6E;
+    color-scheme: light;
+  }
+
+  :root.dark {
+    --bayan-bg: #10161f;
+    --bayan-surface: #151d29;
+    --bayan-surface-alt: #0b1018;
+    --bayan-ink: #E9E3D3;
+    --bayan-muted: #94A3B8;
+    --bayan-border: rgba(217, 180, 90, 0.22);
+    --bayan-gold: #D9B45A;
+    --bayan-navy: #1F3A6E;
+    color-scheme: dark;
   }
 
   body {
     font-family: var(--font-cairo);
-    background-color: #10161f;
-    color: #e9e3d3;
+    background-color: var(--bayan-bg);
+    color: var(--bayan-ink);
     overflow-x: hidden;
+    transition: background-color 180ms ease, color 180ms ease;
   }
+}
+
+.bayan-surface {
+  background-color: var(--bayan-surface);
+  border-color: var(--bayan-border);
+  color: var(--bayan-ink);
+}
+
+.bayan-surface-alt {
+  background-color: var(--bayan-surface-alt);
+  border-color: var(--bayan-border);
+  color: var(--bayan-ink);
+}
+
+.bayan-header-glass {
+  background-color: rgba(251, 247, 238, 0.92);
+  border-color: rgba(138, 100, 24, 0.2);
+}
+
+.dark .bayan-header-glass {
+  background-color: rgba(11, 16, 24, 0.92);
+  border-color: rgba(30, 41, 59, 0.9);
 }
 
 .font-quran {
@@ -43,12 +88,20 @@
 }
 
 ::-webkit-scrollbar-track {
+  background: rgba(217, 180, 90, 0.08);
+}
+
+.dark ::-webkit-scrollbar-track {
   background: rgba(16, 22, 31, 0.7);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(217, 180, 90, 0.3);
+  background: rgba(138, 100, 24, 0.3);
   border-radius: 9999px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(217, 180, 90, 0.3);
 }
 
 ::-webkit-scrollbar-thumb:hover {

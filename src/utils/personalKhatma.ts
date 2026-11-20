@@ -14,6 +14,11 @@ export interface DailyPrayerLog {
   slots: [boolean, boolean, boolean, boolean, boolean];
 }
 
+export interface DailyReadPageLog {
+  date: string; // YYYY-MM-DD local calendar
+  pages: number[];
+}
+
 export interface KhatmaPlan {
   // Legacy required fields preserved verbatim for 100% backward compatibility & safe rollback
   targetDays: number;
@@ -29,6 +34,8 @@ export interface KhatmaPlan {
   startDate?: string; // YYYY-MM-DD local calendar
   completedPages?: number;
   dailyPrayersDone?: DailyPrayerLog;
+  dailyReadLog?: DailyReadPageLog;
+  lastSyncedMushafPage?: number;
   lastUpdatedAt?: string;
 }
 
@@ -237,6 +244,17 @@ export function normalizePersonalKhatmaPlan(raw: KhatmaPlan, todayDate: Date = n
         ]
       : [false, false, false, false, false];
 
+  const rawPages =
+    raw.dailyReadLog?.date === todayIso && Array.isArray(raw.dailyReadLog.pages)
+      ? Array.from(
+          new Set(
+            raw.dailyReadLog.pages
+              .map((p) => Math.floor(Number(p)))
+              .filter((p) => Number.isFinite(p) && p >= 1 && p <= MUSHAF_TOTAL_PAGES)
+          )
+        )
+      : [];
+
   return {
     targetDays,
     availableMinutesPerDay: Math.max(5, Math.round(raw.availableMinutesPerDay || 20)),
@@ -252,6 +270,16 @@ export function normalizePersonalKhatmaPlan(raw: KhatmaPlan, todayDate: Date = n
       date: todayIso,
       slots,
     },
+    dailyReadLog: {
+      date: todayIso,
+      pages: rawPages,
+    },
+    lastSyncedMushafPage:
+      typeof raw.lastSyncedMushafPage === 'number' &&
+      raw.lastSyncedMushafPage >= 1 &&
+      raw.lastSyncedMushafPage <= MUSHAF_TOTAL_PAGES
+        ? Math.floor(raw.lastSyncedMushafPage)
+        : undefined,
     lastUpdatedAt: raw.lastUpdatedAt,
   };
 }
@@ -355,19 +383,22 @@ export function buildPersonalRingParts(stats: PersonalKhatmaStats): PartClaim[] 
   });
 }
 
-export function loadPersonalKhatmaPlan(): KhatmaPlan | null {
+export function loadPersonalKhatmaPlan(todayDate: Date = new Date()): KhatmaPlan | null {
   const raw = safeLocalStorage.getJSON<KhatmaPlan | null>(PERSONAL_KHATMA_STORAGE_KEY, null);
   if (!raw || typeof raw !== 'object' || typeof raw.targetDays !== 'number' || raw.targetDays <= 0) {
     return null;
   }
-  return normalizePersonalKhatmaPlan(raw);
+  return normalizePersonalKhatmaPlan(raw, todayDate);
 }
 
-export function savePersonalKhatmaPlan(plan: KhatmaPlan): KhatmaPlan {
-  const normalized = normalizePersonalKhatmaPlan({
-    ...plan,
-    lastUpdatedAt: new Date().toISOString(),
-  });
+export function savePersonalKhatmaPlan(plan: KhatmaPlan, todayDate: Date = new Date()): KhatmaPlan {
+  const normalized = normalizePersonalKhatmaPlan(
+    {
+      ...plan,
+      lastUpdatedAt: new Date().toISOString(),
+    },
+    todayDate
+  );
   safeLocalStorage.setJSON(PERSONAL_KHATMA_STORAGE_KEY, normalized);
   if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
     window.dispatchEvent(new CustomEvent(PERSONAL_KHATMA_EVENT, { detail: normalized }));
@@ -381,3 +412,106 @@ export function clearPersonalKhatmaPlan(): void {
     window.dispatchEvent(new CustomEvent(PERSONAL_KHATMA_EVENT, { detail: null }));
   }
 }
+
+export interface DailyWirdSummary {
+  hasPlan: boolean;
+  todayPagesRead: number;
+  todayPagesList: number[];
+  dailyTargetPages: number;
+  todayPercent: number;
+  completedPages: number;
+  totalPages: number;
+  totalPercent: number;
+  isTodayComplete: boolean;
+}
+
+export function getDailyWirdSummary(
+  plan: KhatmaPlan | null,
+  todayDate: Date = new Date()
+): DailyWirdSummary {
+  if (!plan) {
+    return {
+      hasPlan: false,
+      todayPagesRead: 0,
+      todayPagesList: [],
+      dailyTargetPages: 0,
+      todayPercent: 0,
+      completedPages: 0,
+      totalPages: MUSHAF_TOTAL_PAGES,
+      totalPercent: 0,
+      isTodayComplete: false,
+    };
+  }
+  const normalized = normalizePersonalKhatmaPlan(plan, todayDate);
+  const stats = computePersonalKhatmaStats(normalized, todayDate);
+  const todayPagesList = normalized.dailyReadLog?.pages || [];
+  const todayPagesRead = todayPagesList.length;
+  const dailyTargetPages = Math.max(1, stats.pagesPerDay);
+  const todayPercent = Math.min(100, Math.round((todayPagesRead / dailyTargetPages) * 100));
+
+  return {
+    hasPlan: true,
+    todayPagesRead,
+    todayPagesList,
+    dailyTargetPages,
+    todayPercent,
+    completedPages: stats.completedPages,
+    totalPages: stats.totalPages,
+    totalPercent: stats.progressPercent,
+    isTodayComplete: todayPagesRead >= dailyTargetPages || stats.isFinished,
+  };
+}
+
+/**
+ * Credits a Mus'haf page (1..604) into today's personal Khatma daily log once per calendar day.
+ * Safe no-op when no active Personal Khatma plan exists.
+ */
+export function recordMushafPageReadInWird(
+  pageNumber: number,
+  todayDate: Date = new Date()
+): { updatedPlan: KhatmaPlan | null; addedPage: boolean } {
+  const existing = loadPersonalKhatmaPlan(todayDate);
+  if (!existing) {
+    return { updatedPlan: null, addedPage: false };
+  }
+
+  const safePage = Math.min(
+    MUSHAF_TOTAL_PAGES,
+    Math.max(1, Math.floor(Number.isFinite(pageNumber) ? pageNumber : 1))
+  );
+  const todayIso = formatLocalDateISO(todayDate);
+  const normalized = normalizePersonalKhatmaPlan(existing, todayDate);
+  const stats = computePersonalKhatmaStats(normalized, todayDate);
+  const prevPages = normalized.dailyReadLog?.pages || [];
+
+  if (prevPages.includes(safePage)) {
+    if (normalized.lastSyncedMushafPage !== safePage) {
+      const updated = savePersonalKhatmaPlan(
+        {
+          ...normalized,
+          lastSyncedMushafPage: safePage,
+        },
+        todayDate
+      );
+      return { updatedPlan: updated, addedPage: false };
+    }
+    return { updatedPlan: normalized, addedPage: false };
+  }
+
+  const nextCompleted = Math.min(stats.totalPages, (normalized.completedPages || 0) + 1);
+  const updated = savePersonalKhatmaPlan(
+    {
+      ...normalized,
+      completedPages: nextCompleted,
+      lastSyncedMushafPage: safePage,
+      dailyReadLog: {
+        date: todayIso,
+        pages: [...prevPages, safePage],
+      },
+    },
+    todayDate
+  );
+
+  return { updatedPlan: updated, addedPage: true };
+}
+

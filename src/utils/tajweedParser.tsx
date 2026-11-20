@@ -419,6 +419,7 @@ export function renderTajweedText(
 ): React.ReactNode {
   if (!isTajweedActive) {
     const words = rawText.trim().split(/\s+/);
+    const hasWordClick = typeof onWordClick === 'function';
     return (
       <span>
         {words.map((word, wIdx) => {
@@ -426,11 +427,15 @@ export function renderTajweedText(
           return (
             <React.Fragment key={wIdx}>
               <span
-                onClick={() => onWordClick?.(word)}
-                className={`transition-colors duration-150 cursor-pointer rounded px-0.5 ${
+                onClick={hasWordClick ? () => onWordClick(word) : undefined}
+                className={`transition-colors duration-150 rounded px-0.5 ${
+                  hasWordClick ? 'cursor-pointer ' : ''
+                }${
                   isCurrentActiveWord
                     ? 'bg-emerald-500/35 text-emerald-100 ring-1 ring-emerald-400 shadow-sm'
-                    : 'hover:bg-emerald-500/10'
+                    : hasWordClick
+                    ? 'hover:bg-emerald-500/10'
+                    : ''
                 }`}
               >
                 {word}
@@ -453,6 +458,8 @@ export function renderTajweedText(
     );
   }
 
+  const hasWordClick = typeof onWordClick === 'function';
+
   return (
     <span>
       {parsedWords.map((wordTokens, wIdx) => {
@@ -462,11 +469,15 @@ export function renderTajweedText(
         return (
           <React.Fragment key={wIdx}>
             <span
-              onClick={() => onWordClick?.(wholeWordText)}
-              className={`transition-colors duration-150 cursor-pointer rounded px-0.5 ${
+              onClick={hasWordClick ? () => onWordClick(wholeWordText) : undefined}
+              className={`transition-colors duration-150 rounded px-0.5 ${
+                hasWordClick ? 'cursor-pointer ' : ''
+              }${
                 isCurrentActiveWord
                   ? 'bg-emerald-500/35 text-emerald-100 ring-1 ring-emerald-400 shadow-sm'
-                  : 'hover:bg-emerald-500/10'
+                  : hasWordClick
+                  ? 'hover:bg-emerald-500/10'
+                  : ''
               }`}
             >
               {wordTokens.map((token, tIdx) => {

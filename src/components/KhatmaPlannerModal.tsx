@@ -146,14 +146,14 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="khatma-planner-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/55 dark:bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto"
     >
-      <div className="relative w-full max-w-xl bg-[#10161f] border border-[#2e5499]/50 rounded-2xl shadow-2xl p-4 sm:p-6 space-y-4 my-auto max-h-[92vh] overflow-y-auto">
+      <div className="relative w-full max-w-xl bg-[#FBF7EE] dark:bg-[#10161f] border border-[#8A6418]/35 dark:border-[#2e5499]/50 rounded-2xl shadow-2xl p-4 sm:p-6 space-y-4 my-auto max-h-[92vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-800/90">
+        <div className="flex items-center justify-between pb-3 border-b border-[#E3D9C3] dark:border-slate-800/90">
           <div className="flex items-center gap-2.5">
-            <Sparkles className="w-5 h-5 text-[#D9B45A] shrink-0" />
-            <h3 id="khatma-planner-title" className="text-base sm:text-lg font-bold text-[#F6EFDD]">
+            <Sparkles className="w-5 h-5 text-[#8A6418] dark:text-[#D9B45A] shrink-0" />
+            <h3 id="khatma-planner-title" className="text-base sm:text-lg font-bold text-[#1B1A17] dark:text-[#F6EFDD]">
               مخطط الورد والختمة الفردية الذكية
             </h3>
           </div>
@@ -161,7 +161,7 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label="إغلاق مخطط الورد"
-            className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+            className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-[#5E584E] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white hover:bg-[#EFE6D1] dark:hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -169,7 +169,7 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
 
         {/* Ready Templates */}
         <div>
-          <span className="text-xs font-bold text-slate-300 block mb-2">
+          <span className="text-xs font-bold text-[#5E584E] dark:text-slate-300 block mb-2">
             قوالب جاهزة بضغطة واحدة (مثل ختمات رمضان):
           </span>
           <div className="grid grid-cols-2 gap-2">
@@ -185,12 +185,12 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
                   onClick={() => handleApplyTemplate(tpl)}
                   className={`min-h-[48px] p-2.5 rounded-xl border text-right transition-colors cursor-pointer ${
                     isSelected
-                      ? 'bg-[#1f3a6e]/60 border-[#D9B45A]/70 text-[#F6EFDD]'
-                      : 'bg-slate-950/80 border-slate-800 text-slate-300 hover:border-slate-700 hover:text-white'
+                      ? 'bg-[#1F3A6E] border-[#8A6418] dark:bg-[#1f3a6e]/60 dark:border-[#D9B45A]/70 text-[#FBF7EE] dark:text-[#F6EFDD]'
+                      : 'bg-[#F6EFDD] dark:bg-slate-950/80 border-[#D4C7AE] dark:border-slate-800 text-[#1B1A17] dark:text-slate-300 hover:border-[#8A6418]/50 dark:hover:border-slate-700'
                   }`}
                 >
                   <span className="text-xs font-bold block">{tpl.label}</span>
-                  <span className="text-[11px] text-slate-400 block mt-0.5 tabular-nums">{tpl.sub}</span>
+                  <span className={`text-[11px] block mt-0.5 tabular-nums ${isSelected ? 'text-[#F6EFDD]/85 dark:text-slate-300' : 'text-[#5E584E] dark:text-slate-400'}`}>{tpl.sub}</span>
                 </button>
               );
             })}
@@ -200,17 +200,17 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
         {/* Step 1: Goal Mode & Target Amount */}
         <div className="space-y-2.5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <label className="text-xs font-bold text-slate-300">
+            <label className="text-xs font-bold text-[#5E584E] dark:text-slate-300">
               ١. حدد هدفك من القراءة:
             </label>
-            <div className="inline-flex items-center p-1 rounded-xl bg-slate-950 border border-slate-800">
+            <div className="inline-flex items-center p-1 rounded-xl bg-[#EFE6D1] dark:bg-slate-950 border border-[#D4C7AE] dark:border-slate-800">
               <button
                 type="button"
                 onClick={() => setGoalMode('khatmas')}
                 className={`min-h-[34px] px-3 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                   goalMode === 'khatmas'
                     ? 'bg-[#1f3a6e] text-white'
-                    : 'text-slate-400 hover:text-slate-200'
+                    : 'text-[#5E584E] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-slate-200'
                 }`}
               >
                 عدد ختمات كاملة
@@ -221,7 +221,7 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
                 className={`min-h-[34px] px-3 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                   goalMode === 'juz'
                     ? 'bg-[#1f3a6e] text-white'
-                    : 'text-slate-400 hover:text-slate-200'
+                    : 'text-[#5E584E] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-slate-200'
                 }`}
               >
                 عدد أجزاء محدد
@@ -238,15 +238,15 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
                   onClick={() => setTargetKhatmas(count)}
                   className={`min-h-[40px] flex-1 min-w-[78px] px-3 py-2 text-xs rounded-xl font-bold border transition-colors cursor-pointer whitespace-nowrap ${
                     targetKhatmas === count
-                      ? 'bg-[#1f3a6e] border-[#D9B45A] text-white'
-                      : 'bg-slate-950 border-slate-800 text-slate-300 hover:text-white'
+                      ? 'bg-[#1f3a6e] border-[#8A6418] dark:border-[#D9B45A] text-white'
+                      : 'bg-[#F6EFDD] dark:bg-slate-950 border-[#D4C7AE] dark:border-slate-800 text-[#1B1A17] dark:text-slate-300 hover:border-[#8A6418]/50'
                   }`}
                 >
                   {count === 1 ? 'ختمة ١' : count === 2 ? 'ختمتان' : `${toArabicIndic(count)} ختمات`}
                 </button>
               ))}
-              <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-xl px-2.5 min-h-[40px]">
-                <label htmlFor="custom-khatmas-input" className="text-[11px] text-slate-400 whitespace-nowrap">
+              <div className="flex items-center gap-1.5 bg-[#F6EFDD] dark:bg-slate-950 border border-[#D4C7AE] dark:border-slate-800 rounded-xl px-2.5 min-h-[40px]">
+                <label htmlFor="custom-khatmas-input" className="text-[11px] text-[#5E584E] dark:text-slate-400 whitespace-nowrap">
                   مخصص:
                 </label>
                 <input
@@ -259,7 +259,7 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
                     const v = Number(e.target.value);
                     if (Number.isFinite(v)) setTargetKhatmas(Math.min(12, Math.max(1, Math.round(v))));
                   }}
-                  className="w-12 bg-transparent text-center text-xs font-bold text-[#F6EFDD] outline-none tabular-nums"
+                  className="w-12 bg-transparent text-center text-xs font-bold text-[#1B1A17] dark:text-[#F6EFDD] outline-none tabular-nums"
                 />
               </div>
             </div>
@@ -272,15 +272,15 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
                   onClick={() => setTargetJuzCount(juz)}
                   className={`min-h-[40px] flex-1 min-w-[72px] px-3 py-2 text-xs rounded-xl font-bold border transition-colors cursor-pointer whitespace-nowrap ${
                     targetJuzCount === juz
-                      ? 'bg-[#1f3a6e] border-[#D9B45A] text-white'
-                      : 'bg-slate-950 border-slate-800 text-slate-300 hover:text-white'
+                      ? 'bg-[#1f3a6e] border-[#8A6418] dark:border-[#D9B45A] text-white'
+                      : 'bg-[#F6EFDD] dark:bg-slate-950 border-[#D4C7AE] dark:border-slate-800 text-[#1B1A17] dark:text-slate-300 hover:border-[#8A6418]/50'
                   }`}
                 >
                   {toArabicIndic(juz)} أجزاء
                 </button>
               ))}
-              <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-xl px-2.5 min-h-[40px]">
-                <label htmlFor="custom-juz-input" className="text-[11px] text-slate-400 whitespace-nowrap">
+              <div className="flex items-center gap-1.5 bg-[#F6EFDD] dark:bg-slate-950 border border-[#D4C7AE] dark:border-slate-800 rounded-xl px-2.5 min-h-[40px]">
+                <label htmlFor="custom-juz-input" className="text-[11px] text-[#5E584E] dark:text-slate-400 whitespace-nowrap">
                   أجزاء:
                 </label>
                 <input
@@ -293,7 +293,7 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
                     const v = Number(e.target.value);
                     if (Number.isFinite(v)) setTargetJuzCount(Math.min(30, Math.max(1, Math.round(v))));
                   }}
-                  className="w-12 bg-transparent text-center text-xs font-bold text-[#F6EFDD] outline-none tabular-nums"
+                  className="w-12 bg-transparent text-center text-xs font-bold text-[#1B1A17] dark:text-[#F6EFDD] outline-none tabular-nums"
                 />
               </div>
             </div>
@@ -302,7 +302,7 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
 
         {/* Step 2: Target Duration */}
         <div>
-          <label className="text-xs font-bold text-slate-300 block mb-2">
+          <label className="text-xs font-bold text-[#5E584E] dark:text-slate-300 block mb-2">
             ٢. المدة الزمنية بالأيام (مثلاً ٢٩ أو ٣٠ يوماً لرمضان):
           </label>
           <div className="flex flex-wrap items-center gap-2">
@@ -319,15 +319,15 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
                 onClick={() => setSelectedDays(d.days)}
                 className={`min-h-[40px] py-2 px-3 text-xs rounded-xl font-bold border transition-colors text-center cursor-pointer whitespace-nowrap ${
                   selectedDays === d.days
-                    ? 'bg-[#1f3a6e] border-[#D9B45A] text-white'
-                    : 'bg-slate-950 border-slate-800 text-slate-300 hover:text-white'
+                    ? 'bg-[#1f3a6e] border-[#8A6418] dark:border-[#D9B45A] text-white'
+                    : 'bg-[#F6EFDD] dark:bg-slate-950 border-[#D4C7AE] dark:border-slate-800 text-[#1B1A17] dark:text-slate-300 hover:border-[#8A6418]/50'
                 }`}
               >
                 {d.label}
               </button>
             ))}
-            <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-xl px-2.5 min-h-[40px]">
-              <label htmlFor="custom-days-input" className="text-[11px] text-slate-400 whitespace-nowrap">
+            <div className="flex items-center gap-1.5 bg-[#F6EFDD] dark:bg-slate-950 border border-[#D4C7AE] dark:border-slate-800 rounded-xl px-2.5 min-h-[40px]">
+              <label htmlFor="custom-days-input" className="text-[11px] text-[#5E584E] dark:text-slate-400 whitespace-nowrap">
                 يوم:
               </label>
               <input
@@ -340,7 +340,7 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
                   const v = Number(e.target.value);
                   if (Number.isFinite(v)) setSelectedDays(Math.min(365, Math.max(1, Math.round(v))));
                 }}
-                className="w-14 bg-transparent text-center text-xs font-bold text-[#F6EFDD] outline-none tabular-nums"
+                className="w-14 bg-transparent text-center text-xs font-bold text-[#1B1A17] dark:text-[#F6EFDD] outline-none tabular-nums"
               />
             </div>
           </div>
@@ -348,7 +348,7 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
 
         {/* Step 3: Available Daily Time */}
         <div>
-          <label className="text-xs font-bold text-slate-300 block mb-2">
+          <label className="text-xs font-bold text-[#5E584E] dark:text-slate-300 block mb-2">
             ٣. الوقت المتاح يومياً للقراءة والتدبر:
           </label>
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
@@ -359,8 +359,8 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
                 onClick={() => setAvailableTime(mins)}
                 className={`min-h-[40px] py-2 px-2 text-xs rounded-xl font-bold border transition-colors text-center cursor-pointer whitespace-nowrap ${
                   availableTime === mins
-                    ? 'bg-[#2e5499] border-[#648cd4] text-white'
-                    : 'bg-slate-950 border-slate-800 text-slate-300 hover:text-white'
+                    ? 'bg-[#2e5499] border-[#1F3A6E] dark:border-[#648cd4] text-white'
+                    : 'bg-[#F6EFDD] dark:bg-slate-950 border-[#D4C7AE] dark:border-slate-800 text-[#1B1A17] dark:text-slate-300 hover:border-[#8A6418]/50'
                 }`}
               >
                 {toArabicIndic(mins)} د
@@ -370,47 +370,47 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
         </div>
 
         {/* Live Calculated Preview Card */}
-        <div className="p-4 rounded-xl bg-slate-950/90 border border-[#D9B45A]/35 space-y-3">
+        <div className="p-4 rounded-xl bg-[#F6EFDD] dark:bg-slate-950/90 border border-[#8A6418]/35 dark:border-[#D9B45A]/35 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-xs text-[#D9B45A] font-bold flex items-center gap-1.5">
+            <span className="text-xs text-[#8A6418] dark:text-[#D9B45A] font-bold flex items-center gap-1.5">
               <BookOpen className="w-4 h-4 shrink-0" />
               <span>ملخص وِردك اليومي المحسوب</span>
             </span>
-            <span className="text-xs font-bold text-[#F6EFDD] tabular-nums">
+            <span className="text-xs font-bold text-[#1B1A17] dark:text-[#F6EFDD] tabular-nums">
               {toArabicIndic(preview.pagesPerDay)} صفحة يومياً · {preview.juzPerDay.toLocaleString('ar-EG')} جزء/يوم
             </span>
           </div>
 
           <div className="grid grid-cols-3 gap-2.5 pt-1">
-            <div className="p-2.5 rounded-lg bg-[#10161f] border border-slate-800 text-center">
-              <span className="text-[11px] text-slate-400 block mb-0.5">الإجمالي المطلوب</span>
-              <strong className="text-sm sm:text-base text-[#F6EFDD] tabular-nums">
+            <div className="p-2.5 rounded-lg bg-[#FBF7EE] dark:bg-[#10161f] border border-[#E3D9C3] dark:border-slate-800 text-center">
+              <span className="text-[11px] text-[#5E584E] dark:text-slate-400 block mb-0.5">الإجمالي المطلوب</span>
+              <strong className="text-sm sm:text-base text-[#1B1A17] dark:text-[#F6EFDD] tabular-nums">
                 {toArabicIndic(preview.totalJuz)} جزءاً
               </strong>
-              <span className="text-[10px] text-slate-400 block tabular-nums">
+              <span className="text-[10px] text-[#5E584E] dark:text-slate-400 block tabular-nums">
                 ({toArabicIndic(preview.totalPages)} صفحة)
               </span>
             </div>
 
-            <div className="p-2.5 rounded-lg bg-[#10161f] border border-slate-800 text-center">
-              <span className="text-[11px] text-slate-400 block mb-0.5">بعد كل فريضة</span>
-              <strong className="text-sm sm:text-base text-[#D9B45A] tabular-nums">
+            <div className="p-2.5 rounded-lg bg-[#FBF7EE] dark:bg-[#10161f] border border-[#E3D9C3] dark:border-slate-800 text-center">
+              <span className="text-[11px] text-[#5E584E] dark:text-slate-400 block mb-0.5">بعد كل فريضة</span>
+              <strong className="text-sm sm:text-base text-[#8A6418] dark:text-[#D9B45A] tabular-nums">
                 ~{toArabicIndic(preview.pagesPerPrayer)} صفحة
               </strong>
-              <span className="text-[10px] text-slate-400 block">(٥ صلوات يومياً)</span>
+              <span className="text-[10px] text-[#5E584E] dark:text-slate-400 block">(٥ صلوات يومياً)</span>
             </div>
 
-            <div className="p-2.5 rounded-lg bg-[#10161f] border border-slate-800 text-center">
-              <span className="text-[11px] text-slate-400 block mb-0.5">الوقت التقديري</span>
-              <strong className="text-sm sm:text-base text-[#F6EFDD] tabular-nums flex items-center justify-center gap-1">
-                <Clock className="w-3.5 h-3.5 text-[#648cd4]" />
+            <div className="p-2.5 rounded-lg bg-[#FBF7EE] dark:bg-[#10161f] border border-[#E3D9C3] dark:border-slate-800 text-center">
+              <span className="text-[11px] text-[#5E584E] dark:text-slate-400 block mb-0.5">الوقت التقديري</span>
+              <strong className="text-sm sm:text-base text-[#1B1A17] dark:text-[#F6EFDD] tabular-nums flex items-center justify-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-[#1F3A6E] dark:text-[#648cd4]" />
                 <span>~{toArabicIndic(preview.estimatedMinutesNeeded)} د</span>
               </strong>
-              <span className="text-[10px] text-slate-400 block">
+              <span className="text-[10px] text-[#5E584E] dark:text-slate-400 block">
                 {isTimeAdequate ? (
-                  <span className="text-[#D9B45A]">مناسب لوقتك ✓</span>
+                  <span className="text-[#8A6418] dark:text-[#D9B45A]">مناسب لوقتك ✓</span>
                 ) : (
-                  <span className="inline-flex items-center gap-0.5 text-amber-300">
+                  <span className="inline-flex items-center gap-0.5 text-amber-700 dark:text-amber-300">
                     <AlertCircle className="w-3 h-3" />
                     يحتاج وقتاً أكثر
                   </span>
@@ -419,7 +419,7 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
             </div>
           </div>
 
-          <p className="text-[11px] text-slate-400 leading-relaxed text-center pt-1">
+          <p className="text-[11px] text-[#5E584E] dark:text-slate-400 leading-relaxed text-center pt-1">
             قال النبي ﷺ: «قاربوا وسددوا، واعلموا أنه لن ينجو أحد منكم بعمله، وأن أحب الأعمال إلى الله أدومها وإن قل».
           </p>
         </div>
@@ -429,14 +429,14 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="min-h-[42px] py-2 px-4 rounded-xl text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800/70 transition-colors cursor-pointer"
+            className="min-h-[42px] py-2 px-4 rounded-xl text-xs font-medium text-[#5E584E] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white hover:bg-[#EFE6D1] dark:hover:bg-slate-800/70 transition-colors cursor-pointer"
           >
             إلغاء
           </button>
           <button
             type="button"
             onClick={handleSave}
-            className="min-h-[42px] py-2.5 px-6 rounded-xl bg-[#D9B45A] hover:bg-[#e4c370] text-[#10161f] text-xs font-bold shadow-lg transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+            className="min-h-[42px] py-2.5 px-6 rounded-xl bg-[#1F3A6E] hover:bg-[#2E5499] dark:bg-[#D9B45A] dark:hover:bg-[#e4c370] text-[#FBF7EE] dark:text-[#10161f] text-xs font-bold shadow-lg transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
           >
             <Check className="w-4 h-4" />
             <span>{initialPlan ? 'حفظ وتحديث خطة الختمة' : 'اعتماد خطة الختمة الفردية'}</span>

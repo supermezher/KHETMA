@@ -46,7 +46,13 @@ import {
 import { RECITERS_LIST, getAyahAudioUrl } from '../data/reciters';
 import { getCachedAudioBlobUrl } from '../utils/audioOfflineCache';
 import { getSpokenWordRawIndices } from '../utils/tajweedParser';
+import {
+  evaluateRecitationAgainstAyah,
+  getSpeechRecognitionConstructor,
+  SpeechRecognitionLike,
+} from '../utils/recitationMatcher';
 import { toArabicIndic } from './khatma/KhatmaRing';
+import { AudioLevelMeter } from './AudioLevelMeter';
 import {
   KidsAvatarId,
   KidsDailyWird,
@@ -152,6 +158,7 @@ export const KidsHifzSection: React.FC = () => {
 
   // Child voice practice recording (local MediaRecorder + remote upload)
   const [isRecordingVoice, setIsRecordingVoice] = useState<boolean>(false);
+  const [activeChildStream, setActiveChildStream] = useState<MediaStream | null>(null);
   const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
   const [recordedAudioMime, setRecordedAudioMime] = useState<string>('audio/webm');
   const [recordedDurationSec, setRecordedDurationSec] = useState<number>(5);
@@ -164,6 +171,20 @@ export const KidsHifzSection: React.FC = () => {
   const [micError, setMicError] = useState<string | null>(null);
   const [isSendingSubmission, setIsSendingSubmission] = useState<boolean>(false);
   const [submissionNotice, setSubmissionNotice] = useState<string | null>(null);
+
+  // Kid Smart Voice Check (Arabic SpeechRecognition)
+  const [isVoiceCheckSupported] = useState<boolean>(() => Boolean(getSpeechRecognitionConstructor()));
+  const [isKidVoiceChecking, setIsKidVoiceChecking] = useState<boolean>(false);
+  const [kidVoiceMatchedSet, setKidVoiceMatchedSet] = useState<Set<number>>(() => new Set());
+  const [kidVoiceAccuracy, setKidVoiceAccuracy] = useState<number | null>(null);
+  const [kidVoiceTranscript, setKidVoiceTranscript] = useState<string>('');
+  const kidSpeechRecRef = useRef<SpeechRecognitionLike | null>(null);
+  const kidSpeechIntentStopRef = useRef<boolean>(false);
+  const kidSpeechContextRef = useRef<{
+    surahNumber: number;
+    ayahNumber: number;
+    words: string[];
+  }>({ surahNumber: 112, ayahNumber: 1, words: [] });
 
   // Supervisor Add Kid Form state
   const [newKidName, setNewKidName] = useState<string>('');
@@ -201,6 +222,7 @@ export const KidsHifzSection: React.FC = () => {
   const [playingRemoteAudioId, setPlayingRemoteAudioId] = useState<string | null>(null);
   const [reviewTextMap, setReviewTextMap] = useState<Record<string, string>>({});
   const [recordingForSubId, setRecordingForSubId] = useState<string | null>(null);
+  const [activeSupStream, setActiveSupStream] = useState<MediaStream | null>(null);
   const [supervisorAudioDraftMap, setSupervisorAudioDraftMap] = useState<Record<string, string>>({});
   const [reviewingSubId, setReviewingSubId] = useState<string | null>(null);
 
@@ -274,8 +296,30 @@ export const KidsHifzSection: React.FC = () => {
     }
   };
 
+  const stopKidVoiceCheck = (clearProgress = false) => {
+    kidSpeechIntentStopRef.current = true;
+    if (kidSpeechRecRef.current) {
+      try {
+        kidSpeechRecRef.current.onresult = null;
+        kidSpeechRecRef.current.onerror = null;
+        kidSpeechRecRef.current.onend = null;
+        kidSpeechRecRef.current.stop();
+      } catch {
+        // Ignore stopped SpeechRecognition
+      }
+      kidSpeechRecRef.current = null;
+    }
+    setIsKidVoiceChecking(false);
+    if (clearProgress) {
+      setKidVoiceMatchedSet(new Set());
+      setKidVoiceAccuracy(null);
+      setKidVoiceTranscript('');
+    }
+  };
+
   // Clear all timers, rAF loops, blob URLs, and stop recitation audio cleanly
   const stopRecitationSession = (resetPhase = true) => {
+    stopKidVoiceCheck(false);
     sessionTokenRef.current += 1;
     if (listenRafRef.current !== null) {
       window.cancelAnimationFrame(listenRafRef.current);
@@ -315,6 +359,7 @@ export const KidsHifzSection: React.FC = () => {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      stopKidVoiceCheck(false);
       stopRecitationSession(false);
       if (recordedAudioRef.current) {
         recordedAudioRef.current.pause();
@@ -328,6 +373,8 @@ export const KidsHifzSection: React.FC = () => {
       if (supStreamRef.current) {
         supStreamRef.current.getTracks().forEach((t) => t.stop());
       }
+      setActiveChildStream(null);
+      setActiveSupStream(null);
     };
   }, []);
 
@@ -551,6 +598,14 @@ export const KidsHifzSection: React.FC = () => {
     );
     return cleanText.trim().split(/\s+/).filter(Boolean);
   }, [activeAyah, currentWird.surahNumber]);
+
+  useEffect(() => {
+    kidSpeechContextRef.current = {
+      surahNumber: currentWird.surahNumber,
+      ayahNumber: activeAyah?.numberInSurah ?? currentWird.startAyah,
+      words: activeAyahWords,
+    };
+  }, [currentWird.surahNumber, currentWird.startAyah, activeAyah?.numberInSurah, activeAyahWords]);
 
   // Compute today's Wird progress for active child
   const wirdMasteredCount = useMemo(() => {
@@ -800,9 +855,116 @@ export const KidsHifzSection: React.FC = () => {
 
   const handleSelectAyah = (ayahNum: number) => {
     stopRecitationSession(true);
+    stopKidVoiceCheck(true);
     setStatusBanner(null);
     setAudioError(null);
     setCurrentAyahNumber(ayahNum);
+  };
+
+  const handleToggleKidVoiceTest = () => {
+    if (isKidVoiceChecking) {
+      stopKidVoiceCheck(false);
+      return;
+    }
+    const RecognitionCtor = getSpeechRecognitionConstructor();
+    if (!RecognitionCtor || !activeAyah) {
+      setMicError('التسميع الذكي المباشر غير مدعوم في هذا المتصفح؛ يمكنك استخدام «سجِّل صوتك».');
+      return;
+    }
+
+    stopRecitationSession(true);
+    setMicError(null);
+    setAudioError(null);
+    setStatusBanner(null);
+    setKidVoiceMatchedSet(new Set());
+    setKidVoiceAccuracy(null);
+    setKidVoiceTranscript('');
+
+    try {
+      kidSpeechIntentStopRef.current = false;
+      const recognition = new RecognitionCtor();
+      recognition.lang = 'ar-SA';
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+
+      recognition.onresult = (event) => {
+        const parts: string[] = [];
+        for (let i = 0; i < event.results.length; i++) {
+          const item = event.results[i];
+          if (item && item[0]?.transcript) {
+            parts.push(item[0].transcript);
+          }
+        }
+        const spoken = parts.join(' ').trim();
+        setKidVoiceTranscript(spoken);
+
+        const ctx = kidSpeechContextRef.current;
+        const evalRes = evaluateRecitationAgainstAyah(ctx.words, spoken);
+        setKidVoiceMatchedSet(new Set(evalRes.matchedRawIndices));
+        setKidVoiceAccuracy(evalRes.accuracyPercent);
+
+        const isSuccessThreshold =
+          evalRes.isComplete ||
+          (evalRes.totalExpectedSpokenWords >= 4 && evalRes.accuracyPercent >= 85);
+
+        if (isSuccessThreshold) {
+          kidSpeechIntentStopRef.current = true;
+          try {
+            recognition.stop();
+          } catch {
+            // Ignore race
+          }
+          kidSpeechRecRef.current = null;
+          setIsKidVoiceChecking(false);
+
+          const latestProf =
+            stateRef.current.profiles.find((p) => p.id === stateRef.current.activeProfileId) ||
+            stateRef.current.profiles[0];
+          const updatedProf = recordKidAyahCycle(latestProf, ctx.surahNumber, ctx.ayahNumber, true);
+          updateActiveProfile((p) => recordKidAyahCycle(p, ctx.surahNumber, ctx.ayahNumber, true));
+          void syncActiveProfileProgressToRemote(updatedProf);
+
+          if (latestProf.soundEffectsEnabled) {
+            playKidEncouragementSound('star');
+          }
+          setStatusBanner(
+            `ما شاء الله يا بطل! سمّعت الآية بدقة ${toArabicIndic(evalRes.accuracyPercent)}٪ وحصلت على نجمة!`
+          );
+        }
+      };
+
+      recognition.onerror = (event) => {
+        if (kidSpeechIntentStopRef.current || event?.error === 'aborted') {
+          setIsKidVoiceChecking(false);
+          return;
+        }
+        if (event?.error === 'not-allowed' || event?.error === 'service-not-allowed') {
+          setMicError('يرجى السماح بصلاحية الميكروفون ليسمعك التطبيق يا بطل.');
+        } else if (event?.error === 'no-speech') {
+          setMicError('لم أسمع صوتك بعد يا بطل، اقرأ بصوت واضح!');
+        } else {
+          setMicError('تأكد من اتصال الإنترنت للتسميع الذكي أو استخدم «سجِّل صوتك».');
+        }
+        kidSpeechRecRef.current = null;
+        setIsKidVoiceChecking(false);
+      };
+
+      recognition.onend = () => {
+        if (!kidSpeechIntentStopRef.current) {
+          kidSpeechRecRef.current = null;
+          setIsKidVoiceChecking(false);
+        }
+      };
+
+      kidSpeechRecRef.current = recognition;
+      recognition.start();
+      setIsKidVoiceChecking(true);
+    } catch {
+      kidSpeechRecRef.current = null;
+      setIsKidVoiceChecking(false);
+      setMicError('تعذر بدء التسميع الصوتي الآن.');
+    }
   };
 
   // Skip waiting pause early if child already finished repeating
@@ -866,6 +1028,7 @@ export const KidsHifzSection: React.FC = () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = stream;
+      setActiveChildStream(stream);
       let recorder: MediaRecorder;
       try {
         recorder = new MediaRecorder(stream, { audioBitsPerSecond: 32000 });
@@ -905,11 +1068,13 @@ export const KidsHifzSection: React.FC = () => {
         setRecordedAyahLabel(targetLabel);
         stream.getTracks().forEach((t) => t.stop());
         mediaStreamRef.current = null;
+        setActiveChildStream(null);
       };
 
       recorder.start();
       setIsRecordingVoice(true);
     } catch {
+      setActiveChildStream(null);
       setMicError('يرجى السماح بصلاحية الميكروفون ليتمكن الطفل من تسجيل صوته وسماعه.');
       setIsRecordingVoice(false);
     }
@@ -1123,6 +1288,7 @@ export const KidsHifzSection: React.FC = () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       supStreamRef.current = stream;
+      setActiveSupStream(stream);
       let recorder: MediaRecorder;
       try {
         recorder = new MediaRecorder(stream, { audioBitsPerSecond: 32000 });
@@ -1139,6 +1305,7 @@ export const KidsHifzSection: React.FC = () => {
         const blob = new Blob(supChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
         stream.getTracks().forEach((t) => t.stop());
         supStreamRef.current = null;
+        setActiveSupStream(null);
         try {
           const dataUrl = await blobToDataUrl(blob);
           setSupervisorAudioDraftMap((prev) => ({ ...prev, [subId]: dataUrl }));
@@ -1150,6 +1317,7 @@ export const KidsHifzSection: React.FC = () => {
       recorder.start();
       setRecordingForSubId(subId);
     } catch {
+      setActiveSupStream(null);
       setRemoteError('يرجى السماح بصلاحية الميكروفون لتسجيل توجيه صوتي للطفل.');
     }
   };
@@ -1312,7 +1480,7 @@ export const KidsHifzSection: React.FC = () => {
     return (
       <section className="max-w-5xl mx-auto space-y-6 pb-8 animate-in fade-in duration-200">
         {/* Supervisor Header */}
-        <div className="rounded-2xl bg-[#142038] border border-[#D9B45A]/35 p-4 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="rounded-2xl bg-[#1F3A6E] dark:bg-[#142038] border border-[#D9B45A]/45 dark:border-[#D9B45A]/35 p-4 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg">
           <div className="space-y-1">
             <div className="flex items-center gap-2 text-xs text-[#D9B45A] font-semibold">
               <Unlock className="w-4 h-4" />
@@ -1323,7 +1491,7 @@ export const KidsHifzSection: React.FC = () => {
             <h1 className="text-xl sm:text-2xl font-bold text-[#F6EFDD] font-kufi">
               إدارة ورد {activeProfile.name} ومتابعة التسميع
             </h1>
-            <p className="text-xs text-slate-300">
+            <p className="text-xs text-[#E5DCC5] dark:text-slate-300">
               اضبط الورد على هذا الجهاز، أو أنشئ حلقة عن بُعد لإرسال الأوراد واستقبال التسميع الصوتي من أجهزة الأطفال.
             </p>
           </div>
@@ -1339,14 +1507,14 @@ export const KidsHifzSection: React.FC = () => {
         </div>
 
         {/* Supervisor Sub-Navigation: Local Device vs Remote Circle & Voice Inbox */}
-        <div className="flex flex-wrap gap-2 p-1.5 rounded-2xl bg-[#10161f] border border-slate-800">
+        <div className="flex flex-wrap gap-2 p-1.5 rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f] border border-[#D9B45A]/30 dark:border-slate-800">
           <button
             type="button"
             onClick={() => setSupervisorTab('local')}
             className={`flex-1 min-w-[200px] min-h-[46px] px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors ${
               supervisorTab === 'local'
                 ? 'bg-[#1F3A6E] text-[#F6EFDD] border border-[#648CD4]/45'
-                : 'text-slate-300 hover:text-white'
+                : 'text-[#6B6251] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white'
             }`}
           >
             <Users className="w-4 h-4 text-[#D9B45A]" />
@@ -1359,13 +1527,13 @@ export const KidsHifzSection: React.FC = () => {
             className={`flex-1 min-w-[200px] min-h-[46px] px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors ${
               supervisorTab === 'remote'
                 ? 'bg-[#1F3A6E] text-[#F6EFDD] border border-[#648CD4]/45'
-                : 'text-slate-300 hover:text-white'
+                : 'text-[#6B6251] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white'
             }`}
           >
-            <Radio className="w-4 h-4 text-emerald-400" />
+            <Radio className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
             <span>الحلقة عن بُعد وصندوق التسميع</span>
             {pendingInboxCount > 0 && (
-              <span className="px-2 py-0.5 rounded-lg bg-amber-500 text-[#1B1A17] text-[11px] font-bold tabular-nums">
+              <span className="px-2 py-0.5 rounded-lg bg-[#D9B45A] text-[#1B1A17] text-[11px] font-bold tabular-nums">
                 {toArabicIndic(pendingInboxCount)}
               </span>
             )}
@@ -1375,14 +1543,14 @@ export const KidsHifzSection: React.FC = () => {
         {supervisorTab === 'remote' ? (
           <div className="space-y-6">
             {remoteError && (
-              <div className="p-3.5 rounded-xl bg-rose-950/50 border border-rose-500/40 text-rose-100 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-300 dark:border-rose-500/40 text-rose-900 dark:text-rose-100 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-500 dark:text-rose-400 shrink-0" />
                 <span>{remoteError}</span>
               </div>
             )}
             {remoteSuccessMsg && (
-              <div className="p-3.5 rounded-xl bg-emerald-950/50 border border-emerald-500/40 text-emerald-100 text-xs font-semibold flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-400 dark:border-emerald-500/40 text-emerald-900 dark:text-emerald-100 text-xs font-semibold flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                 <span>{remoteSuccessMsg}</span>
               </div>
             )}
@@ -1392,20 +1560,20 @@ export const KidsHifzSection: React.FC = () => {
                 {/* Create New Remote Circle */}
                 <form
                   onSubmit={handleCreateRemoteCircle}
-                  className="rounded-2xl bg-[#10161f] border border-[#D9B45A]/30 p-5 space-y-4"
+                  className="rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f] border border-[#D9B45A]/35 dark:border-[#D9B45A]/30 p-5 space-y-4"
                 >
                   <div className="space-y-1">
-                    <h2 className="text-base font-bold text-[#F6EFDD] flex items-center gap-2">
-                      <Plus className="w-4 h-4 text-[#D9B45A]" />
+                    <h2 className="text-base font-bold text-[#1B1A17] dark:text-[#F6EFDD] flex items-center gap-2">
+                      <Plus className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
                       <span>إنشاء حلقة مشرف جديدة (كود ٦ أرقام)</span>
                     </h2>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-[#6B6251] dark:text-slate-400">
                       أنشئ حلقة واحدة وشارك كودها المكون من ٦ أرقام مع أطفالك دون حاجة لحسابات بريد إلكتروني.
                     </p>
                   </div>
 
                   <div className="space-y-1.5">
-                    <label htmlFor="create-circle-title" className="block text-xs font-semibold text-slate-300">
+                    <label htmlFor="create-circle-title" className="block text-xs font-semibold text-[#4B4539] dark:text-slate-300">
                       اسم الحلقة
                     </label>
                     <input
@@ -1414,12 +1582,12 @@ export const KidsHifzSection: React.FC = () => {
                       value={createCircleTitle}
                       onChange={(e) => setCreateCircleTitle(e.target.value)}
                       placeholder="مثلاً: حلقة براعم الفجر"
-                      className="w-full min-h-[44px] px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-sm text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
+                      className="w-full min-h-[44px] px-3.5 py-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-sm text-[#1B1A17] dark:text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label htmlFor="create-supervisor-name" className="block text-xs font-semibold text-slate-300">
+                    <label htmlFor="create-supervisor-name" className="block text-xs font-semibold text-[#4B4539] dark:text-slate-300">
                       اسم المشرف / ولي الأمر
                     </label>
                     <input
@@ -1428,7 +1596,7 @@ export const KidsHifzSection: React.FC = () => {
                       value={createSupervisorName}
                       onChange={(e) => setCreateSupervisorName(e.target.value)}
                       placeholder="مثلاً: الأستاذ أحمد أو أم عمر"
-                      className="w-full min-h-[44px] px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-sm text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
+                      className="w-full min-h-[44px] px-3.5 py-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-sm text-[#1B1A17] dark:text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
                     />
                   </div>
 
@@ -1444,20 +1612,20 @@ export const KidsHifzSection: React.FC = () => {
                 {/* Connect to Existing Circle */}
                 <form
                   onSubmit={handleConnectExistingCircle}
-                  className="rounded-2xl bg-[#10161f] border border-slate-800 p-5 space-y-4"
+                  className="rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f] border border-[#D9B45A]/30 dark:border-slate-800 p-5 space-y-4"
                 >
                   <div className="space-y-1">
-                    <h2 className="text-base font-bold text-[#F6EFDD] flex items-center gap-2">
-                      <KeyRound className="w-4 h-4 text-[#D9B45A]" />
+                    <h2 className="text-base font-bold text-[#1B1A17] dark:text-[#F6EFDD] flex items-center gap-2">
+                      <KeyRound className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
                       <span>فتح حلقة قائمة من جهاز آخر</span>
                     </h2>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-[#6B6251] dark:text-slate-400">
                       أدخل كود الحلقة (٦ أرقام) ومفتاح المشرف السري الذي حفظته عند الإنشاء.
                     </p>
                   </div>
 
                   <div className="space-y-1.5">
-                    <label htmlFor="connect-circle-code" className="block text-xs font-semibold text-slate-300">
+                    <label htmlFor="connect-circle-code" className="block text-xs font-semibold text-[#4B4539] dark:text-slate-300">
                       كود الحلقة (٦ أرقام)
                     </label>
                     <input
@@ -1468,12 +1636,12 @@ export const KidsHifzSection: React.FC = () => {
                       value={connectCircleCode}
                       onChange={(e) => setConnectCircleCode(e.target.value)}
                       placeholder="مثال: 482910"
-                      className="w-full min-h-[44px] px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-sm text-[#F6EFDD] tabular-nums outline-none focus:border-[#D9B45A]"
+                      className="w-full min-h-[44px] px-3.5 py-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-sm text-[#1B1A17] dark:text-[#F6EFDD] tabular-nums outline-none focus:border-[#D9B45A]"
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label htmlFor="connect-admin-key" className="block text-xs font-semibold text-slate-300">
+                    <label htmlFor="connect-admin-key" className="block text-xs font-semibold text-[#4B4539] dark:text-slate-300">
                       مفتاح المشرف السري
                     </label>
                     <input
@@ -1482,7 +1650,7 @@ export const KidsHifzSection: React.FC = () => {
                       value={connectAdminKey}
                       onChange={(e) => setConnectAdminKey(e.target.value)}
                       placeholder="أدخل مفتاح المشرف السري..."
-                      className="w-full min-h-[44px] px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-sm text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
+                      className="w-full min-h-[44px] px-3.5 py-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-sm text-[#1B1A17] dark:text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
                     />
                   </div>
 
@@ -1498,23 +1666,23 @@ export const KidsHifzSection: React.FC = () => {
             ) : (
               <>
                 {/* Active Remote Circle Summary & Share Card */}
-                <div className="rounded-2xl bg-[#10161f] border border-[#D9B45A]/35 p-4 sm:p-6 space-y-4">
+                <div className="rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f] border border-[#D9B45A]/40 dark:border-[#D9B45A]/35 p-4 sm:p-6 space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-xs text-emerald-300 font-bold">
+                      <div className="flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-300 font-bold">
                         <Radio className="w-3.5 h-3.5" />
                         <span>حلقة متصلة ومباشرة</span>
                         <span aria-hidden="true">·</span>
                         <span>إشراف: {supervisorSession.supervisorName}</span>
                       </div>
-                      <h2 className="text-lg sm:text-xl font-bold text-[#F6EFDD] font-kufi">
+                      <h2 className="text-lg sm:text-xl font-bold text-[#1B1A17] dark:text-[#F6EFDD] font-kufi">
                         {supervisorSession.title}
                       </h2>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
-                      <div className="px-4 py-2 rounded-xl bg-[#142038] border border-[#D9B45A]/50 text-center">
-                        <div className="text-[10px] text-slate-300">كود انضمام الأطفال</div>
+                      <div className="px-4 py-2 rounded-xl bg-[#1F3A6E] dark:bg-[#142038] border border-[#D9B45A]/50 text-center">
+                        <div className="text-[10px] text-[#E5DCC5] dark:text-slate-300">كود انضمام الأطفال</div>
                         <div className="text-xl font-bold text-[#D9B45A] tracking-widest tabular-nums" dir="ltr">
                           {supervisorSession.circleCode}
                         </div>
@@ -1523,7 +1691,7 @@ export const KidsHifzSection: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => refreshSupervisorCircle(supervisorSession, false)}
-                        className="min-h-[44px] px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-bold text-slate-200 flex items-center gap-1.5 cursor-pointer"
+                        className="min-h-[44px] px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 hover:bg-[#F3E9D2] dark:hover:bg-slate-800 border border-[#D9B45A]/30 dark:border-slate-700 text-xs font-bold text-[#1B1A17] dark:text-slate-200 flex items-center gap-1.5 cursor-pointer"
                       >
                         <RefreshCw className={`w-4 h-4 ${remoteLoading ? 'animate-spin' : ''}`} />
                         <span>تحديث</span>
@@ -1537,7 +1705,7 @@ export const KidsHifzSection: React.FC = () => {
                           setRemoteCircleKids([]);
                           setRemoteSubmissions([]);
                         }}
-                        className="min-h-[44px] px-3.5 py-2 rounded-xl bg-rose-950/40 hover:bg-rose-950/70 border border-rose-500/35 text-xs font-bold text-rose-200 flex items-center gap-1.5 cursor-pointer"
+                        className="min-h-[44px] px-3.5 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-950/70 border border-rose-300 dark:border-rose-500/35 text-xs font-bold text-rose-800 dark:text-rose-200 flex items-center gap-1.5 cursor-pointer"
                       >
                         <LogOut className="w-4 h-4" />
                         <span>إغلاق الجلسة</span>
@@ -1546,40 +1714,40 @@ export const KidsHifzSection: React.FC = () => {
                   </div>
 
                   {/* Copyable Invite Links */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-800/80">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-[#D9B45A]/20 dark:border-slate-800/80">
                     <button
                       type="button"
                       onClick={() => handleCopyText('childLink', childInviteUrl)}
-                      className="min-h-[44px] px-4 py-2.5 rounded-xl bg-slate-950 hover:bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-200 flex items-center justify-between gap-2 cursor-pointer"
+                      className="min-h-[44px] px-4 py-2.5 rounded-xl bg-white dark:bg-slate-950 hover:bg-[#F3E9D2]/60 dark:hover:bg-slate-900 border border-[#D9B45A]/25 dark:border-slate-800 text-xs font-semibold text-[#1B1A17] dark:text-slate-200 flex items-center justify-between gap-2 cursor-pointer"
                     >
                       <span className="flex items-center gap-2">
-                        <Link2 className="w-4 h-4 text-[#D9B45A]" />
+                        <Link2 className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
                         <span>نسخ رابط انضمام الأطفال المباشر</span>
                       </span>
                       {copiedCodeLabel === 'childLink' ? (
-                        <span className="text-emerald-300 flex items-center gap-1">
+                        <span className="text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
                           <Check className="w-3.5 h-3.5" /> تم النسخ
                         </span>
                       ) : (
-                        <Copy className="w-3.5 h-3.5 text-slate-400" />
+                        <Copy className="w-3.5 h-3.5 text-[#6B6251] dark:text-slate-400" />
                       )}
                     </button>
 
                     <button
                       type="button"
                       onClick={() => handleCopyText('adminLink', secretSupervisorUrl)}
-                      className="min-h-[44px] px-4 py-2.5 rounded-xl bg-slate-950 hover:bg-slate-900 border border-amber-500/30 text-xs font-semibold text-amber-100 flex items-center justify-between gap-2 cursor-pointer"
+                      className="min-h-[44px] px-4 py-2.5 rounded-xl bg-white dark:bg-slate-950 hover:bg-[#F3E9D2]/60 dark:hover:bg-slate-900 border border-amber-400/50 dark:border-amber-500/30 text-xs font-semibold text-amber-950 dark:text-amber-100 flex items-center justify-between gap-2 cursor-pointer"
                     >
                       <span className="flex items-center gap-2">
-                        <KeyRound className="w-4 h-4 text-amber-400" />
+                        <KeyRound className="w-4 h-4 text-[#8A6418] dark:text-amber-400" />
                         <span>نسخ رابط المشرف السري (لجهازك فقط)</span>
                       </span>
                       {copiedCodeLabel === 'adminLink' ? (
-                        <span className="text-emerald-300 flex items-center gap-1">
+                        <span className="text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
                           <Check className="w-3.5 h-3.5" /> تم النسخ
                         </span>
                       ) : (
-                        <Copy className="w-3.5 h-3.5 text-slate-400" />
+                        <Copy className="w-3.5 h-3.5 text-[#6B6251] dark:text-slate-400" />
                       )}
                     </button>
                   </div>
@@ -1588,19 +1756,19 @@ export const KidsHifzSection: React.FC = () => {
                 {/* Remote Kids List + Remote Wird Push */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Joined Kids + Assign Wird */}
-                  <div className="rounded-2xl bg-[#10161f] border border-slate-800 p-4 sm:p-5 space-y-4">
+                  <div className="rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f] border border-[#D9B45A]/30 dark:border-slate-800 p-4 sm:p-5 space-y-4">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-base font-bold text-[#F6EFDD] flex items-center gap-2">
-                        <Users className="w-4 h-4 text-[#D9B45A]" />
+                      <h3 className="text-base font-bold text-[#1B1A17] dark:text-[#F6EFDD] flex items-center gap-2">
+                        <Users className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
                         <span>الأطفال المنضمون ({toArabicIndic(remoteCircleKids.length)})</span>
                       </h3>
                     </div>
 
                     {remoteCircleKids.length === 0 ? (
-                      <div className="p-6 rounded-xl bg-slate-950/70 border border-slate-800 text-center space-y-2">
-                        <p className="text-xs text-slate-300">
+                      <div className="p-6 rounded-xl bg-white dark:bg-slate-950/70 border border-[#D9B45A]/20 dark:border-slate-800 text-center space-y-2">
+                        <p className="text-xs text-[#4B4539] dark:text-slate-300">
                           لم ينضم أي طفل للحلقة بعد. اعطِ الطفل الكود{' '}
-                          <span className="text-[#D9B45A] font-bold tabular-nums" dir="ltr">
+                          <span className="text-[#8A6418] dark:text-[#D9B45A] font-bold tabular-nums" dir="ltr">
                             {supervisorSession.circleCode}
                           </span>{' '}
                           ليدخل من جهازه.
@@ -1618,8 +1786,8 @@ export const KidsHifzSection: React.FC = () => {
                               onClick={() => setSelectedRemoteKidId(kid.kidId)}
                               className={`w-full text-right p-3 rounded-xl border flex items-center justify-between gap-3 cursor-pointer transition-colors ${
                                 isSel
-                                  ? 'bg-[#1F3A6E]/55 border-[#D9B45A] text-[#F6EFDD]'
-                                  : 'bg-slate-950/80 border-slate-800 text-slate-200 hover:border-slate-700'
+                                  ? 'bg-[#1F3A6E] dark:bg-[#1F3A6E]/55 border-[#D9B45A] text-[#F6EFDD]'
+                                  : 'bg-white dark:bg-slate-950/80 border-[#D9B45A]/20 dark:border-slate-800 text-[#1B1A17] dark:text-slate-200 hover:border-[#D9B45A]'
                               }`}
                             >
                               <div className="flex items-center gap-3 min-w-0">
@@ -1627,14 +1795,14 @@ export const KidsHifzSection: React.FC = () => {
                                   className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
                                     isSel
                                       ? 'bg-[#D9B45A] text-[#1B1A17]'
-                                      : 'bg-slate-900 text-[#D9B45A]'
+                                      : 'bg-[#F3E9D2] dark:bg-slate-900 text-[#8A6418] dark:text-[#D9B45A]'
                                   }`}
                                 >
                                   {renderAvatarIcon(kid.avatarId, 'w-5 h-5')}
                                 </span>
                                 <div className="min-w-0">
                                   <div className="font-bold text-sm truncate">{kid.name}</div>
-                                  <div className="text-[11px] text-slate-300 tabular-nums truncate">
+                                  <div className={`text-[11px] tabular-nums truncate ${isSel ? 'text-[#E5DCC5]' : 'text-[#6B6251] dark:text-slate-300'}`}>
                                     {toArabicIndic(kid.stars)} نجمة · ورد سورة {kSurah?.name || ''} ({toArabicIndic(kid.dailyWird.startAyah)}–{toArabicIndic(kid.dailyWird.endAyah)})
                                   </div>
                                 </div>
@@ -1646,8 +1814,8 @@ export const KidsHifzSection: React.FC = () => {
                     )}
 
                     {selectedRemoteKid && (
-                      <div className="pt-4 border-t border-slate-800 space-y-3">
-                        <div className="text-xs font-bold text-[#D9B45A]">
+                      <div className="pt-4 border-t border-[#D9B45A]/20 dark:border-slate-800 space-y-3">
+                        <div className="text-xs font-bold text-[#8A6418] dark:text-[#D9B45A]">
                           إرسال ورد جديد لجهاز: {selectedRemoteKid.name}
                         </div>
 
@@ -1664,10 +1832,10 @@ export const KidsHifzSection: React.FC = () => {
                               endAyah: Math.min(meta.numberOfAyahs, meta.numberOfAyahs <= 10 ? meta.numberOfAyahs : 5),
                             }));
                           }}
-                          className="w-full min-h-[42px] px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
+                          className="w-full min-h-[42px] px-3 py-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-xs text-[#1B1A17] dark:text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
                         >
                           {SURAHS_LIST.map((s) => (
-                            <option key={s.number} value={s.number}>
+                            <option key={s.number} value={s.number} className="bg-white text-[#1B1A17] dark:bg-slate-900 dark:text-[#F6EFDD]">
                               {toArabicIndic(s.number)}. سورة {s.name} ({toArabicIndic(s.numberOfAyahs)} آية)
                             </option>
                           ))}
@@ -1675,7 +1843,7 @@ export const KidsHifzSection: React.FC = () => {
 
                         <div className="grid grid-cols-3 gap-2">
                           <div>
-                            <label className="block text-[11px] text-slate-400 mb-1">من آية</label>
+                            <label className="block text-[11px] text-[#6B6251] dark:text-slate-400 mb-1">من آية</label>
                             <input
                               type="number"
                               min={1}
@@ -1689,11 +1857,11 @@ export const KidsHifzSection: React.FC = () => {
                                 );
                                 setRemoteWirdDraft((prev) => ({ ...prev, ...c }));
                               }}
-                              className="w-full min-h-[40px] px-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-[#F6EFDD] tabular-nums"
+                              className="w-full min-h-[40px] px-2.5 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-xs text-[#1B1A17] dark:text-[#F6EFDD] tabular-nums"
                             />
                           </div>
                           <div>
-                            <label className="block text-[11px] text-slate-400 mb-1">إلى آية</label>
+                            <label className="block text-[11px] text-[#6B6251] dark:text-slate-400 mb-1">إلى آية</label>
                             <input
                               type="number"
                               min={remoteWirdDraft.startAyah}
@@ -1707,11 +1875,11 @@ export const KidsHifzSection: React.FC = () => {
                                 );
                                 setRemoteWirdDraft((prev) => ({ ...prev, ...c }));
                               }}
-                              className="w-full min-h-[40px] px-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-[#F6EFDD] tabular-nums"
+                              className="w-full min-h-[40px] px-2.5 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-xs text-[#1B1A17] dark:text-[#F6EFDD] tabular-nums"
                             />
                           </div>
                           <div>
-                            <label className="block text-[11px] text-slate-400 mb-1">التكرار</label>
+                            <label className="block text-[11px] text-[#6B6251] dark:text-slate-400 mb-1">التكرار</label>
                             <select
                               value={remoteWirdDraft.repeatCount}
                               onChange={(e) =>
@@ -1720,7 +1888,7 @@ export const KidsHifzSection: React.FC = () => {
                                   repeatCount: Number(e.target.value) as KidsRepeatCount,
                                 }))
                               }
-                              className="w-full min-h-[40px] px-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-[#F6EFDD]"
+                              className="w-full min-h-[40px] px-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-xs text-[#1B1A17] dark:text-[#F6EFDD]"
                             >
                               <option value={3}>٣ مرات</option>
                               <option value={5}>٥ مرات</option>
@@ -1743,20 +1911,20 @@ export const KidsHifzSection: React.FC = () => {
                   </div>
 
                   {/* Async Voice Recitation Inbox */}
-                  <div className="rounded-2xl bg-[#10161f] border border-slate-800 p-4 sm:p-5 space-y-4 flex flex-col">
+                  <div className="rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f] border border-[#D9B45A]/30 dark:border-slate-800 p-4 sm:p-5 space-y-4 flex flex-col">
                     <div className="flex items-center justify-between gap-2">
-                      <h3 className="text-base font-bold text-[#F6EFDD] flex items-center gap-2">
-                        <Inbox className="w-4 h-4 text-[#D9B45A]" />
+                      <h3 className="text-base font-bold text-[#1B1A17] dark:text-[#F6EFDD] flex items-center gap-2">
+                        <Inbox className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
                         <span>صندوق التسميع الصوتي</span>
                       </h3>
-                      <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-950 border border-slate-800">
+                      <div className="flex items-center gap-1 p-1 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/25 dark:border-slate-800">
                         <button
                           type="button"
                           onClick={() => setInboxFilter('pending')}
                           className={`px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer ${
                             inboxFilter === 'pending'
                               ? 'bg-[#1F3A6E] text-[#F6EFDD]'
-                              : 'text-slate-400 hover:text-white'
+                              : 'text-[#6B6251] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white'
                           }`}
                         >
                           قيد الانتظار ({toArabicIndic(pendingInboxCount)})
@@ -1767,7 +1935,7 @@ export const KidsHifzSection: React.FC = () => {
                           className={`px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer ${
                             inboxFilter === 'all'
                               ? 'bg-[#1F3A6E] text-[#F6EFDD]'
-                              : 'text-slate-400 hover:text-white'
+                              : 'text-[#6B6251] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white'
                           }`}
                         >
                           الكل ({toArabicIndic(remoteSubmissions.length)})
@@ -1776,7 +1944,7 @@ export const KidsHifzSection: React.FC = () => {
                     </div>
 
                     {filteredSubmissions.length === 0 ? (
-                      <div className="p-8 rounded-xl bg-slate-950/70 border border-slate-800 text-center text-xs text-slate-400">
+                      <div className="p-8 rounded-xl bg-white dark:bg-slate-950/70 border border-[#D9B45A]/20 dark:border-slate-800 text-center text-xs text-[#6B6251] dark:text-slate-400">
                         {inboxFilter === 'pending'
                           ? 'لا توجد تسجيلات صوتية جديدة بانتظار المراجعة حالياً.'
                           : 'لم يُرسل الأطفال أي تسجيلات تسميع صوتية بعد.'}
@@ -1792,19 +1960,19 @@ export const KidsHifzSection: React.FC = () => {
                           return (
                             <div
                               key={sub.id}
-                              className="p-3.5 rounded-xl bg-slate-950/85 border border-slate-800 space-y-3"
+                              className="p-3.5 rounded-xl bg-white dark:bg-slate-950/85 border border-[#D9B45A]/25 dark:border-slate-800 space-y-3"
                             >
                               <div className="flex items-center justify-between gap-2">
                                 <div className="min-w-0">
-                                  <div className="text-sm font-bold text-[#F6EFDD] flex items-center gap-2">
+                                  <div className="text-sm font-bold text-[#1B1A17] dark:text-[#F6EFDD] flex items-center gap-2">
                                     <span>{sub.kidName}</span>
                                     <span
                                       className={`text-[11px] px-2 py-0.5 rounded-md font-semibold ${
                                         sub.status === 'approved'
-                                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/35'
+                                          ? 'bg-emerald-50 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-400 dark:border-emerald-500/35'
                                           : sub.status === 'retry'
-                                          ? 'bg-amber-950 text-amber-300 border border-amber-500/35'
-                                          : 'bg-sky-950 text-sky-200 border border-sky-500/35'
+                                          ? 'bg-amber-50 dark:bg-amber-950 text-amber-900 dark:text-amber-300 border border-amber-400 dark:border-amber-500/35'
+                                          : 'bg-sky-50 dark:bg-sky-950 text-sky-900 dark:text-sky-200 border border-sky-300 dark:border-sky-500/35'
                                       }`}
                                     >
                                       {sub.status === 'approved'
@@ -1814,7 +1982,7 @@ export const KidsHifzSection: React.FC = () => {
                                         : 'بانتظار المراجعة'}
                                     </span>
                                   </div>
-                                  <div className="text-[11px] text-slate-400 tabular-nums mt-0.5">
+                                  <div className="text-[11px] text-[#6B6251] dark:text-slate-400 tabular-nums mt-0.5">
                                     سورة {sMeta?.name || sub.surahNumber} · الآية {toArabicIndic(sub.ayahNumber)} · المدة {toArabicIndic(sub.durationSec)} ث
                                   </div>
                                 </div>
@@ -1830,8 +1998,8 @@ export const KidsHifzSection: React.FC = () => {
                               </div>
 
                               {/* Supervisor Feedback Controls */}
-                              <div className="space-y-2 pt-2 border-t border-slate-800/80">
-                                <div className="flex gap-2">
+                              <div className="space-y-2 pt-2 border-t border-[#D9B45A]/20 dark:border-slate-800/80">
+                                <div className="flex flex-wrap gap-2 items-center">
                                   <input
                                     type="text"
                                     value={reviewTextMap[sub.id] ?? sub.supervisorFeedbackText ?? ''}
@@ -1842,7 +2010,7 @@ export const KidsHifzSection: React.FC = () => {
                                       }))
                                     }
                                     placeholder="رسالة تشجيعية أو ملاحظة قصيرة للطفل..."
-                                    className="flex-1 min-h-[38px] px-3 rounded-lg bg-slate-900 border border-slate-800 text-xs text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
+                                    className="flex-1 min-w-[160px] min-h-[38px] px-3 rounded-lg bg-[#FBF7EE] dark:bg-slate-900 border border-[#D9B45A]/25 dark:border-slate-800 text-xs text-[#1B1A17] dark:text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
                                   />
                                   <button
                                     type="button"
@@ -1852,8 +2020,8 @@ export const KidsHifzSection: React.FC = () => {
                                       isSupRecording
                                         ? 'bg-rose-600 border-rose-400 text-white'
                                         : hasSupAudio
-                                        ? 'bg-emerald-950/60 border-emerald-500/45 text-emerald-200'
-                                        : 'bg-slate-900 border-slate-700 text-slate-200 hover:border-[#D9B45A]'
+                                        ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-400 dark:border-emerald-500/45 text-emerald-800 dark:text-emerald-200'
+                                        : 'bg-[#FBF7EE] dark:bg-slate-900 border-[#D9B45A]/30 dark:border-slate-700 text-[#1B1A17] dark:text-slate-200 hover:border-[#D9B45A]'
                                     }`}
                                   >
                                     {isSupRecording ? <Square className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
@@ -1865,6 +2033,9 @@ export const KidsHifzSection: React.FC = () => {
                                         : 'رد صوتي'}
                                     </span>
                                   </button>
+                                  {isSupRecording && (
+                                    <AudioLevelMeter isActive={true} mediaStream={activeSupStream} tone="rose" />
+                                  )}
                                 </div>
 
                                 <div className="flex items-center gap-2">
@@ -1881,7 +2052,7 @@ export const KidsHifzSection: React.FC = () => {
                                     type="button"
                                     disabled={reviewingSubId === sub.id}
                                     onClick={() => handleReviewRemoteSubmission(sub.id, 'retry')}
-                                    className="min-h-[40px] px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/50 text-amber-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                                    className="min-h-[40px] px-3 py-1.5 rounded-xl bg-amber-100 dark:bg-amber-500/20 hover:bg-amber-200 dark:hover:bg-amber-500/30 border border-amber-400/50 text-amber-900 dark:text-amber-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                                   >
                                     <RotateCcw className="w-3.5 h-3.5" />
                                     <span>طلب إعادة لطيفة</span>
@@ -1901,13 +2072,13 @@ export const KidsHifzSection: React.FC = () => {
         ) : (
           <>
         {/* Kid Profiles Switcher & Creator */}
-        <div className="rounded-2xl bg-[#10161f] border border-slate-800 p-4 sm:p-6 space-y-4">
+        <div className="rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f] border border-[#D9B45A]/30 dark:border-slate-800 p-4 sm:p-6 space-y-4">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-base font-bold text-[#F6EFDD] flex items-center gap-2">
-              <Users className="w-4 h-4 text-[#D9B45A]" />
+            <h2 className="text-base font-bold text-[#1B1A17] dark:text-[#F6EFDD] flex items-center gap-2">
+              <Users className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
               <span>ملفات الأطفال على هذا الجهاز</span>
             </h2>
-            <span className="text-xs text-slate-400 tabular-nums">
+            <span className="text-xs text-[#6B6251] dark:text-slate-400 tabular-nums">
               {toArabicIndic(state.profiles.length)} ملفات
             </span>
           </div>
@@ -1921,8 +2092,8 @@ export const KidsHifzSection: React.FC = () => {
                   key={prof.id}
                   className={`rounded-xl border p-3.5 flex items-center justify-between gap-3 transition-colors ${
                     isSelected
-                      ? 'bg-[#1F3A6E]/50 border-[#D9B45A] text-[#F6EFDD]'
-                      : 'bg-slate-950/70 border-slate-800 text-slate-200 hover:border-slate-700'
+                      ? 'bg-[#1F3A6E] dark:bg-[#1F3A6E]/50 border-[#D9B45A] text-[#F6EFDD]'
+                      : 'bg-white dark:bg-slate-950/70 border-[#D9B45A]/20 dark:border-slate-800 text-[#1B1A17] dark:text-slate-200 hover:border-[#D9B45A]'
                   }`}
                 >
                   <button
@@ -1934,14 +2105,14 @@ export const KidsHifzSection: React.FC = () => {
                       className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
                         isSelected
                           ? 'bg-[#D9B45A] text-[#1B1A17]'
-                          : 'bg-slate-900 text-[#D9B45A] border border-slate-800'
+                          : 'bg-[#F3E9D2] dark:bg-slate-900 text-[#8A6418] dark:text-[#D9B45A] border border-[#D9B45A]/25 dark:border-slate-800'
                       }`}
                     >
                       {renderAvatarIcon(prof.avatarId, 'w-5 h-5')}
                     </span>
                     <span className="min-w-0">
                       <span className="block font-bold text-sm truncate">{prof.name}</span>
-                      <span className="block text-[11px] text-slate-400 tabular-nums truncate">
+                      <span className={`block text-[11px] tabular-nums truncate ${isSelected ? 'text-[#E5DCC5]' : 'text-[#6B6251] dark:text-slate-400'}`}>
                         {toArabicIndic(prof.stars)} نجمة · سورة {pSurah?.name || ''}
                         {prof.remoteLink ? ` · حلقة #${prof.remoteLink.circleCode}` : ''}
                       </span>
@@ -1961,7 +2132,7 @@ export const KidsHifzSection: React.FC = () => {
                       }}
                       title="فك ارتباط هذا الملف بالحلقة عن بُعد"
                       aria-label={`فك ارتباط ${prof.name} بالحلقة`}
-                      className="min-w-[36px] min-h-[36px] rounded-lg flex items-center justify-center text-amber-300 hover:text-amber-200 hover:bg-amber-950/40 cursor-pointer shrink-0"
+                      className="min-w-[36px] min-h-[36px] rounded-lg flex items-center justify-center text-amber-500 dark:text-amber-300 hover:text-amber-600 dark:hover:text-amber-200 hover:bg-amber-500/15 cursor-pointer shrink-0"
                     >
                       <LogOut className="w-4 h-4" />
                     </button>
@@ -1983,7 +2154,7 @@ export const KidsHifzSection: React.FC = () => {
                         });
                       }}
                       aria-label={`حذف ملف ${prof.name}`}
-                      className="min-w-[36px] min-h-[36px] rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 cursor-pointer shrink-0"
+                      className="min-w-[36px] min-h-[36px] rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-500 dark:hover:text-rose-400 hover:bg-rose-500/15 cursor-pointer shrink-0"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -1994,14 +2165,14 @@ export const KidsHifzSection: React.FC = () => {
           </div>
 
           {/* Add new child form */}
-          <form onSubmit={handleAddKidProfile} className="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row gap-3">
+          <form onSubmit={handleAddKidProfile} className="pt-3 border-t border-[#D9B45A]/20 dark:border-slate-800/80 flex flex-col sm:flex-row gap-3">
             <input
               type="text"
               value={newKidName}
               onChange={(e) => setNewKidName(e.target.value)}
               placeholder="اسم الطفل الجديد (مثلاً: مريم أو يوسف)..."
               aria-label="اسم الطفل الجديد"
-              className="flex-1 min-h-[44px] px-4 py-2 rounded-xl bg-slate-950 border border-slate-800 text-sm text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
+              className="flex-1 min-h-[44px] px-4 py-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-sm text-[#1B1A17] dark:text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
             />
             <div className="flex items-center gap-1.5">
               {KIDS_AVATARS.map((av) => (
@@ -2014,7 +2185,7 @@ export const KidsHifzSection: React.FC = () => {
                   className={`min-w-[42px] min-h-[42px] rounded-xl border flex items-center justify-center cursor-pointer transition-colors ${
                     newKidAvatar === av.id
                       ? 'bg-[#D9B45A] text-[#1B1A17] border-[#D9B45A]'
-                      : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-600'
+                      : 'bg-white dark:bg-slate-950 text-[#6B6251] dark:text-slate-300 border-[#D9B45A]/25 dark:border-slate-800 hover:border-[#D9B45A]'
                   }`}
                 >
                   {renderAvatarIcon(av.id, 'w-4 h-4')}
@@ -2034,12 +2205,12 @@ export const KidsHifzSection: React.FC = () => {
 
         {/* Daily Wird Settings */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="rounded-2xl bg-[#10161f] border border-slate-800 p-4 sm:p-6 space-y-5">
-            <h2 className="text-base font-bold text-[#F6EFDD]">إعداد ورد اليوم والتلقين</h2>
+          <div className="rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f] border border-[#D9B45A]/30 dark:border-slate-800 p-4 sm:p-6 space-y-5">
+            <h2 className="text-base font-bold text-[#1B1A17] dark:text-[#F6EFDD]">إعداد ورد اليوم والتلقين</h2>
 
             {/* Quick Short Surahs */}
             <div className="space-y-2">
-              <div className="text-xs font-semibold text-slate-300">اختيار سريع لقصار السور</div>
+              <div className="text-xs font-semibold text-[#4B4539] dark:text-slate-300">اختيار سريع لقصار السور</div>
               <div className="flex flex-wrap gap-1.5">
                 {RECOMMENDED_KIDS_SURAH_NUMBERS.map((num) => {
                   const s = SURAHS_LIST.find((item) => item.number === num);
@@ -2053,7 +2224,7 @@ export const KidsHifzSection: React.FC = () => {
                       className={`min-h-[38px] px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
                         active
                           ? 'bg-[#D9B45A] text-[#1B1A17] border-[#D9B45A] font-bold'
-                          : 'bg-slate-950 text-slate-200 border-slate-800 hover:border-slate-600'
+                          : 'bg-white dark:bg-slate-950 text-[#1B1A17] dark:text-slate-200 border-[#D9B45A]/25 dark:border-slate-800 hover:border-[#D9B45A]'
                       }`}
                     >
                       {s.name}
@@ -2066,17 +2237,17 @@ export const KidsHifzSection: React.FC = () => {
             {/* Full Surah Selector & Range */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="sm:col-span-3 space-y-1.5">
-                <label htmlFor="kids-surah-select" className="block text-xs font-semibold text-slate-300">
+                <label htmlFor="kids-surah-select" className="block text-xs font-semibold text-[#4B4539] dark:text-slate-300">
                   أو اختر من جميع السور (١١٤)
                 </label>
                 <select
                   id="kids-surah-select"
                   value={currentWird.surahNumber}
                   onChange={(e) => handleSelectSurahForWird(Number(e.target.value))}
-                  className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-sm text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
+                  className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-sm text-[#1B1A17] dark:text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
                 >
                   {SURAHS_LIST.map((s) => (
-                    <option key={s.number} value={s.number}>
+                    <option key={s.number} value={s.number} className="bg-white text-[#1B1A17] dark:bg-slate-900 dark:text-[#F6EFDD]">
                       {toArabicIndic(s.number)}. سورة {s.name} ({toArabicIndic(s.numberOfAyahs)} آية)
                     </option>
                   ))}
@@ -2084,7 +2255,7 @@ export const KidsHifzSection: React.FC = () => {
               </div>
 
               <div className="space-y-1.5">
-                <label htmlFor="kids-start-ayah" className="block text-xs font-semibold text-slate-300">
+                <label htmlFor="kids-start-ayah" className="block text-xs font-semibold text-[#4B4539] dark:text-slate-300">
                   من الآية
                 </label>
                 <input
@@ -2094,12 +2265,12 @@ export const KidsHifzSection: React.FC = () => {
                   max={surahMeta.numberOfAyahs}
                   value={currentWird.startAyah}
                   onChange={(e) => handleUpdateWird({ startAyah: Number(e.target.value) })}
-                  className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-sm text-[#F6EFDD] tabular-nums outline-none focus:border-[#D9B45A]"
+                  className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-sm text-[#1B1A17] dark:text-[#F6EFDD] tabular-nums outline-none focus:border-[#D9B45A]"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label htmlFor="kids-end-ayah" className="block text-xs font-semibold text-slate-300">
+                <label htmlFor="kids-end-ayah" className="block text-xs font-semibold text-[#4B4539] dark:text-slate-300">
                   إلى الآية
                 </label>
                 <input
@@ -2109,22 +2280,22 @@ export const KidsHifzSection: React.FC = () => {
                   max={surahMeta.numberOfAyahs}
                   value={currentWird.endAyah}
                   onChange={(e) => handleUpdateWird({ endAyah: Number(e.target.value) })}
-                  className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-sm text-[#F6EFDD] tabular-nums outline-none focus:border-[#D9B45A]"
+                  className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-sm text-[#1B1A17] dark:text-[#F6EFDD] tabular-nums outline-none focus:border-[#D9B45A]"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label htmlFor="kids-reciter-select" className="block text-xs font-semibold text-slate-300">
+                <label htmlFor="kids-reciter-select" className="block text-xs font-semibold text-[#4B4539] dark:text-slate-300">
                   القارئ المعلم
                 </label>
                 <select
                   id="kids-reciter-select"
                   value={currentWird.reciterId}
                   onChange={(e) => handleUpdateWird({ reciterId: e.target.value })}
-                  className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-sm text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
+                  className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-sm text-[#1B1A17] dark:text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
                 >
                   {RECITERS_LIST.map((r) => (
-                    <option key={r.id} value={r.id}>
+                    <option key={r.id} value={r.id} className="bg-white text-[#1B1A17] dark:bg-slate-900 dark:text-[#F6EFDD]">
                       {r.name}
                     </option>
                   ))}
@@ -2135,8 +2306,8 @@ export const KidsHifzSection: React.FC = () => {
             {/* Repeat Count & Pause Duration */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <div className="text-xs font-semibold text-slate-300">تكرار كل آية</div>
-                <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-slate-950 border border-slate-800">
+                <div className="text-xs font-semibold text-[#4B4539] dark:text-slate-300">تكرار كل آية</div>
+                <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/25 dark:border-slate-800">
                   {([3, 5, 7] as KidsRepeatCount[]).map((cnt) => (
                     <button
                       key={cnt}
@@ -2145,7 +2316,7 @@ export const KidsHifzSection: React.FC = () => {
                       className={`min-h-[38px] rounded-lg text-xs font-bold tabular-nums transition-colors cursor-pointer ${
                         currentWird.repeatCount === cnt
                           ? 'bg-[#1F3A6E] text-[#F6EFDD] border border-[#648CD4]/50'
-                          : 'text-slate-400 hover:text-white'
+                          : 'text-[#6B6251] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white'
                       }`}
                     >
                       {toArabicIndic(cnt)} مرات
@@ -2155,8 +2326,8 @@ export const KidsHifzSection: React.FC = () => {
               </div>
 
               <div className="space-y-1.5">
-                <div className="text-xs font-semibold text-slate-300">مهلة الصمت للترديد</div>
-                <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-slate-950 border border-slate-800">
+                <div className="text-xs font-semibold text-[#4B4539] dark:text-slate-300">مهلة الصمت للترديد</div>
+                <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/25 dark:border-slate-800">
                   {(
                     [
                       { id: 'short', label: 'قصيرة' },
@@ -2171,7 +2342,7 @@ export const KidsHifzSection: React.FC = () => {
                       className={`min-h-[38px] rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                         currentWird.repeatDelayMode === mode.id
                           ? 'bg-[#1F3A6E] text-[#F6EFDD] border border-[#648CD4]/50'
-                          : 'text-slate-400 hover:text-white'
+                          : 'text-[#6B6251] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white'
                       }`}
                     >
                       {mode.label}
@@ -2188,8 +2359,8 @@ export const KidsHifzSection: React.FC = () => {
                 onClick={() => handleUpdateWird({ autoAdvanceAyah: !currentWird.autoAdvanceAyah })}
                 className={`flex-1 min-h-[44px] px-3.5 py-2 rounded-xl border text-xs font-semibold flex items-center justify-between cursor-pointer ${
                   currentWird.autoAdvanceAyah
-                    ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
-                    : 'bg-slate-950 border-slate-800 text-slate-300'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-400 dark:border-emerald-500/40 text-emerald-900 dark:text-emerald-200'
+                    : 'bg-white dark:bg-slate-950 border-[#D9B45A]/25 dark:border-slate-800 text-[#4B4539] dark:text-slate-300'
                 }`}
               >
                 <span>الانتقال التلقائي للآية التالية</span>
@@ -2203,8 +2374,8 @@ export const KidsHifzSection: React.FC = () => {
                 }
                 className={`flex-1 min-h-[44px] px-3.5 py-2 rounded-xl border text-xs font-semibold flex items-center justify-between cursor-pointer ${
                   activeProfile.soundEffectsEnabled
-                    ? 'bg-[#1F3A6E]/40 border-[#648CD4]/45 text-[#F6EFDD]'
-                    : 'bg-slate-950 border-slate-800 text-slate-300'
+                    ? 'bg-[#1F3A6E] dark:bg-[#1F3A6E]/40 border-[#648CD4]/45 text-[#F6EFDD]'
+                    : 'bg-white dark:bg-slate-950 border-[#D9B45A]/25 dark:border-slate-800 text-[#4B4539] dark:text-slate-300'
                 }`}
               >
                 <span>أصوات التشجيع اللطيفة</span>
@@ -2214,9 +2385,9 @@ export const KidsHifzSection: React.FC = () => {
           </div>
 
           {/* Supervisor Ayah Review & Approval */}
-          <div className="rounded-2xl bg-[#10161f] border border-slate-800 p-4 sm:p-6 space-y-4 flex flex-col">
+          <div className="rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f] border border-[#D9B45A]/30 dark:border-slate-800 p-4 sm:p-6 space-y-4 flex flex-col">
             <div className="flex items-center justify-between gap-2">
-              <h2 className="text-base font-bold text-[#F6EFDD]">
+              <h2 className="text-base font-bold text-[#1B1A17] dark:text-[#F6EFDD]">
                 اعتماد آيات الورد · سورة {surahMeta.name}
               </h2>
               <button
@@ -2230,10 +2401,10 @@ export const KidsHifzSection: React.FC = () => {
             </div>
 
             {recordedAudioUrl && (
-              <div className="p-3 rounded-xl bg-[#142038] border border-[#D9B45A]/30 flex items-center justify-between gap-3">
+              <div className="p-3 rounded-xl bg-[#1F3A6E] dark:bg-[#142038] border border-[#D9B45A]/35 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-xs font-bold text-[#F6EFDD]">آخر تسجيل للطفل للمراجعة</div>
-                  <div className="text-[11px] text-slate-300 truncate">{recordedAyahLabel}</div>
+                  <div className="text-[11px] text-[#E5DCC5] dark:text-slate-300 truncate">{recordedAyahLabel}</div>
                 </div>
                 <button
                   type="button"
@@ -2256,11 +2427,11 @@ export const KidsHifzSection: React.FC = () => {
                 return (
                   <div
                     key={ayah.numberInSurah}
-                    className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between gap-3"
+                    className="p-3 rounded-xl bg-white dark:bg-slate-950/80 border border-[#D9B45A]/20 dark:border-slate-800 flex items-center justify-between gap-3"
                   >
                     <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex items-center gap-2 text-xs text-slate-400 tabular-nums">
-                        <span className="font-bold text-[#D9B45A]">
+                      <div className="flex items-center gap-2 text-xs text-[#6B6251] dark:text-slate-400 tabular-nums">
+                        <span className="font-bold text-[#8A6418] dark:text-[#D9B45A]">
                           الآية {toArabicIndic(ayah.numberInSurah)}
                         </span>
                         <span aria-hidden="true">·</span>
@@ -2268,11 +2439,11 @@ export const KidsHifzSection: React.FC = () => {
                         {retryFlagged && (
                           <>
                             <span aria-hidden="true">·</span>
-                            <span className="text-amber-300 font-semibold">يحتاج إعادة</span>
+                            <span className="text-amber-700 dark:text-amber-300 font-semibold">يحتاج إعادة</span>
                           </>
                         )}
                       </div>
-                      <p className="font-quran text-lg text-[#F6EFDD] truncate">{ayah.text}</p>
+                      <p className="font-quran text-lg text-[#1B1A17] dark:text-[#F6EFDD] truncate">{ayah.text}</p>
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
@@ -2282,8 +2453,8 @@ export const KidsHifzSection: React.FC = () => {
                         title="طلب إعادة لطيفة لهذه الآية"
                         className={`min-h-[38px] px-2.5 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer transition-colors ${
                           retryFlagged
-                            ? 'bg-amber-500/20 border-amber-400/50 text-amber-200'
-                            : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white'
+                            ? 'bg-amber-100 dark:bg-amber-500/20 border-amber-400/50 text-amber-900 dark:text-amber-200'
+                            : 'bg-[#FBF7EE] dark:bg-slate-900 border-[#D9B45A]/25 dark:border-slate-800 text-[#4B4539] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white'
                         }`}
                       >
                         إعادة
@@ -2293,11 +2464,11 @@ export const KidsHifzSection: React.FC = () => {
                         onClick={() => handleToggleMasteredBySupervisor(ayah.numberInSurah)}
                         className={`min-h-[38px] px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1 cursor-pointer transition-colors ${
                           mastered
-                            ? 'bg-emerald-600/25 border-emerald-400/50 text-emerald-200'
+                            ? 'bg-emerald-50 dark:bg-emerald-600/25 border-emerald-400/60 text-emerald-800 dark:text-emerald-200'
                             : 'bg-[#1F3A6E] border-[#648CD4]/45 text-[#F6EFDD]'
                         }`}
                       >
-                        <Star className={`w-3.5 h-3.5 ${mastered ? 'fill-emerald-300' : ''}`} />
+                        <Star className={`w-3.5 h-3.5 ${mastered ? 'fill-emerald-500 dark:fill-emerald-300' : ''}`} />
                         <span>{mastered ? 'متقنة' : 'اعتماد'}</span>
                       </button>
                     </div>
@@ -2333,7 +2504,7 @@ export const KidsHifzSection: React.FC = () => {
   return (
     <section className="max-w-4xl mx-auto space-y-5 pb-10 animate-in fade-in duration-200">
       {/* Top Kid Motivation Bar */}
-      <div className="rounded-2xl bg-[#142038] border border-[#D9B45A]/30 px-4 py-3.5 flex flex-wrap items-center justify-between gap-3">
+      <div className="rounded-2xl bg-[#1F3A6E] dark:bg-[#142038] border border-[#D9B45A]/45 dark:border-[#D9B45A]/30 px-4 py-3.5 flex flex-wrap items-center justify-between gap-3 shadow-md">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-12 h-12 rounded-2xl bg-[#D9B45A] text-[#1B1A17] flex items-center justify-center shadow-md shrink-0">
             {renderAvatarIcon(activeProfile.avatarId, 'w-6 h-6')}
@@ -2348,7 +2519,7 @@ export const KidsHifzSection: React.FC = () => {
                 {toArabicIndic(activeProfile.stars)}
               </span>
             </div>
-            <div className="text-xs text-slate-300 tabular-nums">
+            <div className="text-xs text-[#E5DCC5] dark:text-slate-300 tabular-nums">
               سورة {surahMeta.name} · أتممت {toArabicIndic(wirdMasteredCount)} من {toArabicIndic(wirdTotalCount)} آيات اليوم
             </div>
           </div>
@@ -2360,7 +2531,7 @@ export const KidsHifzSection: React.FC = () => {
               type="button"
               onClick={() => refreshChildFromRemote(false)}
               disabled={isSyncingKidRemote}
-              className="min-h-[44px] px-3.5 py-2 rounded-xl bg-emerald-950/60 hover:bg-emerald-950 border border-emerald-500/40 text-emerald-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap"
+              className="min-h-[44px] px-3.5 py-2 rounded-xl bg-emerald-950/60 hover:bg-emerald-950 border border-emerald-400/50 text-emerald-100 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap"
             >
               <RefreshCw className={`w-4 h-4 ${isSyncingKidRemote ? 'animate-spin' : ''}`} />
               <span>مزامنة الحلقة</span>
@@ -2373,7 +2544,7 @@ export const KidsHifzSection: React.FC = () => {
                 setJoinError(null);
                 setIsJoinCircleModalOpen(true);
               }}
-              className="min-h-[44px] px-3.5 py-2 rounded-xl bg-[#1F3A6E]/80 hover:bg-[#1F3A6E] border border-[#648CD4]/45 text-[#F6EFDD] text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap"
+              className="min-h-[44px] px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 dark:bg-[#1F3A6E]/80 dark:hover:bg-[#1F3A6E] border border-[#648CD4]/45 text-[#F6EFDD] text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap"
             >
               <Link2 className="w-4 h-4 text-[#D9B45A]" />
               <span>انضمام لحلقة بكود</span>
@@ -2386,19 +2557,19 @@ export const KidsHifzSection: React.FC = () => {
               updateActiveProfile((p) => ({ ...p, soundEffectsEnabled: !p.soundEffectsEnabled }))
             }
             aria-label={activeProfile.soundEffectsEnabled ? 'كتم أصوات التشجيع' : 'تفعيل أصوات التشجيع'}
-            className="min-w-[44px] min-h-[44px] rounded-xl bg-slate-900/90 border border-slate-700 text-slate-200 hover:text-[#D9B45A] flex items-center justify-center cursor-pointer transition-colors"
+            className="min-w-[44px] min-h-[44px] rounded-xl bg-white/10 dark:bg-slate-900/90 border border-white/20 dark:border-slate-700 text-[#F6EFDD] hover:text-[#D9B45A] flex items-center justify-center cursor-pointer transition-colors"
           >
             {activeProfile.soundEffectsEnabled ? (
               <Volume2 className="w-5 h-5" />
             ) : (
-              <VolumeX className="w-5 h-5 text-slate-400" />
+              <VolumeX className="w-5 h-5 text-slate-300 dark:text-slate-400" />
             )}
           </button>
 
           <button
             type="button"
             onClick={openParentGate}
-            className="min-h-[44px] px-4 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-[#D9B45A]/35 text-[#F6EFDD] text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors whitespace-nowrap"
+            className="min-h-[44px] px-4 py-2 rounded-xl bg-white/10 dark:bg-slate-900/90 hover:bg-white/20 dark:hover:bg-slate-800 border border-[#D9B45A]/45 text-[#F6EFDD] text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors whitespace-nowrap"
           >
             <Lock className="w-4 h-4 text-[#D9B45A]" />
             <span>بوابة المشرف</span>
@@ -2408,20 +2579,20 @@ export const KidsHifzSection: React.FC = () => {
 
       {/* Connected Remote Circle Strip for Child */}
       {activeProfile.remoteLink && (
-        <div className="rounded-2xl bg-[#10161f] border border-emerald-500/30 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
-          <div className="flex items-center gap-2 text-emerald-200 font-semibold">
-            <Radio className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+        <div className="rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f] border border-emerald-400/50 dark:border-emerald-500/30 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-200 font-semibold">
+            <Radio className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <span>
-              مرتبط بحلقة: <strong className="text-[#F6EFDD]">{activeProfile.remoteLink.circleTitle || 'حلقة التحفيظ'}</strong>
+              مرتبط بحلقة: <strong className="text-[#1B1A17] dark:text-[#F6EFDD]">{activeProfile.remoteLink.circleTitle || 'حلقة التحفيظ'}</strong>
             </span>
             {activeProfile.remoteLink.supervisorName && (
               <>
                 <span aria-hidden="true">·</span>
-                <span className="text-slate-300">بإشراف {activeProfile.remoteLink.supervisorName}</span>
+                <span className="text-[#6B6251] dark:text-slate-300">بإشراف {activeProfile.remoteLink.supervisorName}</span>
               </>
             )}
           </div>
-          <span className="text-slate-400 tabular-nums" dir="ltr">
+          <span className="text-[#6B6251] dark:text-slate-400 tabular-nums" dir="ltr">
             #{activeProfile.remoteLink.circleCode}
           </span>
         </div>
@@ -2443,10 +2614,10 @@ export const KidsHifzSection: React.FC = () => {
               aria-label={`الانتقال إلى الآية ${ayahNum}`}
               className={`min-w-[46px] min-h-[46px] px-3 rounded-2xl border font-bold text-sm tabular-nums flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                 isCurrent
-                  ? 'bg-[#D9B45A] text-[#1B1A17] border-[#F6EFDD] scale-105 shadow-lg'
+                  ? 'bg-[#D9B45A] text-[#1B1A17] border-[#8A6418] dark:border-[#F6EFDD] scale-105 shadow-lg'
                   : mastered
-                  ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/45'
-                  : 'bg-[#10161f] text-slate-300 border-slate-800 hover:border-slate-600'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-400 dark:border-emerald-500/45'
+                  : 'bg-[#FBF7EE] dark:bg-[#10161f] text-[#4B4539] dark:text-slate-300 border-[#D9B45A]/25 dark:border-slate-800 hover:border-[#D9B45A]'
               }`}
             >
               <Star
@@ -2454,7 +2625,7 @@ export const KidsHifzSection: React.FC = () => {
                   mastered
                     ? isCurrent
                       ? 'fill-[#1B1A17]'
-                      : 'fill-emerald-400 text-emerald-400'
+                      : 'fill-emerald-500 dark:fill-emerald-400 text-emerald-500 dark:text-emerald-400'
                     : ''
                 }`}
               />
@@ -2466,14 +2637,14 @@ export const KidsHifzSection: React.FC = () => {
 
       {/* Main Focal Ayah & Listen/Repeat Circle */}
       {isLoadingSurah ? (
-        <div className="rounded-3xl bg-[#10161f] border border-slate-800 p-16 flex flex-col items-center justify-center space-y-3">
+        <div className="rounded-3xl bg-[#FBF7EE] dark:bg-[#10161f] border border-[#D9B45A]/30 dark:border-slate-800 p-16 flex flex-col items-center justify-center space-y-3">
           <div className="w-12 h-12 rounded-full border-3 border-[#D9B45A] border-t-transparent animate-spin" />
-          <p className="text-sm text-slate-300 font-semibold">جارٍ تجهيز درس الحفظ…</p>
+          <p className="text-sm text-[#4B4539] dark:text-slate-300 font-semibold">جارٍ تجهيز درس الحفظ…</p>
         </div>
       ) : surahLoadError || !activeAyah ? (
-        <div className="rounded-3xl bg-rose-950/25 border border-rose-500/35 p-10 text-center flex flex-col items-center space-y-4">
-          <AlertCircle className="w-10 h-10 text-rose-400" />
-          <p className="text-sm text-rose-100">{surahLoadError || 'تعذر العثور على الآيات'}</p>
+        <div className="rounded-3xl bg-rose-50 dark:bg-rose-950/25 border border-rose-300 dark:border-rose-500/35 p-10 text-center flex flex-col items-center space-y-4">
+          <AlertCircle className="w-10 h-10 text-rose-500 dark:text-rose-400" />
+          <p className="text-sm text-rose-900 dark:text-rose-100">{surahLoadError || 'تعذر العثور على الآيات'}</p>
           <button
             type="button"
             onClick={() => setReloadNonce((n) => n + 1)}
@@ -2484,11 +2655,11 @@ export const KidsHifzSection: React.FC = () => {
           </button>
         </div>
       ) : (
-        <div className="rounded-3xl bg-[#10161f] border border-[#D9B45A]/30 p-5 sm:p-8 shadow-2xl space-y-7">
+        <div className="rounded-3xl bg-[#FBF7EE] dark:bg-[#10161f] border border-[#D9B45A]/35 dark:border-[#D9B45A]/30 p-5 sm:p-8 shadow-2xl space-y-7">
           {/* Quiet Ayah Header Metadata */}
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm text-slate-300 border-b border-slate-800/80 pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm text-[#4B4539] dark:text-slate-300 border-b border-[#D9B45A]/20 dark:border-slate-800/80 pb-3">
             <div className="flex items-center gap-2 font-semibold">
-              <span className="text-[#D9B45A] font-bold">سورة {surahMeta.name}</span>
+              <span className="text-[#8A6418] dark:text-[#D9B45A] font-bold">سورة {surahMeta.name}</span>
               <span aria-hidden="true">·</span>
               <span className="tabular-nums">
                 الآية {toArabicIndic(activeAyah.numberInSurah)} من {toArabicIndic(currentWird.endAyah)}
@@ -2499,13 +2670,13 @@ export const KidsHifzSection: React.FC = () => {
 
             <div className="flex items-center gap-2 font-bold">
               {isCurrentAyahMastered && (
-                <span className="text-emerald-300 flex items-center gap-1">
-                  <Star className="w-4 h-4 fill-emerald-400 text-emerald-400" />
+                <span className="text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
+                  <Star className="w-4 h-4 fill-emerald-500 dark:fill-emerald-400 text-emerald-500 dark:text-emerald-400" />
                   <span>نجمة مضيئة</span>
                 </span>
               )}
               {isCurrentAyahRetryRequested && (
-                <span className="text-amber-300 flex items-center gap-1">
+                <span className="text-amber-800 dark:text-amber-300 flex items-center gap-1">
                   <RotateCcw className="w-4 h-4" />
                   <span>لنكررها معاً يا بطل</span>
                 </span>
@@ -2514,18 +2685,23 @@ export const KidsHifzSection: React.FC = () => {
           </div>
 
           {/* Large Focused Ayah Display with Word-by-Word Highlight */}
-          <div className="py-4 sm:py-6 px-3 sm:px-6 rounded-2xl bg-[#F6EFDD] text-[#1B1A17] text-center shadow-inner">
+          <div className="py-4 sm:py-6 px-3 sm:px-6 rounded-2xl bg-[#F6EFDD] text-[#1B1A17] text-center shadow-inner border border-[#D9B45A]/35">
             <p
               dir="rtl"
               className="font-quran text-3xl sm:text-5xl leading-[2.2] sm:leading-[2.3] select-none"
             >
               {activeAyahWords.map((word, idx) => {
                 const isHighlighted = promptPhase === 'listening' && idx === activeWordIndex;
+                const isVoiceMatched = kidVoiceMatchedSet.has(idx);
                 return (
                   <React.Fragment key={`${activeAyah.numberInSurah}-w-${idx}`}>
                     <span
                       className={`inline-block px-1 rounded-lg transition-colors duration-150 ${
-                        isHighlighted ? 'bg-[#D9B45A]/45 text-[#1B1A17]' : ''
+                        isVoiceMatched
+                          ? 'bg-emerald-300/75 text-[#0b291d]'
+                          : isHighlighted
+                          ? 'bg-[#D9B45A]/45 text-[#1B1A17]'
+                          : ''
                       }`}
                     >
                       {word}
@@ -2541,7 +2717,7 @@ export const KidsHifzSection: React.FC = () => {
 
           {/* Interactive Central Listen -> Repeat Stage */}
           <div className="flex flex-col items-center justify-center space-y-4">
-            <div className="text-xs sm:text-sm font-bold text-slate-300 tabular-nums">
+            <div className="text-xs sm:text-sm font-bold text-[#4B4539] dark:text-slate-300 tabular-nums">
               الدورة {toArabicIndic(currentCycle)} من {toArabicIndic(currentWird.repeatCount)}
             </div>
 
@@ -2599,47 +2775,111 @@ export const KidsHifzSection: React.FC = () => {
               <button
                 type="button"
                 onClick={handleFinishRepeatTurnNow}
-                className="min-h-[44px] px-5 py-2 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/50 text-sky-100 text-xs font-bold cursor-pointer transition-colors"
+                className="min-h-[44px] px-5 py-2 rounded-xl bg-sky-100 dark:bg-sky-500/20 hover:bg-sky-200 dark:hover:bg-sky-500/30 border border-sky-400/50 text-sky-900 dark:text-sky-100 text-xs font-bold cursor-pointer transition-colors"
               >
                 انتهيت من الترديد الآن ← التالي
               </button>
             )}
 
             {statusBanner && (
-              <div className="px-4 py-2.5 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-100 text-xs sm:text-sm font-bold flex items-center gap-2 text-center">
+              <div className="px-4 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-400 dark:border-emerald-500/40 text-emerald-900 dark:text-emerald-100 text-xs sm:text-sm font-bold flex items-center gap-2 text-center">
                 <Star className="w-4 h-4 text-[#D9B45A] fill-[#D9B45A] shrink-0" />
                 <span>{statusBanner}</span>
               </div>
             )}
 
             {audioError && (
-              <div className="px-4 py-2.5 rounded-xl bg-rose-950/50 border border-rose-500/40 text-rose-100 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              <div className="px-4 py-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-300 dark:border-rose-500/40 text-rose-900 dark:text-rose-100 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-500 dark:text-rose-400 shrink-0" />
                 <span>{audioError}</span>
               </div>
             )}
           </div>
 
-          {/* 3 Large Child-Friendly Bottom Controls */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-slate-800/80">
+          {/* Live Microphone Recording Meter Banner */}
+          {isRecordingVoice && (
+            <div className="flex items-center justify-center">
+              <div className="px-4 py-2 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-300 dark:border-rose-500/40">
+                <AudioLevelMeter
+                  isActive={isRecordingVoice}
+                  mediaStream={activeChildStream}
+                  tone="rose"
+                  label="أسجّل صوتك يا بطل... اقرأ الآن"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Smart Voice Check Feedback Strip for Child */}
+          {(isKidVoiceChecking || kidVoiceAccuracy !== null) && (
+            <div className="rounded-2xl bg-white dark:bg-slate-950/85 border border-emerald-400 dark:border-emerald-500/35 px-4 py-3 text-xs sm:text-sm space-y-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 tabular-nums">
+                <span className="font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
+                  <span>
+                    {isKidVoiceChecking
+                      ? 'أنا أسمعك الآن يا بطل… اقرأ الآية بصوت جميل!'
+                      : 'نتيجة تسميعك الآن:'}
+                  </span>
+                </span>
+                <div className="flex items-center gap-2">
+                  {isKidVoiceChecking && (
+                    <AudioLevelMeter
+                      isActive={isKidVoiceChecking}
+                      activitySeed={kidVoiceTranscript.length}
+                      tone="gold"
+                    />
+                  )}
+                  {kidVoiceAccuracy !== null && (
+                    <span className="px-2.5 py-0.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/20 border border-emerald-400 dark:border-emerald-500/45 text-emerald-800 dark:text-emerald-200 font-bold">
+                      الدقة: {toArabicIndic(kidVoiceAccuracy)}٪
+                    </span>
+                  )}
+                </div>
+              </div>
+              {kidVoiceTranscript && (
+                <p className="text-xs text-[#4B4539] dark:text-slate-300 leading-relaxed">
+                  سمعت منك: <strong className="text-[#1B1A17] dark:text-[#F6EFDD]">{kidVoiceTranscript}</strong>
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Large Child-Friendly Bottom Controls */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2 border-t border-[#D9B45A]/20 dark:border-slate-800/80">
             <button
               type="button"
               disabled={!canGoPrev}
               onClick={() => activeAyah && handleSelectAyah(activeAyah.numberInSurah - 1)}
-              className="min-h-[54px] px-4 py-3 rounded-2xl bg-slate-950 hover:bg-slate-900 disabled:opacity-35 border border-slate-800 text-[#F6EFDD] font-bold text-sm flex items-center justify-center gap-2 cursor-pointer"
+              className="min-h-[54px] px-4 py-3 rounded-2xl bg-white dark:bg-slate-950 hover:bg-[#F3E9D2] dark:hover:bg-slate-900 disabled:opacity-35 border border-[#D9B45A]/30 dark:border-slate-800 text-[#1B1A17] dark:text-[#F6EFDD] font-bold text-sm flex items-center justify-center gap-2 cursor-pointer"
             >
-              <ChevronRight className="w-5 h-5 text-[#D9B45A]" />
+              <ChevronRight className="w-5 h-5 text-[#8A6418] dark:text-[#D9B45A]" />
               <span>السابقة</span>
             </button>
 
             <button
               type="button"
               onClick={handleRestartAyah}
-              className="min-h-[54px] px-4 py-3 rounded-2xl bg-slate-950 hover:bg-slate-900 border border-slate-800 text-[#F6EFDD] font-bold text-sm flex items-center justify-center gap-2 cursor-pointer"
+              className="min-h-[54px] px-4 py-3 rounded-2xl bg-white dark:bg-slate-950 hover:bg-[#F3E9D2] dark:hover:bg-slate-900 border border-[#D9B45A]/30 dark:border-slate-800 text-[#1B1A17] dark:text-[#F6EFDD] font-bold text-sm flex items-center justify-center gap-2 cursor-pointer"
             >
-              <RotateCcw className="w-5 h-5 text-[#D9B45A]" />
+              <RotateCcw className="w-5 h-5 text-[#8A6418] dark:text-[#D9B45A]" />
               <span>إعادة الآية</span>
             </button>
+
+            {isVoiceCheckSupported && (
+              <button
+                type="button"
+                onClick={handleToggleKidVoiceTest}
+                className={`min-h-[54px] px-4 py-3 rounded-2xl border font-bold text-sm flex items-center justify-center gap-2 cursor-pointer transition-colors ${
+                  isKidVoiceChecking
+                    ? 'bg-emerald-600 border-emerald-400 text-white'
+                    : 'bg-emerald-50 dark:bg-emerald-950/70 hover:bg-emerald-100 dark:hover:bg-emerald-900 border-emerald-400 dark:border-emerald-500/45 text-emerald-900 dark:text-emerald-200'
+                }`}
+              >
+                {isKidVoiceChecking ? <Square className="w-5 h-5" /> : <Sparkles className="w-5 h-5 text-[#8A6418] dark:text-[#D9B45A]" />}
+                <span>{isKidVoiceChecking ? 'إيقاف السماع' : 'سمِّع لي الآن'}</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -2647,7 +2887,7 @@ export const KidsHifzSection: React.FC = () => {
               className={`min-h-[54px] px-4 py-3 rounded-2xl border font-bold text-sm flex items-center justify-center gap-2 cursor-pointer transition-colors ${
                 isRecordingVoice
                   ? 'bg-rose-600 border-rose-400 text-white'
-                  : 'bg-[#1F3A6E]/60 hover:bg-[#1F3A6E] border-[#648CD4]/45 text-[#F6EFDD]'
+                  : 'bg-[#1F3A6E] hover:bg-[#2E5499] border-[#648CD4]/45 text-[#F6EFDD]'
               }`}
             >
               {isRecordingVoice ? <Square className="w-5 h-5" /> : <Mic className="w-5 h-5 text-[#D9B45A]" />}
@@ -2658,10 +2898,10 @@ export const KidsHifzSection: React.FC = () => {
               type="button"
               disabled={!canGoNext}
               onClick={() => activeAyah && handleSelectAyah(activeAyah.numberInSurah + 1)}
-              className="min-h-[54px] px-4 py-3 rounded-2xl bg-slate-950 hover:bg-slate-900 disabled:opacity-35 border border-slate-800 text-[#F6EFDD] font-bold text-sm flex items-center justify-center gap-2 cursor-pointer"
+              className="min-h-[54px] px-4 py-3 rounded-2xl bg-white dark:bg-slate-950 hover:bg-[#F3E9D2] dark:hover:bg-slate-900 disabled:opacity-35 border border-[#D9B45A]/30 dark:border-slate-800 text-[#1B1A17] dark:text-[#F6EFDD] font-bold text-sm flex items-center justify-center gap-2 cursor-pointer"
             >
               <span>التالية</span>
-              <ChevronLeft className="w-5 h-5 text-[#D9B45A]" />
+              <ChevronLeft className="w-5 h-5 text-[#8A6418] dark:text-[#D9B45A]" />
             </button>
           </div>
 
@@ -2669,14 +2909,14 @@ export const KidsHifzSection: React.FC = () => {
           {(recordedAudioUrl || micError || submissionNotice) && (
             <div className="pt-1 space-y-2.5">
               {micError && (
-                <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-100 text-xs flex items-center gap-2">
+                <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-500/40 text-amber-900 dark:text-amber-100 text-xs flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>{micError}</span>
                 </div>
               )}
 
               {recordedAudioUrl && (
-                <div className="p-3.5 rounded-2xl bg-[#142038] border border-[#648CD4]/40 flex flex-wrap items-center justify-between gap-3">
+                <div className="p-3.5 rounded-2xl bg-[#1F3A6E] dark:bg-[#142038] border border-[#648CD4]/40 flex flex-wrap items-center justify-between gap-3">
                   <div className="text-xs sm:text-sm text-[#F6EFDD] font-semibold">
                     تسجيلك الصوتي: <span className="text-[#D9B45A]">{recordedAyahLabel}</span>
                   </div>
@@ -2707,7 +2947,7 @@ export const KidsHifzSection: React.FC = () => {
                           setJoinChildNameInput(activeProfile.name);
                           setIsJoinCircleModalOpen(true);
                         }}
-                        className="min-h-[42px] px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-[#648CD4]/45 text-slate-200 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+                        className="min-h-[42px] px-3.5 py-2 rounded-xl bg-white/10 dark:bg-slate-900 hover:bg-white/20 dark:hover:bg-slate-800 border border-[#648CD4]/45 text-[#F6EFDD] font-bold text-xs flex items-center gap-1.5 cursor-pointer"
                       >
                         <Link2 className="w-3.5 h-3.5 text-[#D9B45A]" />
                         <span>ربط بحلقة لإرسال التسميع</span>
@@ -2718,8 +2958,8 @@ export const KidsHifzSection: React.FC = () => {
               )}
 
               {submissionNotice && (
-                <div className="p-3 rounded-xl bg-emerald-950/50 border border-emerald-500/40 text-emerald-100 text-xs font-semibold flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-400 dark:border-emerald-500/40 text-emerald-900 dark:text-emerald-100 text-xs font-semibold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                   <span>{submissionNotice}</span>
                 </div>
               )}
@@ -2735,20 +2975,20 @@ export const KidsHifzSection: React.FC = () => {
               <div
                 className={`p-4 rounded-2xl border space-y-2.5 ${
                   latestSub.status === 'approved'
-                    ? 'bg-emerald-950/35 border-emerald-500/40'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/35 border-emerald-400 dark:border-emerald-500/40'
                     : latestSub.status === 'retry'
-                    ? 'bg-amber-950/35 border-amber-500/40'
-                    : 'bg-slate-950/80 border-slate-800'
+                    ? 'bg-amber-50 dark:bg-amber-950/35 border-amber-400 dark:border-amber-500/40'
+                    : 'bg-white dark:bg-slate-950/80 border-[#D9B45A]/25 dark:border-slate-800'
                 }`}
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-[#F6EFDD]">
+                  <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-[#1B1A17] dark:text-[#F6EFDD]">
                     {latestSub.status === 'approved' ? (
                       <Star className="w-4 h-4 text-[#D9B45A] fill-[#D9B45A]" />
                     ) : latestSub.status === 'retry' ? (
-                      <RotateCcw className="w-4 h-4 text-amber-300" />
+                      <RotateCcw className="w-4 h-4 text-amber-600 dark:text-amber-300" />
                     ) : (
-                      <Inbox className="w-4 h-4 text-sky-300" />
+                      <Inbox className="w-4 h-4 text-sky-600 dark:text-sky-300" />
                     )}
                     <span>
                       {latestSub.status === 'approved'
@@ -2777,7 +3017,7 @@ export const KidsHifzSection: React.FC = () => {
                 </div>
 
                 {latestSub.supervisorFeedbackText && (
-                  <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
+                  <p className="text-xs sm:text-sm text-[#4B4539] dark:text-slate-200 leading-relaxed">
                     «{latestSub.supervisorFeedbackText}»
                   </p>
                 )}
@@ -2788,44 +3028,44 @@ export const KidsHifzSection: React.FC = () => {
       )}
 
       {/* Kid Garden & Surah Badges Showcase */}
-      <div className="rounded-2xl bg-[#10161f] border border-slate-800 p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f] border border-[#D9B45A]/30 dark:border-slate-800 p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-emerald-950/70 border border-emerald-500/40 flex items-center justify-center text-emerald-300 shrink-0">
+          <div className="w-14 h-14 rounded-2xl bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-400/50 dark:border-emerald-500/40 flex items-center justify-center text-emerald-700 dark:text-emerald-300 shrink-0">
             <Sprout className="w-7 h-7" />
           </div>
           <div className="flex-1 min-w-0 space-y-1.5">
             <div className="flex items-center justify-between text-xs sm:text-sm">
-              <span className="font-bold text-[#F6EFDD]">حديقة الحفظ: {gardenStage.stageName}</span>
-              <span className="text-emerald-300 font-bold tabular-nums">
+              <span className="font-bold text-[#1B1A17] dark:text-[#F6EFDD]">حديقة الحفظ: {gardenStage.stageName}</span>
+              <span className="text-emerald-700 dark:text-emerald-300 font-bold tabular-nums">
                 المستوى {toArabicIndic(gardenStage.level)}
               </span>
             </div>
-            <div className="h-2.5 rounded-full bg-slate-900 overflow-hidden">
+            <div className="h-2.5 rounded-full bg-[#EFE7D4] dark:bg-slate-900 overflow-hidden">
               <div
-                className="h-full bg-emerald-400 transition-all duration-300"
+                className="h-full bg-emerald-500 dark:bg-emerald-400 transition-all duration-300"
                 style={{ width: `${gardenStage.progressPercent}%` }}
               />
             </div>
-            <div className="text-[11px] text-slate-400 tabular-nums">
+            <div className="text-[11px] text-[#6B6251] dark:text-slate-400 tabular-nums">
               {toArabicIndic(activeProfile.stars)} نجمة مكتسبة · الهدف التالي {toArabicIndic(gardenStage.nextMilestone)} نجمة
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 sm:border-r sm:border-slate-800 sm:pr-4">
-          <div className="w-14 h-14 rounded-2xl bg-[#142038] border border-[#D9B45A]/35 flex items-center justify-center text-[#D9B45A] shrink-0">
+        <div className="flex items-center gap-3 sm:border-r sm:border-[#D9B45A]/20 dark:sm:border-slate-800 sm:pr-4">
+          <div className="w-14 h-14 rounded-2xl bg-[#1F3A6E] dark:bg-[#142038] border border-[#D9B45A]/35 flex items-center justify-center text-[#D9B45A] shrink-0">
             <Award className="w-7 h-7" />
           </div>
           <div className="min-w-0 flex-1 space-y-1">
-            <div className="text-xs sm:text-sm font-bold text-[#F6EFDD] tabular-nums">
+            <div className="text-xs sm:text-sm font-bold text-[#1B1A17] dark:text-[#F6EFDD] tabular-nums">
               أوسمة السور المكتملة ({toArabicIndic(activeProfile.completedSurahs.length)})
             </div>
             {activeProfile.completedSurahs.length === 0 ? (
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-[#6B6251] dark:text-slate-400">
                 أكمل جميع آيات السورة لتضيء هنا بوسام ذهبي خاص بك
               </p>
             ) : (
-              <div className="flex flex-wrap gap-1.5 text-xs text-[#D9B45A] font-semibold">
+              <div className="flex flex-wrap gap-1.5 text-xs text-[#8A6418] dark:text-[#D9B45A] font-semibold">
                 {activeProfile.completedSurahs.map((sNum) => {
                   const s = SURAHS_LIST.find((x) => x.number === sNum);
                   return (
@@ -2846,14 +3086,14 @@ export const KidsHifzSection: React.FC = () => {
           role="dialog"
           aria-modal="true"
           aria-label="بوابة المشرف"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150"
         >
           <form
             onSubmit={handleSubmitGate}
-            className="w-full max-w-sm rounded-2xl bg-[#10161f] border border-[#D9B45A]/40 p-6 shadow-2xl space-y-4"
+            className="w-full max-w-sm rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f] border border-[#D9B45A]/45 p-6 shadow-2xl space-y-4"
           >
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-[#D9B45A] font-bold text-sm">
+              <div className="flex items-center gap-2 text-[#8A6418] dark:text-[#D9B45A] font-bold text-sm">
                 <Lock className="w-4 h-4" />
                 <span>بوابة المشرف وولي الأمر</span>
               </div>
@@ -2861,17 +3101,17 @@ export const KidsHifzSection: React.FC = () => {
                 type="button"
                 onClick={() => setIsGateModalOpen(false)}
                 aria-label="إغلاق"
-                className="min-w-[36px] min-h-[36px] rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+                className="min-w-[36px] min-h-[36px] rounded-lg flex items-center justify-center text-[#6B6251] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white hover:bg-[#F3E9D2] dark:hover:bg-slate-800 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-300 leading-relaxed">
+            <p className="text-xs text-[#4B4539] dark:text-slate-300 leading-relaxed">
               للدخول إلى إعدادات الورد واعتماد حفظ الطفل، يرجى الإجابة عن السؤال التالي:
             </p>
 
-            <div className="p-4 rounded-xl bg-[#142038] border border-slate-700 text-center text-lg font-bold text-[#F6EFDD]">
+            <div className="p-4 rounded-xl bg-[#1F3A6E] dark:bg-[#142038] border border-[#648CD4]/45 dark:border-slate-700 text-center text-lg font-bold text-[#F6EFDD]">
               {gateChallenge.questionText}
             </div>
 
@@ -2886,18 +3126,18 @@ export const KidsHifzSection: React.FC = () => {
               }}
               placeholder="اكتب الناتج بالأرقام..."
               aria-label="إجابة سؤال المشرف"
-              className="w-full min-h-[46px] px-4 py-2 rounded-xl bg-slate-950 border border-slate-700 text-center text-base font-bold text-[#F6EFDD] tabular-nums outline-none focus:border-[#D9B45A]"
+              className="w-full min-h-[46px] px-4 py-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/35 dark:border-slate-700 text-center text-base font-bold text-[#1B1A17] dark:text-[#F6EFDD] tabular-nums outline-none focus:border-[#D9B45A]"
             />
 
             {gateError && (
-              <p className="text-xs text-rose-400 text-center font-medium">{gateError}</p>
+              <p className="text-xs text-rose-600 dark:text-rose-400 text-center font-medium">{gateError}</p>
             )}
 
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setIsGateModalOpen(false)}
-                className="flex-1 min-h-[44px] rounded-xl bg-slate-900 border border-slate-800 text-slate-300 text-xs font-bold cursor-pointer"
+                className="flex-1 min-h-[44px] rounded-xl bg-white dark:bg-slate-900 border border-[#D9B45A]/25 dark:border-slate-800 text-[#4B4539] dark:text-slate-300 text-xs font-bold cursor-pointer"
               >
                 إلغاء
               </button>
@@ -2918,14 +3158,14 @@ export const KidsHifzSection: React.FC = () => {
           role="dialog"
           aria-modal="true"
           aria-label="انضمام لحلقة مشرف بكود"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150"
         >
           <form
             onSubmit={handleJoinCircleSubmit}
-            className="w-full max-w-sm rounded-2xl bg-[#10161f] border border-[#D9B45A]/40 p-6 shadow-2xl space-y-4"
+            className="w-full max-w-sm rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f] border border-[#D9B45A]/45 p-6 shadow-2xl space-y-4"
           >
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-[#D9B45A] font-bold text-sm">
+              <div className="flex items-center gap-2 text-[#8A6418] dark:text-[#D9B45A] font-bold text-sm">
                 <Link2 className="w-4 h-4" />
                 <span>انضمام لحلقة المشرف</span>
               </div>
@@ -2933,18 +3173,18 @@ export const KidsHifzSection: React.FC = () => {
                 type="button"
                 onClick={() => setIsJoinCircleModalOpen(false)}
                 aria-label="إغلاق"
-                className="min-w-[36px] min-h-[36px] rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+                className="min-w-[36px] min-h-[36px] rounded-lg flex items-center justify-center text-[#6B6251] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white hover:bg-[#F3E9D2] dark:hover:bg-slate-800 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-300 leading-relaxed">
+            <p className="text-xs text-[#4B4539] dark:text-slate-300 leading-relaxed">
               أدخل كود الحلقة المكون من ٦ أرقام الذي أرسله لك المعلم أو ولي الأمر ليصلك الورد اليومي وتستطيع إرسال تسميعك الصوتي.
             </p>
 
             <div className="space-y-1.5">
-              <label htmlFor="kid-join-code" className="block text-xs font-semibold text-slate-300">
+              <label htmlFor="kid-join-code" className="block text-xs font-semibold text-[#4B4539] dark:text-slate-300">
                 كود الحلقة (٦ أرقام)
               </label>
               <input
@@ -2959,13 +3199,13 @@ export const KidsHifzSection: React.FC = () => {
                   setJoinError(null);
                 }}
                 placeholder="مثال: 482910"
-                className="w-full min-h-[46px] px-4 py-2 rounded-xl bg-slate-950 border border-slate-700 text-center text-lg font-bold tracking-widest text-[#D9B45A] tabular-nums outline-none focus:border-[#D9B45A]"
+                className="w-full min-h-[46px] px-4 py-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/35 dark:border-slate-700 text-center text-lg font-bold tracking-widest text-[#8A6418] dark:text-[#D9B45A] tabular-nums outline-none focus:border-[#D9B45A]"
                 dir="ltr"
               />
             </div>
 
             <div className="space-y-1.5">
-              <label htmlFor="kid-join-name" className="block text-xs font-semibold text-slate-300">
+              <label htmlFor="kid-join-name" className="block text-xs font-semibold text-[#4B4539] dark:text-slate-300">
                 اسم البطل في الحلقة
               </label>
               <input
@@ -2974,19 +3214,19 @@ export const KidsHifzSection: React.FC = () => {
                 value={joinChildNameInput}
                 onChange={(e) => setJoinChildNameInput(e.target.value)}
                 placeholder="اسم الطفل..."
-                className="w-full min-h-[44px] px-4 py-2 rounded-xl bg-slate-950 border border-slate-700 text-sm text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
+                className="w-full min-h-[44px] px-4 py-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/35 dark:border-slate-700 text-sm text-[#1B1A17] dark:text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
               />
             </div>
 
             {joinError && (
-              <p className="text-xs text-rose-400 text-center font-medium">{joinError}</p>
+              <p className="text-xs text-rose-600 dark:text-rose-400 text-center font-medium">{joinError}</p>
             )}
 
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setIsJoinCircleModalOpen(false)}
-                className="flex-1 min-h-[44px] rounded-xl bg-slate-900 border border-slate-800 text-slate-300 text-xs font-bold cursor-pointer"
+                className="flex-1 min-h-[44px] rounded-xl bg-white dark:bg-slate-900 border border-[#D9B45A]/25 dark:border-slate-800 text-[#4B4539] dark:text-slate-300 text-xs font-bold cursor-pointer"
               >
                 إلغاء
               </button>

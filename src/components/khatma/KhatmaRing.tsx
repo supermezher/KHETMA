@@ -69,7 +69,7 @@ export const KhatmaRing: React.FC<KhatmaRingProps> = ({ parts, size = 252, onSel
         viewBox="0 0 280 280"
         role="img"
         aria-label={`خاتم الختمة: مكتمل ${completedCount} من 30 جزءاً`}
-        className="overflow-visible"
+        className="overflow-visible text-[#1B1A17] dark:text-[#F6EFDD]"
       >
         {/* Subtle inner compass hairline */}
         <circle
@@ -77,7 +77,8 @@ export const KhatmaRing: React.FC<KhatmaRingProps> = ({ parts, size = 252, onSel
           cy={cy}
           r={innerR - 7}
           fill="none"
-          stroke="rgba(217, 180, 90, 0.25)"
+          stroke="currentColor"
+          strokeOpacity="0.22"
           strokeWidth="1"
           strokeDasharray="3 3"
         />
@@ -100,13 +101,13 @@ export const KhatmaRing: React.FC<KhatmaRingProps> = ({ parts, size = 252, onSel
             ? '#D9B45A'
             : isClaimed
             ? '#2E5499'
-            : 'rgba(233, 227, 211, 0.04)';
+            : 'rgba(138, 100, 24, 0.08)';
 
           const strokeColor = isCompleted
-            ? '#F6EFDD'
+            ? '#8A6418'
             : isClaimed
             ? '#648CD4'
-            : 'rgba(233, 227, 211, 0.22)';
+            : 'rgba(138, 100, 24, 0.35)';
 
           return (
             <g
@@ -154,7 +155,8 @@ export const KhatmaRing: React.FC<KhatmaRingProps> = ({ parts, size = 252, onSel
           y={cy - 18}
           textAnchor="middle"
           fontSize="13"
-          fill="#D9B45A"
+          fill="#8A6418"
+          className="dark:fill-[#D9B45A]"
         >
           ۞
         </text>
@@ -164,7 +166,7 @@ export const KhatmaRing: React.FC<KhatmaRingProps> = ({ parts, size = 252, onSel
           textAnchor="middle"
           fontSize="26"
           fontWeight="700"
-          fill="#F6EFDD"
+          fill="currentColor"
           style={{ fontVariantNumeric: 'tabular-nums' }}
         >
           {toArabicIndic(completedCount)} من ٣٠
@@ -174,7 +176,8 @@ export const KhatmaRing: React.FC<KhatmaRingProps> = ({ parts, size = 252, onSel
           y={cy + 27}
           textAnchor="middle"
           fontSize="11"
-          fill="#B6B0A2"
+          fill="currentColor"
+          fillOpacity="0.68"
         >
           {claimedCount - completedCount > 0
             ? `قيد القراءة: ${toArabicIndic(claimedCount - completedCount)}`
@@ -183,7 +186,7 @@ export const KhatmaRing: React.FC<KhatmaRingProps> = ({ parts, size = 252, onSel
       </svg>
 
       {/* Quiet typographic legend (zero pill clutter) */}
-      <div className="flex items-center justify-center gap-4 text-xs text-slate-300">
+      <div className="flex items-center justify-center gap-4 text-xs text-[#5C5549] dark:text-slate-300">
         <span className="inline-flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-xs bg-[#D9B45A] inline-block" aria-hidden="true" />
           <span>مكتمل</span>
@@ -193,7 +196,7 @@ export const KhatmaRing: React.FC<KhatmaRingProps> = ({ parts, size = 252, onSel
           <span>محجوز</span>
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-xs border border-slate-500 inline-block" aria-hidden="true" />
+          <span className="w-2.5 h-2.5 rounded-xs border border-[#8A6418]/50 dark:border-slate-500 inline-block" aria-hidden="true" />
           <span>متاح</span>
         </span>
       </div>

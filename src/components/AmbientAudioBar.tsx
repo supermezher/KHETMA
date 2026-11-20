@@ -49,34 +49,36 @@ export const AmbientAudioBar: React.FC = () => {
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`flex items-center gap-1.5 py-2 px-3 rounded-xl text-xs font-semibold border transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
+        className={`min-h-[38px] flex items-center gap-1.5 py-2 px-2.5 sm:px-3 rounded-xl text-xs font-semibold border transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D9B45A] ${
           activeSound !== 'none'
-            ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-300'
-            : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+            ? 'bg-[#1F3A6E] border-[#648CD4]/60 text-[#D9B45A]'
+            : 'bg-white dark:bg-slate-900 border-[#D9B45A]/25 dark:border-slate-800 text-[#1B1A17] dark:text-slate-300 hover:text-[#8A6418] dark:hover:text-white hover:border-[#8A6418]/40 dark:hover:border-slate-700'
         }`}
         title="أجواء التدبر والتركيز (أصوات طبيعية هادئة)"
+        aria-label="أجواء التدبر والتركيز"
       >
         {activeSound === 'rain' && <CloudRain className="w-3.5 h-3.5" />}
         {activeSound === 'breeze' && <Wind className="w-3.5 h-3.5" />}
         {activeSound === 'night' && <Moon className="w-3.5 h-3.5" />}
-        {activeSound === 'none' && <Volume2 className="w-3.5 h-3.5 text-slate-400" />}
+        {activeSound === 'none' && <Volume2 className="w-3.5 h-3.5 text-[#8A6418] dark:text-slate-400" />}
         <span className="hidden xl:inline">{activeSound !== 'none' ? 'أجواء التدبر' : 'أجواء هادئة'}</span>
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 top-full mt-2 z-50 w-64 p-3.5 rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl space-y-3 animate-in fade-in duration-150">
-          <div className="flex items-center justify-between text-xs font-bold text-white">
+        <div className="absolute end-0 top-full mt-2 z-50 w-64 p-3.5 rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f] border border-[#D9B45A]/35 shadow-2xl space-y-3 animate-in fade-in duration-150">
+          <div className="flex items-center justify-between text-xs font-bold text-[#1B1A17] dark:text-[#F6EFDD]">
             <span className="flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-              أصوات الطبيعة لتعزيز الخشوع
+              <Sparkles className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
+              أصوات الطبيعة للخشوع
             </span>
             {activeSound !== 'none' && (
               <button
+                type="button"
                 onClick={() => {
                   ambientAudio.stop();
                   setActiveSound('none');
                 }}
-                className="text-[11px] text-rose-400 hover:text-rose-300 flex items-center gap-0.5"
+                className="text-[11px] text-rose-600 dark:text-rose-400 hover:opacity-80 flex items-center gap-0.5 cursor-pointer"
               >
                 <VolumeX className="w-3 h-3" />
                 إيقاف
@@ -86,11 +88,12 @@ export const AmbientAudioBar: React.FC = () => {
 
           <div className="grid grid-cols-3 gap-1.5">
             <button
+              type="button"
               onClick={() => toggleSound('rain')}
-              className={`p-2 rounded-xl text-xs flex flex-col items-center gap-1 border transition-all ${
+              className={`p-2 rounded-xl text-xs flex flex-col items-center gap-1 border transition-all cursor-pointer ${
                 activeSound === 'rain'
-                  ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
-                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                  ? 'bg-[#1F3A6E] border-[#648CD4] text-[#D9B45A]'
+                  : 'bg-[#F6EFDD] dark:bg-slate-950 border-[#D9B45A]/20 dark:border-slate-800 text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white'
               }`}
             >
               <CloudRain className="w-4 h-4" />
@@ -98,11 +101,12 @@ export const AmbientAudioBar: React.FC = () => {
             </button>
 
             <button
+              type="button"
               onClick={() => toggleSound('breeze')}
-              className={`p-2 rounded-xl text-xs flex flex-col items-center gap-1 border transition-all ${
+              className={`p-2 rounded-xl text-xs flex flex-col items-center gap-1 border transition-all cursor-pointer ${
                 activeSound === 'breeze'
-                  ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
-                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                  ? 'bg-[#1F3A6E] border-[#648CD4] text-[#D9B45A]'
+                  : 'bg-[#F6EFDD] dark:bg-slate-950 border-[#D9B45A]/20 dark:border-slate-800 text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white'
               }`}
             >
               <Wind className="w-4 h-4" />
@@ -110,11 +114,12 @@ export const AmbientAudioBar: React.FC = () => {
             </button>
 
             <button
+              type="button"
               onClick={() => toggleSound('night')}
-              className={`p-2 rounded-xl text-xs flex flex-col items-center gap-1 border transition-all ${
+              className={`p-2 rounded-xl text-xs flex flex-col items-center gap-1 border transition-all cursor-pointer ${
                 activeSound === 'night'
-                  ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
-                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                  ? 'bg-[#1F3A6E] border-[#648CD4] text-[#D9B45A]'
+                  : 'bg-[#F6EFDD] dark:bg-slate-950 border-[#D9B45A]/20 dark:border-slate-800 text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white'
               }`}
             >
               <Moon className="w-4 h-4" />
@@ -123,8 +128,8 @@ export const AmbientAudioBar: React.FC = () => {
           </div>
 
           {activeSound !== 'none' && (
-            <div className="pt-2 border-t border-slate-800">
-              <div className="flex justify-between text-[11px] text-slate-400 mb-1">
+            <div className="pt-2 border-t border-[#D9B45A]/20 dark:border-slate-800">
+              <div className="flex justify-between text-[11px] text-[#5C5549] dark:text-slate-400 mb-1 tabular-nums">
                 <span>مستوى الصوت</span>
                 <span>{volume}%</span>
               </div>
@@ -134,7 +139,7 @@ export const AmbientAudioBar: React.FC = () => {
                 max={100}
                 value={volume}
                 onChange={handleVolumeChange}
-                className="w-full h-1.5 accent-emerald-500 bg-slate-800 rounded-lg cursor-pointer"
+                className="w-full h-1.5 accent-[#1F3A6E] dark:accent-[#D9B45A] bg-[#E5DAC0] dark:bg-slate-800 rounded-lg cursor-pointer"
               />
             </div>
           )}

@@ -90,6 +90,34 @@ export default defineConfig(() => {
                 },
               },
             },
+            {
+              urlPattern: /^https:\/\/api\.quran\.com\/api\/v4\/.*/i,
+              handler: 'StaleWhileRevalidate',
+              options: {
+                cacheName: 'quran-com-segments-cache',
+                expiration: {
+                  maxEntries: 1500,
+                  maxAgeSeconds: 60 * 60 * 24 * 90,
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
+            {
+              urlPattern: /^https:\/\/everyayah\.com\/data\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'everyayah-audio-cache',
+                expiration: {
+                  maxEntries: 800,
+                  maxAgeSeconds: 60 * 60 * 24 * 90,
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
           ],
         },
         devOptions: {

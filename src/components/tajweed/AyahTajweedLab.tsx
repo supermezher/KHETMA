@@ -260,11 +260,11 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
   return (
     <div className="space-y-5">
       {/* Selector & Curated Presets Bar */}
-      <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
+      <div className="p-5 rounded-2xl bg-[#FBF7EE] dark:bg-slate-900 border border-[#D9B45A]/30 dark:border-slate-800 space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div>
-            <h3 className="text-base sm:text-lg font-bold text-white">مختبر «حلّل الآية بنفسك»</h3>
-            <p className="text-xs text-slate-400">
+            <h3 className="text-base sm:text-lg font-bold text-[#1B1A17] dark:text-white">مختبر «حلّل الآية بنفسك»</h3>
+            <p className="text-xs text-[#6B6251] dark:text-slate-400">
               اختر أي آية من القرآن الكريم واعزل أحكامها أو اضغط على أي كلمة لشرح سبب التلوين مع الاستماع
             </p>
           </div>
@@ -279,16 +279,16 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                 setAyahNumber(1);
                 setSelectedWordIndex(null);
               }}
-              className="py-2 px-3 rounded-xl bg-slate-950 border border-slate-700 text-xs font-bold text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
+              className="py-2 px-3 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/35 dark:border-slate-700 text-xs font-bold text-[#1B1A17] dark:text-white focus:outline-none focus:border-[#D9B45A] cursor-pointer"
             >
               {SURAHS_LIST.map((s) => (
-                <option key={s.number} value={s.number}>
+                <option key={s.number} value={s.number} className="bg-white text-[#1B1A17] dark:bg-slate-900 dark:text-white">
                   {s.number}. سورة {s.name}
                 </option>
               ))}
             </select>
 
-            <div className="flex items-center bg-slate-950 rounded-xl border border-slate-700">
+            <div className="flex items-center bg-white dark:bg-slate-950 rounded-xl border border-[#D9B45A]/35 dark:border-slate-700">
               <button
                 type="button"
                 onClick={() => {
@@ -296,7 +296,7 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                   setSelectedWordIndex(null);
                 }}
                 disabled={ayahNumber <= 1}
-                className="p-2 text-slate-300 hover:text-white disabled:opacity-35 cursor-pointer disabled:cursor-not-allowed"
+                className="p-2 text-[#6B6251] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white disabled:opacity-35 cursor-pointer disabled:cursor-not-allowed"
                 title="الآية السابقة"
               >
                 <ChevronRight className="w-4 h-4" />
@@ -309,10 +309,10 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                   setAyahNumber(Number(e.target.value));
                   setSelectedWordIndex(null);
                 }}
-                className="py-2 px-2 bg-transparent text-xs font-bold text-emerald-300 tabular-nums focus:outline-none cursor-pointer"
+                className="py-2 px-2 bg-transparent text-xs font-bold text-[#1F3A6E] dark:text-[#D9B45A] tabular-nums focus:outline-none cursor-pointer"
               >
                 {Array.from({ length: surahMeta.numberOfAyahs }, (_, i) => i + 1).map((n) => (
-                  <option key={n} value={n} className="bg-slate-900 text-white">
+                  <option key={n} value={n} className="bg-white text-[#1B1A17] dark:bg-slate-900 dark:text-white">
                     الآية {n}
                   </option>
                 ))}
@@ -325,7 +325,7 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                   setSelectedWordIndex(null);
                 }}
                 disabled={ayahNumber >= surahMeta.numberOfAyahs}
-                className="p-2 text-slate-300 hover:text-white disabled:opacity-35 cursor-pointer disabled:cursor-not-allowed"
+                className="p-2 text-[#6B6251] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white disabled:opacity-35 cursor-pointer disabled:cursor-not-allowed"
                 title="الآية التالية"
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -335,8 +335,8 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
         </div>
 
         {/* Curated Quick Examples Strip */}
-        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/80">
-          <span className="text-[11px] font-semibold text-slate-400 whitespace-nowrap">
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#D9B45A]/20 dark:border-slate-800/80">
+          <span className="text-[11px] font-semibold text-[#6B6251] dark:text-slate-400 whitespace-nowrap">
             نماذج غنية بالأحكام:
           </span>
           {CURATED_PRESETS.map((preset) => {
@@ -348,8 +348,8 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                 onClick={() => handlePickPreset(preset.surah, preset.ayah)}
                 className={`py-1 px-3 rounded-lg border text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer tabular-nums ${
                   isActive
-                    ? 'bg-emerald-600 border-emerald-500 text-white'
-                    : 'bg-slate-950 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                    ? 'bg-[#1F3A6E] border-[#648CD4]/50 text-[#F6EFDD]'
+                    : 'bg-white dark:bg-slate-950 border-[#D9B45A]/25 dark:border-slate-800 text-[#4B4539] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white hover:border-[#D9B45A]/50 dark:hover:border-slate-700'
                 }`}
               >
                 {preset.label}
@@ -360,11 +360,11 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
       </div>
 
       {/* Interactive Ayah Analysis Stage */}
-      <div className="p-5 sm:p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-5">
+      <div className="p-5 sm:p-6 rounded-2xl bg-[#FBF7EE] dark:bg-slate-900 border border-[#D9B45A]/30 dark:border-slate-800 space-y-5">
         {/* Rule Isolation Filters */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-800">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-300">
-            <Filter className="w-3.5 h-3.5 text-emerald-400" />
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-[#D9B45A]/20 dark:border-slate-800">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-[#1B1A17] dark:text-slate-300">
+            <Filter className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
             <span>عزل وتمييز الحكم داخل الآية:</span>
           </div>
 
@@ -378,8 +378,8 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                   onClick={() => setIsolationFilter(f.id)}
                   className={`py-1.5 px-3 rounded-lg border text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer flex items-center gap-1.5 ${
                     isActive
-                      ? 'bg-slate-800 border-emerald-400 text-white shadow-sm'
-                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                      ? 'bg-[#1F3A6E] border-[#D9B45A] text-[#F6EFDD] shadow-sm'
+                      : 'bg-white dark:bg-slate-950 border-[#D9B45A]/25 dark:border-slate-800 text-[#4B4539] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white'
                   }`}
                 >
                   <span
@@ -396,16 +396,16 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
         {/* Ayah Surface */}
         {isLoading ? (
           <div className="py-12 text-center space-y-2">
-            <div className="w-8 h-8 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin mx-auto" />
-            <p className="text-xs text-slate-400">جارٍ جلب الرسم العثماني وأحكام التجويد للآية...</p>
+            <div className="w-8 h-8 rounded-full border-2 border-[#D9B45A] border-t-transparent animate-spin mx-auto" />
+            <p className="text-xs text-[#6B6251] dark:text-slate-400">جارٍ جلب الرسم العثماني وأحكام التجويد للآية...</p>
           </div>
         ) : errorMsg ? (
-          <div className="p-6 rounded-xl bg-rose-950/20 border border-rose-500/30 text-center space-y-3">
-            <p className="text-xs text-rose-200">{errorMsg}</p>
+          <div className="p-6 rounded-xl bg-rose-50 dark:bg-rose-950/20 border border-rose-300 dark:border-rose-500/30 text-center space-y-3">
+            <p className="text-xs text-rose-800 dark:text-rose-200">{errorMsg}</p>
             <button
               type="button"
               onClick={() => setReloadNonce((n) => n + 1)}
-              className="py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+              className="py-2 px-4 rounded-xl bg-[#1F3A6E] hover:bg-[#2E5499] text-[#F6EFDD] text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5" />
               <span>إعادة المحاولة</span>
@@ -413,10 +413,10 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Clickable Words Canvas */}
+            {/* Clickable Words Canvas (Kept deep ink so Tajweed rule colors stay luminous & legible) */}
             <div
               dir="rtl"
-              className="p-5 sm:p-7 rounded-2xl bg-[#0b1117] border border-slate-800/90 text-center"
+              className="p-5 sm:p-7 rounded-2xl bg-[#0b1117] border border-[#1F3A6E]/35 dark:border-slate-800/90 text-center shadow-inner"
             >
               <p className="font-quran text-2xl sm:text-3xl leading-[2.6] text-slate-100 select-text">
                 {parsedWords.map((wordTokens, wIdx) => {
@@ -432,9 +432,9 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                         onClick={() =>
                           setSelectedWordIndex((prev) => (prev === wIdx ? null : wIdx))
                         }
-                        className={`inline cursor-pointer rounded-lg px-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
+                        className={`inline cursor-pointer rounded-lg px-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D9B45A] ${
                           isWordSelected
-                            ? 'bg-emerald-500/20 ring-1 ring-emerald-400'
+                            ? 'bg-[#D9B45A]/20 ring-1 ring-[#D9B45A]'
                             : 'hover:bg-slate-800/70'
                         }`}
                         title="اضغط لعرض تحليل أحكام هذه الكلمة"
@@ -479,7 +479,7 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                     </React.Fragment>
                   );
                 })}
-                <span className="text-emerald-400 font-bold text-xl mx-2 tabular-nums">
+                <span className="text-[#D9B45A] font-bold text-xl mx-2 tabular-nums">
                   ﴿{ayahNumber}﴾
                 </span>
               </p>
@@ -491,18 +491,18 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
 
             {/* Selected Word Breakdown Inspector */}
             {selectedWordTokens && (
-              <div className="p-4 rounded-xl bg-slate-950 border border-emerald-500/35 space-y-2.5 animate-in fade-in duration-150">
-                <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-800">
+              <div className="p-4 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/45 space-y-2.5 animate-in fade-in duration-150">
+                <div className="flex items-center justify-between gap-2 pb-2 border-b border-[#D9B45A]/20 dark:border-slate-800">
                   <div className="flex items-center gap-2.5">
-                    <span className="text-xs font-bold text-emerald-300">تحليل الكلمة:</span>
-                    <span className="font-quran text-2xl text-white">
+                    <span className="text-xs font-bold text-[#8A6418] dark:text-[#D9B45A]">تحليل الكلمة:</span>
+                    <span className="font-quran text-2xl text-[#1B1A17] dark:text-white">
                       {selectedWordTokens.map((t) => t.text).join('')}
                     </span>
                   </div>
                   <button
                     type="button"
                     onClick={() => setSelectedWordIndex(null)}
-                    className="text-xs text-slate-400 hover:text-white cursor-pointer"
+                    className="text-xs text-[#6B6251] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white cursor-pointer"
                   >
                     إغلاق
                   </button>
@@ -517,28 +517,28 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                         return (
                           <div
                             key={idx}
-                            className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 flex items-start gap-2.5"
+                            className="p-2.5 rounded-lg bg-[#FBF7EE] dark:bg-slate-900 border border-[#D9B45A]/25 dark:border-slate-800 flex items-start gap-2.5"
                           >
                             <span
                               className="w-3 h-3 rounded-full mt-1 shrink-0"
-                              style={{ backgroundColor: meta?.colorHex || '#10b981' }}
+                              style={{ backgroundColor: meta?.colorHex || '#D9B45A' }}
                             />
                             <div className="text-xs space-y-0.5">
-                              <div className="font-bold text-white flex items-center gap-2">
-                                <span className="font-quran text-base" style={{ color: meta?.colorHex }}>
+                              <div className="font-bold text-[#1B1A17] dark:text-white flex items-center gap-2">
+                                <span className="font-quran text-base px-1.5 py-0.5 rounded bg-[#0b1117]" style={{ color: meta?.colorHex }}>
                                   {tok.text}
                                 </span>
                                 <span aria-hidden="true">·</span>
                                 <span>{meta?.label}</span>
                               </div>
-                              <p className="text-slate-300 leading-relaxed">{tok.tooltip}</p>
+                              <p className="text-[#4B4539] dark:text-slate-300 leading-relaxed">{tok.tooltip}</p>
                             </div>
                           </div>
                         );
                       })}
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-300">
+                  <p className="text-xs text-[#4B4539] dark:text-slate-300">
                     كلمة خالية من أحكام التلوين الخاصة؛ تُقرأ حروفها وحركاتها بالنطق الأصلي المُظهر بوضوح.
                   </p>
                 )}
@@ -553,8 +553,8 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                   onClick={handleToggleAudio}
                   className={`py-2 px-4 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap ${
                     isPlayingAudio
-                      ? 'bg-amber-500 text-slate-950'
-                      : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                      ? 'bg-[#D9B45A] text-[#1B1A17]'
+                      : 'bg-[#1F3A6E] hover:bg-[#2E5499] text-[#F6EFDD]'
                   }`}
                 >
                   {isPlayingAudio ? (
@@ -575,38 +575,38 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                   onClick={() => setPlaybackRate((r) => (r === 1 ? 0.75 : 1))}
                   className={`py-2 px-3 rounded-xl border text-xs font-bold tabular-nums transition-colors cursor-pointer whitespace-nowrap ${
                     playbackRate === 0.75
-                      ? 'bg-sky-500/20 border-sky-400 text-sky-200'
-                      : 'bg-slate-950 border-slate-700 text-slate-300 hover:text-white'
+                      ? 'bg-sky-50 dark:bg-sky-500/20 border-sky-400 text-sky-900 dark:text-sky-200'
+                      : 'bg-white dark:bg-slate-950 border-[#D9B45A]/30 dark:border-slate-700 text-[#4B4539] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white'
                   }`}
                   title="إبطاء الصوت لسماع المدود والغنة بوضوح"
                 >
                   السرعة: {playbackRate}x
                 </button>
 
-                {audioError && <span className="text-xs text-rose-400">{audioError}</span>}
+                {audioError && <span className="text-xs text-rose-600 dark:text-rose-400">{audioError}</span>}
               </div>
 
               {onNavigateToAyah && (
                 <button
                   type="button"
                   onClick={() => onNavigateToAyah(surahNumber, ayahNumber)}
-                  className="py-2 px-3.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+                  className="py-2 px-3.5 rounded-xl bg-white dark:bg-slate-950 hover:bg-[#F3E9D2]/60 dark:hover:bg-slate-800 border border-[#D9B45A]/35 dark:border-slate-700 text-xs font-semibold text-[#1B1A17] dark:text-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
                 >
-                  <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
+                  <BookOpen className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
                   <span>فتح في المصحف</span>
-                  <ExternalLink className="w-3 h-3 text-slate-400" />
+                  <ExternalLink className="w-3 h-3 text-[#6B6251] dark:text-slate-400" />
                 </button>
               )}
             </div>
 
             {/* Live Rule Occurrences Summary */}
-            <div className="pt-4 border-t border-slate-800 space-y-2">
+            <div className="pt-4 border-t border-[#D9B45A]/20 dark:border-slate-800 space-y-2">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-bold text-slate-300 flex items-center gap-1.5">
-                  <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="font-bold text-[#1B1A17] dark:text-slate-300 flex items-center gap-1.5">
+                  <Volume2 className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
                   <span>إحصاء الأحكام المكتشفة في الآية</span>
                 </span>
-                <span className="text-slate-400 tabular-nums">
+                <span className="text-[#6B6251] dark:text-slate-400 tabular-nums">
                   {surahMeta.name} · آية {ayahNumber}
                 </span>
               </div>
@@ -618,19 +618,19 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                       key={rule}
                       type="button"
                       onClick={() => setIsolationFilter(meta.filterId)}
-                      className="py-1.5 px-3 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-xs flex items-center gap-2 transition-colors cursor-pointer tabular-nums whitespace-nowrap"
+                      className="py-1.5 px-3 rounded-lg bg-white dark:bg-slate-950 hover:bg-[#F3E9D2]/60 dark:hover:bg-slate-800 border border-[#D9B45A]/25 dark:border-slate-800 text-xs flex items-center gap-2 transition-colors cursor-pointer tabular-nums whitespace-nowrap"
                     >
                       <span
                         className="w-2.5 h-2.5 rounded-full shrink-0"
                         style={{ backgroundColor: meta.colorHex }}
                       />
-                      <span className="text-slate-200 font-semibold">{meta.label}</span>
-                      <span className="text-slate-400">({count})</span>
+                      <span className="text-[#1B1A17] dark:text-slate-200 font-semibold">{meta.label}</span>
+                      <span className="text-[#6B6251] dark:text-slate-400">({count})</span>
                     </button>
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-slate-400">لم تُسجل أحكام تلوين خاصة في هذه الآية القصيرة.</p>
+                <p className="text-xs text-[#6B6251] dark:text-slate-400">لم تُسجل أحكام تلوين خاصة في هذه الآية القصيرة.</p>
               )}
             </div>
           </div>

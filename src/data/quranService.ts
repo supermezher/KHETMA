@@ -425,6 +425,52 @@ export async function getSurahData(surahNumber: number): Promise<SurahData> {
   }
 }
 
+export function assembleMushafPageFromSurahs(
+  pageNumber: number,
+  surahs: SurahData[]
+): MushafPageData | null {
+  const safePage = Math.min(604, Math.max(1, Math.floor(Number.isFinite(pageNumber) ? pageNumber : 1)));
+  if (!Array.isArray(surahs) || surahs.length === 0) return null;
+
+  const uniqueBySurah = new Map<number, SurahData>();
+  for (const s of surahs) {
+    const sNum = s?.meta?.number;
+    if (!sNum || !Array.isArray(s.ayahs) || s.ayahs.length === 0) continue;
+    if (!uniqueBySurah.has(sNum)) {
+      uniqueBySurah.set(sNum, s);
+    }
+  }
+
+  const orderedSurahs = Array.from(uniqueBySurah.values()).sort(
+    (a, b) => a.meta.number - b.meta.number
+  );
+
+  const ayahs: MushafPageAyah[] = [];
+  for (const surah of orderedSurahs) {
+    const surahNumber = surah.meta.number;
+    const surahMeta = SURAHS_LIST[surahNumber - 1] || surah.meta;
+    const pageAyahs = surah.ayahs
+      .filter((a) => Number(a.page) === safePage)
+      .sort((a, b) => a.numberInSurah - b.numberInSurah);
+
+    for (const a of pageAyahs) {
+      ayahs.push({
+        ...a,
+        page: safePage,
+        surahNumber,
+        surahName: surahMeta.name,
+        revelationTypeAr: surahMeta.revelationTypeAr,
+        bismillahPre: typeof surah.bismillahPre === 'boolean'
+          ? surah.bismillahPre
+          : surahNumber !== 1 && surahNumber !== 9,
+      });
+    }
+  }
+
+  if (ayahs.length === 0) return null;
+  return { pageNumber: safePage, ayahs };
+}
+
 export async function getMushafPageData(pageNumber: number): Promise<MushafPageData> {
   const safePage = Math.min(604, Math.max(1, Math.floor(pageNumber)));
   const cacheKey = `page_${safePage}`;
@@ -492,35 +538,25 @@ export async function getMushafPageData(pageNumber: number): Promise<MushafPageD
     await idbSet('pages', cacheKey, pageData);
     return pageData;
   } catch (err) {
-    // Offline fallback for page 1 or page 604 if bundled Surahs cover them
-    if (safePage === 1) {
-      const fatiha = BUNDLED_OFFLINE_SURAHS[1];
-      return {
-        pageNumber: 1,
-        ayahs: fatiha.ayahs.map((a) => ({
-          ...a,
-          surahNumber: 1,
-          surahName: fatiha.meta.name,
-          revelationTypeAr: fatiha.meta.revelationTypeAr,
-          bismillahPre: false,
-        })),
-      };
-    }
-    if (safePage === 604) {
-      const combined: MushafPageAyah[] = [];
-      for (const sNum of [112, 113, 114]) {
-        const s = BUNDLED_OFFLINE_SURAHS[sNum];
-        for (const a of s.ayahs) {
-          combined.push({
-            ...a,
-            surahNumber: sNum,
-            surahName: s.meta.name,
-            revelationTypeAr: s.meta.revelationTypeAr,
-            bismillahPre: true,
-          });
-        }
+    // Offline fallback: reconstruct any Mus'haf page from downloaded IndexedDB surahs + bundled offline surahs
+    try {
+      const cachedSurahs = await idbGetAllValues<SurahData>('surahs');
+      const reconstructed = assembleMushafPageFromSurahs(safePage, [
+        ...cachedSurahs,
+        ...Object.values(BUNDLED_OFFLINE_SURAHS),
+      ]);
+      if (reconstructed && reconstructed.ayahs.length > 0) {
+        return reconstructed;
       }
-      return { pageNumber: 604, ayahs: combined };
+    } catch {
+      // Fallback directly to bundled surahs if IndexedDB is unavailable
+      const bundledPage = assembleMushafPageFromSurahs(
+        safePage,
+        Object.values(BUNDLED_OFFLINE_SURAHS)
+      );
+      if (bundledPage && bundledPage.ayahs.length > 0) {
+        return bundledPage;
+      }
     }
 
     throw new Error(

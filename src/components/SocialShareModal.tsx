@@ -1028,22 +1028,22 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="social-share-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/55 dark:bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
     >
-      <div className="relative w-full max-w-6xl max-h-[94vh] bg-slate-950 border border-slate-800 rounded-2xl shadow-2xl flex flex-col md:flex-row overflow-hidden">
+      <div className="relative w-full max-w-6xl max-h-[94vh] bg-[#FBF7EE] dark:bg-[#10161f] border border-[#8A6418]/30 dark:border-slate-800 rounded-2xl shadow-2xl flex flex-col md:flex-row overflow-hidden">
         {/* Controls Studio Sidebar */}
-        <div className="w-full md:w-[370px] shrink-0 p-4 sm:p-5 border-b md:border-b-0 md:border-l border-slate-800 bg-slate-950 flex flex-col gap-4 overflow-y-auto max-h-[52vh] md:max-h-[94vh]">
+        <div className="w-full md:w-[370px] shrink-0 p-4 sm:p-5 border-b md:border-b-0 md:border-l border-[#E3D9C3] dark:border-slate-800 bg-[#FBF7EE] dark:bg-[#10161f] flex flex-col gap-4 overflow-y-auto max-h-[52vh] md:max-h-[94vh]">
           {/* Header */}
-          <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
-            <div id="social-share-title" className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
-              <Sparkles className="w-4 h-4 shrink-0" />
+          <div className="flex items-center justify-between pb-2 border-b border-[#E3D9C3] dark:border-slate-800/80">
+            <div id="social-share-title" className="flex items-center gap-2 text-[#1F3A6E] dark:text-[#D9B45A] font-bold text-sm">
+              <Sparkles className="w-4 h-4 shrink-0 text-[#8A6418] dark:text-[#D9B45A]" />
               <span>استوديو بطاقات الآيات</span>
             </div>
             <button
               type="button"
               onClick={onClose}
               aria-label="إغلاق استوديو البطاقات"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              className="p-1.5 rounded-lg text-[#5E584E] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white hover:bg-[#EFE6D1] dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -1051,8 +1051,8 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
 
           {/* 1. Aspect Ratio */}
           <div className="space-y-1.5">
-            <label className="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
-              <ImageIcon className="w-3.5 h-3.5 text-emerald-400" />
+            <label className="text-[11px] font-semibold text-[#5E584E] dark:text-slate-400 flex items-center gap-1.5">
+              <ImageIcon className="w-3.5 h-3.5 text-[#1F3A6E] dark:text-[#648CD4]" />
               <span>أبعاد المنصة</span>
             </label>
             <div className="grid grid-cols-3 gap-1.5">
@@ -1067,8 +1067,8 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                   onClick={() => setAspectRatio(ratio.id as CardAspectRatio)}
                   className={`py-2 px-2 text-[11px] rounded-xl font-semibold border transition-all whitespace-nowrap cursor-pointer ${
                     aspectRatio === ratio.id
-                      ? 'bg-emerald-500/15 border-emerald-500 text-emerald-300'
-                      : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                      ? 'bg-[#1F3A6E] border-[#8A6418] dark:border-[#D9B45A] text-[#FBF7EE] dark:text-[#F6EFDD]'
+                      : 'border-[#D4C7AE] dark:border-slate-800 bg-[#F6EFDD] dark:bg-slate-900 text-[#5E584E] dark:text-slate-400 hover:border-[#8A6418]/50 dark:hover:border-slate-700 hover:text-[#1B1A17] dark:hover:text-slate-200'
                   }`}
                 >
                   {ratio.label}
@@ -1080,14 +1080,14 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
           {/* 2. Nature & Studio Backdrops */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
-                <Palette className="w-3.5 h-3.5 text-amber-400" />
+              <label className="text-[11px] font-semibold text-[#5E584E] dark:text-slate-400 flex items-center gap-1.5">
+                <Palette className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
                 <span>الخلفيات الطبيعية والطابع</span>
               </label>
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                className="text-[11px] text-[#1F3A6E] dark:text-[#D9B45A] hover:underline font-semibold flex items-center gap-1 cursor-pointer whitespace-nowrap"
               >
                 <Upload className="w-3 h-3" />
                 <span>صورة مخصصة</span>
@@ -1111,8 +1111,8 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                     onClick={() => setTheme(t.id)}
                     className={`relative h-14 rounded-xl border overflow-hidden transition-all cursor-pointer group ${
                       isSelected
-                        ? 'ring-2 ring-emerald-400 border-white/60'
-                        : 'border-slate-800 hover:border-slate-600'
+                        ? 'ring-2 ring-[#8A6418] dark:ring-[#D9B45A] border-[#1F3A6E] dark:border-white/60'
+                        : 'border-[#D4C7AE] dark:border-slate-800 hover:border-[#8A6418]/60 dark:hover:border-slate-600'
                     }`}
                   >
                     {t.previewImage ? (
@@ -1137,11 +1137,11 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
             </div>
 
             {customImageDataUrl && (
-              <div className="flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-emerald-950/30 border border-emerald-500/30 text-[11px]">
+              <div className="flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-[#1F3A6E]/10 dark:bg-[#1F3A6E]/35 border border-[#1F3A6E]/30 dark:border-[#648CD4]/35 text-[11px]">
                 <button
                   type="button"
                   onClick={() => setTheme('custom')}
-                  className="text-emerald-300 font-semibold hover:underline cursor-pointer"
+                  className="text-[#1F3A6E] dark:text-[#D9B45A] font-semibold hover:underline cursor-pointer"
                 >
                   {theme === 'custom' ? '✓ الخلفية المرفوعة مفعلة' : 'تفعيل الصورة المرفوعة'}
                 </button>
@@ -1149,7 +1149,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                   type="button"
                   onClick={handleClearCustomImage}
                   aria-label="إزالة الصورة المخصصة"
-                  className="text-rose-400 hover:text-rose-300 p-1 cursor-pointer"
+                  className="text-rose-600 dark:text-rose-400 hover:text-rose-500 p-1 cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -1158,9 +1158,9 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
 
             {/* Contrast Scrim Slider */}
             <div className="pt-1">
-              <div className="flex justify-between text-[11px] text-slate-400 mb-1">
+              <div className="flex justify-between text-[11px] text-[#5E584E] dark:text-slate-400 mb-1">
                 <span>تعتيم الخلفية لوضوح الخط</span>
-                <span className="tabular-nums text-slate-300">{overlayOpacity}%</span>
+                <span className="tabular-nums text-[#1B1A17] dark:text-slate-300">{overlayOpacity}%</span>
               </div>
               <input
                 type="range"
@@ -1168,15 +1168,15 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                 max={85}
                 value={overlayOpacity}
                 onChange={(e) => setOverlayOpacity(Number(e.target.value))}
-                className="w-full accent-emerald-500 h-1.5 bg-slate-800 rounded-lg cursor-pointer"
+                className="w-full accent-[#1F3A6E] dark:accent-[#D9B45A] h-1.5 bg-[#E3D9C3] dark:bg-slate-800 rounded-lg cursor-pointer"
               />
             </div>
           </div>
 
           {/* 3. Calligraphy & Design Toggles */}
-          <div className="space-y-2 pt-1 border-t border-slate-800/80">
-            <label className="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
-              <Type className="w-3.5 h-3.5 text-sky-400" />
+          <div className="space-y-2 pt-1 border-t border-[#E3D9C3] dark:border-slate-800/80">
+            <label className="text-[11px] font-semibold text-[#5E584E] dark:text-slate-400 flex items-center gap-1.5">
+              <Type className="w-3.5 h-3.5 text-[#1F3A6E] dark:text-[#648CD4]" />
               <span>التصميم والخط القرآني</span>
             </label>
 
@@ -1186,12 +1186,12 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                 onClick={() => setAutoFitFont((v) => !v)}
                 className={`py-2 px-2.5 rounded-xl border font-medium text-right flex items-center justify-between cursor-pointer transition-colors ${
                   autoFitFont
-                    ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200'
-                    : 'bg-slate-900 border-slate-800 text-slate-400'
+                    ? 'bg-[#1F3A6E] border-[#1F3A6E] dark:bg-[#1F3A6E]/55 dark:border-[#648CD4]/55 text-[#FBF7EE] dark:text-[#F6EFDD]'
+                    : 'bg-[#F6EFDD] dark:bg-slate-900 border-[#D4C7AE] dark:border-slate-800 text-[#5E584E] dark:text-slate-400'
                 }`}
               >
                 <span>ملاءمة تلقائية</span>
-                <span className={`w-2 h-2 rounded-full ${autoFitFont ? 'bg-emerald-400' : 'bg-slate-700'}`} />
+                <span className={`w-2 h-2 rounded-full ${autoFitFont ? 'bg-[#D9B45A]' : 'bg-[#C4B59A] dark:bg-slate-700'}`} />
               </button>
 
               <button
@@ -1199,12 +1199,12 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                 onClick={() => setHighlightAllah((v) => !v)}
                 className={`py-2 px-2.5 rounded-xl border font-medium text-right flex items-center justify-between cursor-pointer transition-colors ${
                   highlightAllah
-                    ? 'bg-amber-500/15 border-amber-500/50 text-amber-200'
-                    : 'bg-slate-900 border-slate-800 text-slate-400'
+                    ? 'bg-[#8A6418]/15 border-[#8A6418]/60 dark:bg-[#D9B45A]/15 dark:border-[#D9B45A]/50 text-[#6F4E0E] dark:text-[#F6EFDD]'
+                    : 'bg-[#F6EFDD] dark:bg-slate-900 border-[#D4C7AE] dark:border-slate-800 text-[#5E584E] dark:text-slate-400'
                 }`}
               >
                 <span>تذهيب لفظ الجلالة</span>
-                <span className={`w-2 h-2 rounded-full ${highlightAllah ? 'bg-amber-400' : 'bg-slate-700'}`} />
+                <span className={`w-2 h-2 rounded-full ${highlightAllah ? 'bg-[#8A6418] dark:bg-[#D9B45A]' : 'bg-[#C4B59A] dark:bg-slate-700'}`} />
               </button>
 
               <button
@@ -1212,12 +1212,12 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                 onClick={() => setShowGlassPanel((v) => !v)}
                 className={`py-2 px-2.5 rounded-xl border font-medium text-right flex items-center justify-between cursor-pointer transition-colors ${
                   showGlassPanel
-                    ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200'
-                    : 'bg-slate-900 border-slate-800 text-slate-400'
+                    ? 'bg-[#1F3A6E] border-[#1F3A6E] dark:bg-[#1F3A6E]/55 dark:border-[#648CD4]/55 text-[#FBF7EE] dark:text-[#F6EFDD]'
+                    : 'bg-[#F6EFDD] dark:bg-slate-900 border-[#D4C7AE] dark:border-slate-800 text-[#5E584E] dark:text-slate-400'
                 }`}
               >
                 <span>إطار زجاجي ناعم</span>
-                <span className={`w-2 h-2 rounded-full ${showGlassPanel ? 'bg-emerald-400' : 'bg-slate-700'}`} />
+                <span className={`w-2 h-2 rounded-full ${showGlassPanel ? 'bg-[#D9B45A]' : 'bg-[#C4B59A] dark:bg-slate-700'}`} />
               </button>
 
               <button
@@ -1225,20 +1225,20 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                 onClick={() => setShowOrnament((v) => !v)}
                 className={`py-2 px-2.5 rounded-xl border font-medium text-right flex items-center justify-between cursor-pointer transition-colors ${
                   showOrnament
-                    ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200'
-                    : 'bg-slate-900 border-slate-800 text-slate-400'
+                    ? 'bg-[#1F3A6E] border-[#1F3A6E] dark:bg-[#1F3A6E]/55 dark:border-[#648CD4]/55 text-[#FBF7EE] dark:text-[#F6EFDD]'
+                    : 'bg-[#F6EFDD] dark:bg-slate-900 border-[#D4C7AE] dark:border-slate-800 text-[#5E584E] dark:text-slate-400'
                 }`}
               >
                 <span>زخرفة أندلسية</span>
-                <span className={`w-2 h-2 rounded-full ${showOrnament ? 'bg-emerald-400' : 'bg-slate-700'}`} />
+                <span className={`w-2 h-2 rounded-full ${showOrnament ? 'bg-[#D9B45A]' : 'bg-[#C4B59A] dark:bg-slate-700'}`} />
               </button>
             </div>
 
             {!autoFitFont && (
               <div className="pt-1">
-                <div className="flex justify-between text-[11px] text-slate-400 mb-1">
+                <div className="flex justify-between text-[11px] text-[#5E584E] dark:text-slate-400 mb-1">
                   <span>حجم الخط اليدوي</span>
-                  <span className="tabular-nums text-slate-300">{manualFontSize}px</span>
+                  <span className="tabular-nums text-[#1B1A17] dark:text-slate-300">{manualFontSize}px</span>
                 </div>
                 <input
                   type="range"
@@ -1246,21 +1246,21 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                   max={64}
                   value={manualFontSize}
                   onChange={(e) => setManualFontSize(Number(e.target.value))}
-                  className="w-full accent-emerald-500 h-1.5 bg-slate-800 rounded-lg cursor-pointer"
+                  className="w-full accent-[#1F3A6E] dark:accent-[#D9B45A] h-1.5 bg-[#E3D9C3] dark:bg-slate-800 rounded-lg cursor-pointer"
                 />
               </div>
             )}
           </div>
 
           {/* 4. Tadabbur Reflection & QR Deep Link */}
-          <div className="space-y-2 pt-1 border-t border-slate-800/80">
+          <div className="space-y-2 pt-1 border-t border-[#E3D9C3] dark:border-slate-800/80">
             <div className="flex items-center justify-between">
-              <label className="text-[11px] font-semibold text-slate-300">ومضة تدبرية / تفسير</label>
+              <label className="text-[11px] font-semibold text-[#1B1A17] dark:text-slate-300">ومضة تدبرية / تفسير</label>
               <input
                 type="checkbox"
                 checked={includeTafsir}
                 onChange={(e) => setIncludeTafsir(e.target.checked)}
-                className="accent-emerald-500 w-4 h-4 rounded cursor-pointer"
+                className="accent-[#1F3A6E] dark:accent-[#D9B45A] w-4 h-4 rounded cursor-pointer"
               />
             </div>
 
@@ -1270,7 +1270,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                 value={customReflection}
                 onChange={(e) => setCustomReflection(e.target.value)}
                 placeholder="اكتب ومضة تدبرية قصيرة أو اترك التفسير الميسر..."
-                className="w-full rounded-xl bg-slate-900 border border-slate-800 focus:border-emerald-500 outline-none p-2 text-xs text-slate-200 leading-relaxed resize-none"
+                className="w-full rounded-xl bg-[#F6EFDD] dark:bg-slate-900 border border-[#D4C7AE] dark:border-slate-800 focus:border-[#8A6418] dark:focus:border-[#D9B45A] outline-none p-2 text-xs text-[#1B1A17] dark:text-slate-200 leading-relaxed resize-none"
               />
             )}
 
@@ -1280,15 +1280,15 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                 onClick={() => setShowQr((v) => !v)}
                 className={`py-2 px-2.5 rounded-xl border font-medium flex items-center justify-between cursor-pointer transition-colors ${
                   showQr
-                    ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200'
-                    : 'bg-slate-900 border-slate-800 text-slate-400'
+                    ? 'bg-[#1F3A6E] border-[#1F3A6E] dark:bg-[#1F3A6E]/55 dark:border-[#648CD4]/55 text-[#FBF7EE] dark:text-[#F6EFDD]'
+                    : 'bg-[#F6EFDD] dark:bg-slate-900 border-[#D4C7AE] dark:border-slate-800 text-[#5E584E] dark:text-slate-400'
                 }`}
               >
                 <span className="flex items-center gap-1.5">
                   <QrCode className="w-3.5 h-3.5" />
                   <span>رمز QR</span>
                 </span>
-                <span className={`w-2 h-2 rounded-full ${showQr ? 'bg-emerald-400' : 'bg-slate-700'}`} />
+                <span className={`w-2 h-2 rounded-full ${showQr ? 'bg-[#D9B45A]' : 'bg-[#C4B59A] dark:bg-slate-700'}`} />
               </button>
 
               <button
@@ -1296,20 +1296,20 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                 onClick={() => setShowReciterCredit((v) => !v)}
                 className={`py-2 px-2.5 rounded-xl border font-medium flex items-center justify-between cursor-pointer transition-colors ${
                   showReciterCredit
-                    ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200'
-                    : 'bg-slate-900 border-slate-800 text-slate-400'
+                    ? 'bg-[#1F3A6E] border-[#1F3A6E] dark:bg-[#1F3A6E]/55 dark:border-[#648CD4]/55 text-[#FBF7EE] dark:text-[#F6EFDD]'
+                    : 'bg-[#F6EFDD] dark:bg-slate-900 border-[#D4C7AE] dark:border-slate-800 text-[#5E584E] dark:text-slate-400'
                 }`}
               >
                 <span>توقيع القارئ</span>
-                <span className={`w-2 h-2 rounded-full ${showReciterCredit ? 'bg-emerald-400' : 'bg-slate-700'}`} />
+                <span className={`w-2 h-2 rounded-full ${showReciterCredit ? 'bg-[#D9B45A]' : 'bg-[#C4B59A] dark:bg-slate-700'}`} />
               </button>
             </div>
           </div>
 
           {/* 5. Reciter Audio Preview & Spoken Video Card */}
-          <div className="space-y-2 pt-2 border-t border-slate-800/80">
-            <label className="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
-              <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+          <div className="space-y-2 pt-2 border-t border-[#E3D9C3] dark:border-slate-800/80">
+            <label className="text-[11px] font-semibold text-[#5E584E] dark:text-slate-400 flex items-center gap-1.5">
+              <Volume2 className="w-3.5 h-3.5 text-[#1F3A6E] dark:text-[#D9B45A]" />
               <span>صوت التلاوة والبطاقة الناطقة</span>
             </label>
 
@@ -1318,7 +1318,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                 value={activeReciter.id}
                 onChange={(e) => setReciterId(e.target.value)}
                 disabled={isExportingVideo}
-                className="flex-1 py-2 px-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-200 outline-none focus:border-emerald-500"
+                className="flex-1 py-2 px-2.5 rounded-xl bg-[#F6EFDD] dark:bg-slate-900 border border-[#D4C7AE] dark:border-slate-800 text-xs text-[#1B1A17] dark:text-slate-200 outline-none focus:border-[#8A6418] dark:focus:border-[#D9B45A]"
               >
                 {RECITERS_LIST.map((r) => (
                   <option key={r.id} value={r.id}>
@@ -1333,8 +1333,8 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                 disabled={isExportingVideo || isLoadingPreview}
                 className={`py-2 px-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition-colors whitespace-nowrap cursor-pointer ${
                   isPreviewPlaying
-                    ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
-                    : 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-200'
+                    ? 'bg-[#8A6418]/15 border-[#8A6418] text-[#6F4E0E] dark:bg-[#D9B45A]/20 dark:border-[#D9B45A]/50 dark:text-[#D9B45A]'
+                    : 'bg-[#F6EFDD] hover:bg-[#EFE6D1] dark:bg-slate-900 dark:hover:bg-slate-800 border-[#D4C7AE] dark:border-slate-700 text-[#1B1A17] dark:text-slate-200'
                 }`}
               >
                 {isLoadingPreview ? (
@@ -1342,14 +1342,14 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                 ) : isPreviewPlaying ? (
                   <Pause className="w-3.5 h-3.5" />
                 ) : (
-                  <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+                  <Volume2 className="w-3.5 h-3.5 text-[#1F3A6E] dark:text-[#D9B45A]" />
                 )}
                 <span>{isPreviewPlaying ? 'إيقاف' : 'استماع'}</span>
               </button>
             </div>
 
             {previewError && (
-              <p className="text-[11px] text-rose-400 flex items-center gap-1">
+              <p className="text-[11px] text-rose-700 dark:text-rose-400 flex items-center gap-1">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                 <span>{previewError}</span>
               </p>
@@ -1357,26 +1357,26 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
           </div>
 
           {/* 6. Export Actions */}
-          <div className="mt-auto pt-3 border-t border-slate-800 flex flex-col gap-2">
+          <div className="mt-auto pt-3 border-t border-[#E3D9C3] dark:border-slate-800 flex flex-col gap-2">
             {/* Spoken Video Card Export Button */}
             {isExportingVideo ? (
-              <div className="p-2.5 rounded-xl bg-amber-950/30 border border-amber-500/40 space-y-2">
+              <div className="p-2.5 rounded-xl bg-[#EFE6D1] dark:bg-[#D9B45A]/15 border border-[#8A6418]/40 dark:border-[#D9B45A]/40 space-y-2">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-amber-300 font-semibold flex items-center gap-1.5">
+                  <span className="text-[#6F4E0E] dark:text-[#D9B45A] font-semibold flex items-center gap-1.5">
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     <span>جارٍ دمج الصوت والصورة ({videoProgress}%)</span>
                   </span>
                   <button
                     type="button"
                     onClick={cancelVideoExport}
-                    className="text-rose-400 hover:text-rose-300 font-bold text-[11px] cursor-pointer"
+                    className="text-rose-700 dark:text-rose-400 hover:underline font-bold text-[11px] cursor-pointer"
                   >
                     إلغاء
                   </button>
                 </div>
-                <div className="w-full h-1.5 rounded-full bg-slate-900 overflow-hidden">
+                <div className="w-full h-1.5 rounded-full bg-[#D4C7AE] dark:bg-slate-900 overflow-hidden">
                   <div
-                    className="h-full bg-amber-400 transition-all duration-150"
+                    className="h-full bg-[#8A6418] dark:bg-[#D9B45A] transition-all duration-150"
                     style={{ width: `${videoProgress}%` }}
                   />
                 </div>
@@ -1385,7 +1385,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
               <button
                 type="button"
                 onClick={handleExportVideo}
-                className="w-full py-2.5 px-4 bg-gradient-to-l from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-amber-950/40 transition-all text-xs cursor-pointer whitespace-nowrap"
+                className="w-full py-2.5 px-4 bg-[#D9B45A] hover:bg-[#e4c370] text-[#10161f] rounded-xl font-bold flex items-center justify-center gap-2 shadow-md transition-all text-xs cursor-pointer whitespace-nowrap"
               >
                 <Video className="w-4 h-4 shrink-0" />
                 <span>تصدير بطاقة فيديو ناطقة بصوت القارئ</span>
@@ -1393,7 +1393,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
             )}
 
             {videoError && (
-              <p className="text-[11px] text-rose-400 leading-relaxed flex items-start gap-1.5 bg-rose-950/20 border border-rose-500/20 rounded-xl p-2">
+              <p className="text-[11px] text-rose-700 dark:text-rose-400 leading-relaxed flex items-start gap-1.5 bg-rose-50 dark:bg-rose-950/20 border border-rose-300 dark:border-rose-500/20 rounded-xl p-2">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                 <span>{videoError}</span>
               </p>
@@ -1404,7 +1404,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
               type="button"
               onClick={handleDownloadPng}
               disabled={isDownloadingPng || isExportingVideo}
-              className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/40 transition-all text-xs cursor-pointer whitespace-nowrap"
+              className="w-full py-2.5 px-4 bg-[#1F3A6E] hover:bg-[#2E5499] disabled:opacity-50 text-[#FBF7EE] rounded-xl font-bold flex items-center justify-center gap-2 shadow-md transition-all text-xs cursor-pointer whitespace-nowrap"
             >
               <Download className="w-4 h-4 shrink-0" />
               <span>حفظ صورة عالية الدقة (PNG)</span>
@@ -1415,9 +1415,9 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                 type="button"
                 onClick={handleCopyPng}
                 disabled={isExportingVideo}
-                className="py-2 px-3 bg-slate-900 hover:bg-slate-800 text-slate-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border border-slate-800 transition-colors cursor-pointer whitespace-nowrap"
+                className="py-2 px-3 bg-[#F6EFDD] hover:bg-[#EFE6D1] dark:bg-slate-900 dark:hover:bg-slate-800 text-[#1B1A17] dark:text-slate-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border border-[#D4C7AE] dark:border-slate-800 transition-colors cursor-pointer whitespace-nowrap"
               >
-                {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                 <span>{isCopied ? 'تم النسخ' : 'نسخ للحافظة'}</span>
               </button>
 
@@ -1425,7 +1425,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                 type="button"
                 onClick={handleSharePng}
                 disabled={isExportingVideo}
-                className="py-2 px-3 bg-slate-900 hover:bg-slate-800 text-slate-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border border-slate-800 transition-colors cursor-pointer whitespace-nowrap"
+                className="py-2 px-3 bg-[#F6EFDD] hover:bg-[#EFE6D1] dark:bg-slate-900 dark:hover:bg-slate-800 text-[#1B1A17] dark:text-slate-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border border-[#D4C7AE] dark:border-slate-800 transition-colors cursor-pointer whitespace-nowrap"
               >
                 <Share2 className="w-3.5 h-3.5" />
                 <span>مشاركة فورية</span>
@@ -1435,15 +1435,15 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
         </div>
 
         {/* Live Studio Canvas Preview */}
-        <div className="flex-1 bg-[#06090f] p-4 sm:p-6 flex flex-col items-center justify-center overflow-auto relative">
-          <div className="mb-2.5 flex items-center gap-2 text-[11px] text-slate-400">
-            <span className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800 text-slate-300 font-medium tabular-nums">
+        <div className="flex-1 bg-[#EFE6D1] dark:bg-[#06090f] p-4 sm:p-6 flex flex-col items-center justify-center overflow-auto relative">
+          <div className="mb-2.5 flex items-center gap-2 text-[11px] text-[#5E584E] dark:text-slate-400">
+            <span className="px-2 py-0.5 rounded-md bg-[#FBF7EE] dark:bg-slate-900 border border-[#D4C7AE] dark:border-slate-800 text-[#1B1A17] dark:text-slate-300 font-medium tabular-nums">
               {aspectRatio === 'post' ? '1080 × 1080' : aspectRatio === 'story' ? '1080 × 1920' : '1920 × 1080'}
             </span>
             <span>معاينة حية بدقة الاستوديو</span>
           </div>
 
-          <div className="relative max-w-full max-h-full flex items-center justify-center rounded-xl overflow-hidden shadow-2xl border border-slate-800/80">
+          <div className="relative max-w-full max-h-full flex items-center justify-center rounded-xl overflow-hidden shadow-2xl border border-[#D4C7AE] dark:border-slate-800/80">
             <canvas
               ref={canvasRef}
               className="max-h-[38vh] md:max-h-[78vh] w-auto max-w-full object-contain rounded-xl"

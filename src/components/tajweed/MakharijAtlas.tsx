@@ -48,19 +48,19 @@ export const MakharijAtlas: React.FC = () => {
       {/* Main Two-Zone Interactive Atlas */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
         {/* Left/Top Stage (5 cols): Interactive Vocal Tract SVG Diagram */}
-        <div className="lg:col-span-5 p-5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col justify-between gap-4">
-          <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-800">
+        <div className="lg:col-span-5 p-5 rounded-2xl bg-[#FBF7EE] dark:bg-slate-900 border border-[#D9B45A]/30 dark:border-slate-800 flex flex-col justify-between gap-4">
+          <div className="flex items-center justify-between gap-2 pb-3 border-b border-[#D9B45A]/20 dark:border-slate-800">
             <div>
-              <h3 className="text-base font-bold text-white">أطلس مخارج الحروف التشريحي</h3>
-              <p className="text-xs text-slate-400">اضغط على أي مخرج رئيسي أو اختر حرفاً لموضعه الدقيق</p>
+              <h3 className="text-base font-bold text-[#1B1A17] dark:text-white">أطلس مخارج الحروف التشريحي</h3>
+              <p className="text-xs text-[#6B6251] dark:text-slate-400">اضغط على أي مخرج رئيسي أو اختر حرفاً لموضعه الدقيق</p>
             </div>
-            <span className="text-xs font-bold tabular-nums text-emerald-300">
+            <span className="text-xs font-bold tabular-nums text-[#8A6418] dark:text-[#D9B45A]">
               {activeRegionInfo.name}
             </span>
           </div>
 
-          {/* Clean Vocal Tract SVG Cross-Section */}
-          <div className="relative w-full aspect-square max-w-[340px] mx-auto rounded-2xl bg-slate-950/90 border border-slate-800/80 p-3 flex items-center justify-center">
+          {/* Clean Vocal Tract SVG Cross-Section (kept dark internally for bright SVG diagram contrast) */}
+          <div className="relative w-full aspect-square max-w-[340px] mx-auto rounded-2xl bg-[#0d1420] border border-[#1F3A6E]/35 dark:border-slate-800/80 p-3 flex items-center justify-center shadow-inner">
             <svg
               viewBox="0 0 320 320"
               className="w-full h-full select-none"
@@ -160,27 +160,27 @@ export const MakharijAtlas: React.FC = () => {
           </div>
 
           {/* Selected Region Overview */}
-          <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+          <div className="p-3.5 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/25 dark:border-slate-800 space-y-1">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-bold text-white">{activeRegionInfo.name}</span>
-              <span className="text-slate-400">{activeRegionInfo.subtitle}</span>
+              <span className="font-bold text-[#1B1A17] dark:text-white">{activeRegionInfo.name}</span>
+              <span className="text-[#6B6251] dark:text-slate-400">{activeRegionInfo.subtitle}</span>
             </div>
-            <p className="text-xs text-slate-300 leading-relaxed">{activeRegionInfo.description}</p>
+            <p className="text-xs text-[#4B4539] dark:text-slate-300 leading-relaxed">{activeRegionInfo.description}</p>
           </div>
         </div>
 
         {/* Right/Bottom Control & Letter Deck (7 cols) */}
-        <div className="lg:col-span-7 p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-5 flex flex-col justify-between">
+        <div className="lg:col-span-7 p-5 rounded-2xl bg-[#FBF7EE] dark:bg-slate-900 border border-[#D9B45A]/30 dark:border-slate-800 space-y-5 flex flex-col justify-between">
           {/* Region Filter Segmented Control */}
           <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-1.5 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
+            <div className="flex flex-wrap items-center gap-1.5 bg-white dark:bg-slate-950 p-1.5 rounded-xl border border-[#D9B45A]/25 dark:border-slate-800">
               <button
                 type="button"
                 onClick={() => handleSelectRegion('all')}
                 className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                   selectedRegion === 'all'
-                    ? 'bg-emerald-600 text-white'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-[#1F3A6E] text-[#F6EFDD]'
+                    : 'text-[#6B6251] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white'
                 }`}
               >
                 كل المخارج (٢٩)
@@ -194,8 +194,8 @@ export const MakharijAtlas: React.FC = () => {
                     onClick={() => handleSelectRegion(region.id)}
                     className={`py-1.5 px-3 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                       isSelected
-                        ? 'bg-slate-800 text-white ring-1 ring-emerald-500/60'
-                        : 'text-slate-400 hover:text-white'
+                        ? 'bg-[#F3E9D2] dark:bg-slate-800 text-[#1F3A6E] dark:text-white ring-1 ring-[#D9B45A]/60'
+                        : 'text-[#6B6251] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white'
                     }`}
                   >
                     {region.name}
@@ -209,7 +209,7 @@ export const MakharijAtlas: React.FC = () => {
               {filteredLetters.map((item) => {
                 const isSelected = item.id === activeLetter.id;
                 const regionColor =
-                  MAKHARIJ_REGIONS.find((r) => r.id === item.region)?.colorHex || '#10b981';
+                  MAKHARIJ_REGIONS.find((r) => r.id === item.region)?.colorHex || '#D9B45A';
                 return (
                   <button
                     key={item.id}
@@ -217,8 +217,8 @@ export const MakharijAtlas: React.FC = () => {
                     onClick={() => setSelectedLetterId(item.id)}
                     className={`min-h-[44px] py-2 px-1.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
                       isSelected
-                        ? 'bg-emerald-950/80 border-emerald-400 text-white shadow-md scale-[1.03]'
-                        : 'bg-slate-950/70 border-slate-800 text-slate-200 hover:border-slate-700 hover:bg-slate-900'
+                        ? 'bg-[#1F3A6E] dark:bg-[#1F3A6E]/85 border-[#D9B45A] text-white shadow-md scale-[1.03]'
+                        : 'bg-white dark:bg-slate-950/70 border-[#D9B45A]/20 dark:border-slate-800 text-[#1B1A17] dark:text-slate-200 hover:border-[#D9B45A]/60 dark:hover:border-slate-700 hover:bg-[#F3E9D2]/50 dark:hover:bg-slate-900'
                     }`}
                   >
                     <span
@@ -234,41 +234,41 @@ export const MakharijAtlas: React.FC = () => {
           </div>
 
           {/* Selected Letter Detailed Inspection Panel */}
-          <div className="pt-4 border-t border-slate-800 space-y-4">
+          <div className="pt-4 border-t border-[#D9B45A]/20 dark:border-slate-800 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3.5">
                 <div
-                  className="w-14 h-14 rounded-2xl bg-slate-950 border border-slate-700 flex items-center justify-center font-quran text-3xl font-bold shrink-0"
+                  className="w-14 h-14 rounded-2xl bg-[#10161f] dark:bg-slate-950 border border-[#D9B45A]/40 dark:border-slate-700 flex items-center justify-center font-quran text-3xl font-bold shrink-0"
                   style={{ color: activeRegionInfo.colorHex }}
                 >
                   {activeLetter.letter}
                 </div>
                 <div>
-                  <h4 className="text-lg font-bold text-white">{activeLetter.name}</h4>
-                  <div className="text-xs text-slate-400 flex flex-wrap items-center gap-1.5 mt-0.5">
+                  <h4 className="text-lg font-bold text-[#1B1A17] dark:text-white">{activeLetter.name}</h4>
+                  <div className="text-xs text-[#6B6251] dark:text-slate-400 flex flex-wrap items-center gap-1.5 mt-0.5">
                     <span>{activeRegionInfo.name}</span>
                     <span aria-hidden="true">·</span>
-                    <span className="text-slate-200 font-medium">{activeLetter.subMakhraj}</span>
+                    <span className="text-[#1F3A6E] dark:text-slate-200 font-medium">{activeLetter.subMakhraj}</span>
                   </div>
                 </div>
               </div>
 
               <div className="text-left sm:text-right">
-                <span className="text-[11px] text-slate-400 block">مثال قرآني</span>
-                <span className="font-quran text-2xl text-emerald-300">{activeLetter.exampleWord}</span>
+                <span className="text-[11px] text-[#6B6251] dark:text-slate-400 block">مثال قرآني</span>
+                <span className="font-quran text-2xl text-[#8A6418] dark:text-[#D9B45A]">{activeLetter.exampleWord}</span>
               </div>
             </div>
 
             {/* Qualities List */}
             <div>
-              <span className="text-xs font-bold text-slate-400 block mb-2">الصفات الصوتية للحرف:</span>
+              <span className="text-xs font-bold text-[#6B6251] dark:text-slate-400 block mb-2">الصفات الصوتية للحرف:</span>
               <div className="flex flex-wrap gap-2">
                 {activeLetter.qualities.map((q) => (
                   <span
                     key={q}
-                    className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-200 font-semibold flex items-center gap-1.5"
+                    className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-950 border border-[#D9B45A]/25 dark:border-slate-800 text-xs text-[#1B1A17] dark:text-slate-200 font-semibold flex items-center gap-1.5"
                   >
-                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <Check className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A] shrink-0" />
                     <span>{q}</span>
                   </span>
                 ))}
@@ -276,11 +276,11 @@ export const MakharijAtlas: React.FC = () => {
             </div>
 
             {/* Practical Articulation Tip */}
-            <div className="p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-500/20 flex items-start gap-2.5">
-              <Volume2 className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+            <div className="p-3.5 rounded-xl bg-[#1F3A6E]/5 dark:bg-[#1F3A6E]/25 border border-[#1F3A6E]/20 dark:border-[#648CD4]/30 flex items-start gap-2.5">
+              <Volume2 className="w-4 h-4 text-[#1F3A6E] dark:text-[#D9B45A] mt-0.5 shrink-0" />
               <div className="space-y-0.5">
-                <span className="text-xs font-bold text-emerald-300 block">توجيه النطق العملي:</span>
-                <p className="text-xs text-slate-200 leading-relaxed">{activeLetter.practicalTip}</p>
+                <span className="text-xs font-bold text-[#1F3A6E] dark:text-[#D9B45A] block">توجيه النطق العملي:</span>
+                <p className="text-xs text-[#4B4539] dark:text-slate-200 leading-relaxed">{activeLetter.practicalTip}</p>
               </div>
             </div>
           </div>
@@ -288,13 +288,13 @@ export const MakharijAtlas: React.FC = () => {
       </div>
 
       {/* Confusable Letter Pairs Practical Comparison */}
-      <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
+      <div className="p-5 rounded-2xl bg-[#FBF7EE] dark:bg-slate-900 border border-[#D9B45A]/30 dark:border-slate-800 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[#D9B45A]/20 dark:border-slate-800">
           <div className="flex items-center gap-2">
-            <ArrowLeftRight className="w-4 h-4 text-amber-400 shrink-0" />
-            <h3 className="text-sm sm:text-base font-bold text-white">مقارنة الحروف المتقاربة في المخرج</h3>
+            <ArrowLeftRight className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A] shrink-0" />
+            <h3 className="text-sm sm:text-base font-bold text-[#1B1A17] dark:text-white">مقارنة الحروف المتقاربة في المخرج</h3>
           </div>
-          <span className="text-xs text-slate-400">أشهر الحروف التي يقع فيها الخلط أثناء التلاوة</span>
+          <span className="text-xs text-[#6B6251] dark:text-slate-400">أشهر الحروف التي يقع فيها الخلط أثناء التلاوة</span>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -311,8 +311,8 @@ export const MakharijAtlas: React.FC = () => {
                 }}
                 className={`py-2 px-3.5 rounded-xl border text-xs font-bold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                   isSelected
-                    ? 'bg-amber-500/15 border-amber-500/50 text-amber-200'
-                    : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700 hover:text-white'
+                    ? 'bg-[#D9B45A]/20 border-[#D9B45A] text-[#8A6418] dark:text-[#D9B45A]'
+                    : 'bg-white dark:bg-slate-950 border-[#D9B45A]/25 dark:border-slate-800 text-[#4B4539] dark:text-slate-300 hover:border-[#D9B45A]/50 dark:hover:border-slate-700 hover:text-[#1B1A17] dark:hover:text-white'
                 }`}
               >
                 {pair.title.split(' (')[0]}
@@ -321,10 +321,10 @@ export const MakharijAtlas: React.FC = () => {
           })}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center p-4 rounded-xl bg-slate-950 border border-slate-800">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center p-4 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/25 dark:border-slate-800">
           <div className="md:col-span-8 space-y-2">
-            <h4 className="text-sm font-bold text-amber-300">{activeComparison.title}</h4>
-            <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
+            <h4 className="text-sm font-bold text-[#8A6418] dark:text-[#D9B45A]">{activeComparison.title}</h4>
+            <p className="text-xs sm:text-sm text-[#4B4539] dark:text-slate-200 leading-relaxed">
               {activeComparison.differenceSummary}
             </p>
             <div className="flex flex-wrap gap-2 pt-1">
@@ -338,8 +338,8 @@ export const MakharijAtlas: React.FC = () => {
                     onClick={() => setSelectedLetterId(id)}
                     className={`py-1.5 px-3 rounded-lg border text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
                       selectedLetterId === id
-                        ? 'bg-emerald-600 border-emerald-500 text-white'
-                        : 'bg-slate-900 border-slate-700 text-slate-200 hover:border-slate-600'
+                        ? 'bg-[#1F3A6E] border-[#648CD4]/50 text-[#F6EFDD]'
+                        : 'bg-[#FBF7EE] dark:bg-slate-900 border-[#D9B45A]/25 dark:border-slate-700 text-[#4B4539] dark:text-slate-200 hover:border-[#D9B45A]/60 dark:hover:border-slate-600'
                     }`}
                   >
                     عرض {l.name} ({l.letter}) على الخريطة
@@ -349,9 +349,9 @@ export const MakharijAtlas: React.FC = () => {
             </div>
           </div>
 
-          <div className="md:col-span-4 text-center p-3.5 rounded-xl bg-slate-900 border border-slate-800">
-            <span className="text-[11px] text-slate-400 block mb-1">أمثلة قرآنية للمقارنة</span>
-            <p className="font-quran text-xl text-emerald-200 leading-loose">{activeComparison.quranExample}</p>
+          <div className="md:col-span-4 text-center p-3.5 rounded-xl bg-[#F6EFDD] dark:bg-slate-900 border border-[#D9B45A]/30 dark:border-slate-800">
+            <span className="text-[11px] text-[#6B6251] dark:text-slate-400 block mb-1">أمثلة قرآنية للمقارنة</span>
+            <p className="font-quran text-xl text-[#1F3A6E] dark:text-[#D9B45A] leading-loose">{activeComparison.quranExample}</p>
           </div>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Volume2, RotateCcw, Clock, Download, Sparkles, SlidersHorizontal, ChevronUp, ChevronDown, CheckCircle2, AlertCircle, EyeOff } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, RotateCcw, Clock, Download, Sparkles, SlidersHorizontal, ChevronUp, ChevronDown, CheckCircle2, AlertCircle, EyeOff, X } from 'lucide-react';
 import { Reciter, RECITERS_LIST, getAyahAudioUrl } from '../data/reciters';
 import { isSurahCached, cacheSurahAudio, getCachedAudioBlobUrl } from '../utils/audioOfflineCache';
 import { toArabicIndic } from './khatma/KhatmaRing';
@@ -26,6 +26,10 @@ interface AudioPlayerBarProps {
   memorizationRepeatTarget?: 1 | 2 | 3 | 'loop';
   onMemorizationRepeatChange?: (currentCount: number) => void;
   onPlaybackCycleComplete?: (ayahNumber: number) => void;
+  mushafSheetMode?: boolean;
+  isMushafSheetOpen?: boolean;
+  onCloseMushafSheet?: () => void;
+  isChromeHidden?: boolean;
 }
 
 export interface AudioEndTransitionInput {
@@ -80,6 +84,32 @@ export function resolveAudioEndedTransition(input: AudioEndTransitionInput): Aud
   return { type: 'stop' };
 }
 
+export interface MediaSessionMetadataPayload {
+  title: string;
+  artist: string;
+  album: string;
+  artwork: Array<{ src: string; sizes: string; type: string }>;
+}
+
+export function buildMediaSessionMetadataPayload(
+  surahName: string,
+  ayahNumber: number,
+  reciterName: string
+): MediaSessionMetadataPayload {
+  const safeSurah = (surahName || '').trim() || 'القرآن الكريم';
+  const safeAyah = Math.max(1, Math.floor(Number.isFinite(ayahNumber) ? ayahNumber : 1));
+  const safeReciter = (reciterName || '').trim() || 'الشيخ';
+  return {
+    title: `سورة ${safeSurah} · الآية ${toArabicIndic(safeAyah)}`,
+    artist: safeReciter,
+    album: 'بيان — المصحف الشريف',
+    artwork: [
+      { src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+      { src: '/pwa-512x512.png', sizes: '512x512', type: 'image/png' },
+    ],
+  };
+}
+
 export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
   surahNumber,
   surahName,
@@ -102,6 +132,10 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
   memorizationRepeatTarget = 1,
   onMemorizationRepeatChange,
   onPlaybackCycleComplete,
+  mushafSheetMode = false,
+  isMushafSheetOpen = false,
+  onCloseMushafSheet,
+  isChromeHidden = false,
 }) => {
   const [internalReciter, setInternalReciter] = useState<Reciter>(RECITERS_LIST[0]);
   const selectedReciter = propSelectedReciter || internalReciter;
@@ -132,7 +166,34 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
   playbackSpeedRef.current = playbackSpeed;
   const onPlaybackProgressRef = useRef(onPlaybackProgress);
   onPlaybackProgressRef.current = onPlaybackProgress;
+  const currentAyahRef = useRef<number>(currentAyahNumber);
+  currentAyahRef.current = currentAyahNumber;
+  const totalAyahsRef = useRef<number>(totalAyahs);
+  totalAyahsRef.current = totalAyahs;
+  const onAyahChangeRef = useRef(onAyahChange);
+  onAyahChangeRef.current = onAyahChange;
+  const onPlayPauseToggleRef = useRef(onPlayPauseToggle);
+  onPlayPauseToggleRef.current = onPlayPauseToggle;
   const [audioProgress, setAudioProgress] = useState(0);
+
+  const syncMediaSessionPositionState = () => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    const ms = navigator.mediaSession;
+    if (typeof ms.setPositionState !== 'function') return;
+    const audio = audioRef.current;
+    if (!audio || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
+    const rate = playbackSpeedRef.current > 0 ? playbackSpeedRef.current : 1;
+    const pos = Math.max(0, Math.min(audio.duration, Number.isFinite(audio.currentTime) ? audio.currentTime : 0));
+    try {
+      ms.setPositionState({
+        duration: audio.duration,
+        playbackRate: rate,
+        position: pos,
+      });
+    } catch {
+      // Some browsers reject setPositionState on unsupported edge states
+    }
+  };
 
   // Audio source URL
   const audioUrl = getAyahAudioUrl(selectedReciter.serverKey, surahNumber, currentAyahNumber);
@@ -269,6 +330,119 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
     onMemorizationRepeatChange?.(1);
   }, [currentAyahNumber, surahNumber]);
 
+  // System Media Session metadata (lock screen, notification center, Bluetooth displays)
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    if (typeof MediaMetadata === 'undefined') return;
+    try {
+      const payload = buildMediaSessionMetadataPayload(
+        surahName,
+        currentAyahNumber,
+        selectedReciter.name
+      );
+      navigator.mediaSession.metadata = new MediaMetadata(payload);
+    } catch {
+      // Ignore MediaMetadata errors on older environments
+    }
+  }, [surahName, currentAyahNumber, selectedReciter.name]);
+
+  // Sync Media Session playbackState & positionState with playing/speed changes
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    try {
+      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+    } catch {
+      // Ignore if read-only
+    }
+    syncMediaSessionPositionState();
+  }, [isPlaying, playbackSpeed, activeAudioSrc]);
+
+  // Register Media Session hardware/lock-screen action handlers once
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    const ms = navigator.mediaSession;
+    if (typeof ms.setActionHandler !== 'function') return;
+
+    const actions: Array<[MediaSessionAction, MediaSessionActionHandler]> = [
+      ['play', () => onPlayPauseToggleRef.current(true)],
+      ['pause', () => onPlayPauseToggleRef.current(false)],
+      [
+        'previoustrack',
+        () => {
+          const prev = Math.max(1, currentAyahRef.current - 1);
+          onAyahChangeRef.current(prev);
+        },
+      ],
+      [
+        'nexttrack',
+        () => {
+          const next = Math.min(totalAyahsRef.current, currentAyahRef.current + 1);
+          onAyahChangeRef.current(next);
+        },
+      ],
+      [
+        'seekto',
+        (details) => {
+          const audio = audioRef.current;
+          if (!audio || typeof details.seekTime !== 'number' || !Number.isFinite(audio.duration) || audio.duration <= 0) {
+            return;
+          }
+          audio.currentTime = Math.max(0, Math.min(audio.duration, details.seekTime));
+          syncMediaSessionPositionState();
+        },
+      ],
+      [
+        'seekbackward',
+        (details) => {
+          const audio = audioRef.current;
+          if (!audio) return;
+          const offset = typeof details.seekOffset === 'number' ? details.seekOffset : 10;
+          audio.currentTime = Math.max(0, audio.currentTime - offset);
+          syncMediaSessionPositionState();
+        },
+      ],
+      [
+        'seekforward',
+        (details) => {
+          const audio = audioRef.current;
+          if (!audio || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
+          const offset = typeof details.seekOffset === 'number' ? details.seekOffset : 10;
+          audio.currentTime = Math.min(audio.duration, audio.currentTime + offset);
+          syncMediaSessionPositionState();
+        },
+      ],
+      [
+        'stop',
+        () => {
+          if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.currentTime = 0;
+          }
+          onPlayPauseToggleRef.current(false);
+          syncMediaSessionPositionState();
+        },
+      ],
+    ];
+
+    for (const [action, handler] of actions) {
+      try {
+        ms.setActionHandler(action, handler);
+      } catch {
+        // Skip unsupported actions cleanly
+      }
+    }
+
+    return () => {
+      for (const [action] of actions) {
+        try {
+          ms.setActionHandler(action, null);
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+    };
+  }, []);
+
   const handleAudioEnded = () => {
     const finishedDuration = audioRef.current?.duration || 0;
     onAyahComplete?.(currentAyahNumber, Number.isFinite(finishedDuration) ? finishedDuration : 0);
@@ -327,6 +501,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
     const clickX = e.clientX - rect.left;
     const percent = Math.max(0, Math.min(1, clickX / rect.width));
     audioRef.current.currentTime = percent * audioRef.current.duration;
+    syncMediaSessionPositionState();
   };
 
   const handleDownloadSurah = async () => {
@@ -369,6 +544,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
 
   const syncPlaybackRate = (e: React.SyntheticEvent<HTMLAudioElement, Event>) => {
     e.currentTarget.playbackRate = playbackSpeedRef.current;
+    syncMediaSessionPositionState();
   };
 
   return (
@@ -384,32 +560,256 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
         onError={handleAudioError}
       />
 
-      {/* FULL-SCREEN FLOATING MODE */}
-      {!isVisible ? null : isFullScreen ? (
+      {/* MUSHAF FLOATING GLASS AUDIO SHEET (Docked cleanly above Mushaf 5-button dock) */}
+      {mushafSheetMode ? (
+        isMushafSheetOpen && !isChromeHidden ? (
+          <>
+            <div
+              className="fixed inset-0 z-40 bg-black/25 backdrop-blur-[1px]"
+              onClick={() => onCloseMushafSheet?.()}
+            />
+            <div
+              role="dialog"
+              aria-label="أدوات التلاوة والصوت"
+              className="fixed bottom-[5.45rem] left-1/2 -translate-x-1/2 z-[45] w-[min(94vw,520px)] rounded-3xl bg-[#FBF7EE]/95 dark:bg-[#10161f]/95 border border-[#D9B45A]/35 shadow-2xl backdrop-blur-xl p-3.5 space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-150"
+            >
+              {/* Scrubbable Audio Progress Line */}
+              <div
+                dir="ltr"
+                onClick={handleSeek}
+                className="w-full h-1.5 bg-[#E5DAC0] dark:bg-slate-800 hover:h-2 rounded-full cursor-pointer transition-all relative overflow-hidden"
+                title="تقديم وتأخير التلاوة"
+              >
+                <div
+                  className="h-full bg-gradient-to-r from-[#1F3A6E] via-[#2E5499] to-[#D9B45A] rounded-full"
+                  style={{ width: `${audioProgress}%` }}
+                />
+              </div>
+
+              {/* Header */}
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-8 h-8 rounded-xl bg-[#1F3A6E]/10 dark:bg-[#1F3A6E]/55 border border-[#648CD4]/35 flex items-center justify-center text-[#8A6418] dark:text-[#D9B45A] shrink-0">
+                    <Volume2 className="w-4 h-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="font-bold text-[#1B1A17] dark:text-[#F6EFDD] truncate">
+                      سورة {surahName} · الآية {toArabicIndic(currentAyahNumber)} / {toArabicIndic(totalAyahs)}
+                    </div>
+                    <div className="text-[11px] text-[#5C5549] dark:text-slate-400 truncate">
+                      {selectedReciter.name} · {selectedReciter.style}
+                    </div>
+                  </div>
+                </div>
+                {onCloseMushafSheet && (
+                  <button
+                    type="button"
+                    onClick={onCloseMushafSheet}
+                    aria-label="إغلاق أدوات التلاوة"
+                    className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-xl text-[#5C5549] dark:text-slate-400 hover:bg-[#EFE6D1] dark:hover:bg-slate-800 cursor-pointer shrink-0"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* Transport + Reciter */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => onAyahChange(Math.max(1, currentAyahNumber - 1))}
+                    disabled={currentAyahNumber <= 1}
+                    aria-label="الآية السابقة"
+                    className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl bg-white dark:bg-slate-900 border border-[#D9B45A]/25 dark:border-slate-800 text-[#1B1A17] dark:text-slate-200 disabled:opacity-35 cursor-pointer"
+                  >
+                    <SkipForward className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onPlayPauseToggle(!isPlaying)}
+                    aria-label={isPlaying ? 'إيقاف مؤقت' : 'تشغيل التلاوة'}
+                    className="w-11 h-11 rounded-full bg-[#1F3A6E] hover:bg-[#2E5499] border border-[#648CD4]/50 text-[#F6EFDD] flex items-center justify-center shadow-lg transition-transform active:scale-95 cursor-pointer"
+                  >
+                    {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5 text-[#D9B45A] fill-[#D9B45A]" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onAyahChange(Math.min(totalAyahs, currentAyahNumber + 1))}
+                    disabled={currentAyahNumber >= totalAyahs}
+                    aria-label="الآية التالية"
+                    className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl bg-white dark:bg-slate-900 border border-[#D9B45A]/25 dark:border-slate-800 text-[#1B1A17] dark:text-slate-200 disabled:opacity-35 cursor-pointer"
+                  >
+                    <SkipBack className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <select
+                  value={selectedReciter.id}
+                  onChange={(e) => {
+                    const found = RECITERS_LIST.find((r) => r.id === e.target.value);
+                    if (found) setSelectedReciter(found);
+                  }}
+                  aria-label="اختيار القارئ"
+                  className="min-h-[40px] flex-1 min-w-0 bg-white dark:bg-slate-900 border border-[#D9B45A]/30 dark:border-slate-700/80 rounded-xl text-xs font-bold text-[#1B1A17] dark:text-[#F6EFDD] py-1.5 px-2.5 outline-none cursor-pointer"
+                >
+                  {RECITERS_LIST.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Repeat, Speed, Sync, Timer & Offline Cache */}
+              <div className="pt-2.5 border-t border-[#D9B45A]/20 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (repeatMode === 'none') setRepeatMode('2-times');
+                    else if (repeatMode === '2-times') setRepeatMode('3-times');
+                    else if (repeatMode === '3-times') setRepeatMode('loop');
+                    else setRepeatMode('none');
+                  }}
+                  className={`min-h-[36px] py-1 px-2.5 rounded-xl font-semibold border flex items-center gap-1 cursor-pointer ${
+                    repeatMode !== 'none'
+                      ? 'bg-[#D9B45A]/20 border-[#D9B45A]/60 text-[#8A6418] dark:text-[#D9B45A]'
+                      : 'bg-white dark:bg-slate-900 border-[#D9B45A]/25 dark:border-slate-800 text-[#3F3A32] dark:text-slate-300'
+                  }`}
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>
+                    {repeatMode === 'none'
+                      ? 'التكرار: بدون'
+                      : repeatMode === '2-times'
+                      ? `مرتان (${repeatCounter}/2)`
+                      : repeatMode === '3-times'
+                      ? `3 مرات (${repeatCounter}/3)`
+                      : 'مستمر'}
+                  </span>
+                </button>
+
+                <div className="flex items-center gap-1">
+                  {[0.75, 1.0, 1.25].map((speed) => (
+                    <button
+                      key={speed}
+                      type="button"
+                      onClick={() => setPlaybackSpeed(speed)}
+                      className={`min-h-[36px] py-1 px-2.5 rounded-xl font-bold cursor-pointer ${
+                        playbackSpeed === speed
+                          ? 'bg-[#1F3A6E] text-[#F6EFDD] border border-[#648CD4]/50'
+                          : 'bg-white dark:bg-slate-900 border border-[#D9B45A]/20 dark:border-slate-800 text-[#3F3A32] dark:text-slate-300'
+                      }`}
+                    >
+                      {speed}x
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={onToggleSmartScroll}
+                  className={`min-h-[36px] py-1 px-2.5 rounded-xl font-semibold border flex items-center gap-1 cursor-pointer ${
+                    isSmartScrollEnabled
+                      ? 'bg-[#1F3A6E] dark:bg-[#1F3A6E]/60 border-[#648CD4]/50 text-[#F6EFDD] dark:text-[#D9B45A]'
+                      : 'bg-white dark:bg-slate-900 border-[#D9B45A]/25 dark:border-slate-800 text-[#3F3A32] dark:text-slate-300'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>مزامنة التمرير</span>
+                </button>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-[#5C5549] dark:text-slate-400" />
+                  <select
+                    value={khatmaTimerMinutes}
+                    onChange={(e) => setKhatmaTimerMinutes(Number(e.target.value))}
+                    aria-label="مؤقت إيقاف الورد"
+                    className="min-h-[36px] bg-white dark:bg-slate-900 border border-[#D9B45A]/25 dark:border-slate-800 rounded-xl text-[#1B1A17] dark:text-[#F6EFDD] py-1 px-2.5 outline-none cursor-pointer"
+                  >
+                    <option value={0}>مؤقت النوم: بدون</option>
+                    <option value={15}>١٥ دقيقة</option>
+                    <option value={30}>٣٠ دقيقة</option>
+                    <option value={45}>٤٥ دقيقة</option>
+                    <option value={60}>ساعة كاملة</option>
+                  </select>
+                  {timeRemaining > 0 && (
+                    <span className="text-[#8A6418] dark:text-[#D9B45A] font-bold tabular-nums">
+                      ({toArabicIndic(Math.max(1, Math.ceil(timeRemaining / 60)))}د)
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadSurah}
+                  disabled={isDownloaded || isDownloading}
+                  className={`min-h-[36px] py-1 px-3 rounded-xl font-semibold border flex items-center gap-1.5 transition-colors cursor-pointer ${
+                    isDownloaded
+                      ? 'bg-[#1F3A6E] border-[#648CD4]/40 text-[#D9B45A]'
+                      : downloadError
+                      ? 'bg-rose-950/40 border-rose-500/40 text-rose-600 dark:text-rose-300'
+                      : 'bg-white dark:bg-slate-900 border-[#D9B45A]/25 dark:border-slate-800 text-[#1B1A17] dark:text-slate-200'
+                  }`}
+                >
+                  {isDownloaded ? (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-[#D9B45A]" />
+                      <span>محفوظة دون إنترنت</span>
+                    </>
+                  ) : isDownloading ? (
+                    <>
+                      <Download className="w-3.5 h-3.5 animate-bounce text-[#D9B45A]" />
+                      <span>
+                        {downloadProgress
+                          ? `${toArabicIndic(downloadProgress.completed)}/${toArabicIndic(downloadProgress.total)}`
+                          : 'جارٍ الحفظ...'}
+                      </span>
+                    </>
+                  ) : downloadError ? (
+                    <>
+                      <AlertCircle className="w-3.5 h-3.5 text-rose-500" />
+                      <span>أعد التحميل</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3.5 h-3.5 text-[#1F3A6E] dark:text-[#648CD4]" />
+                      <span>حفظ السورة دون إنترنت</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </>
+        ) : null
+      ) : /* FULL-SCREEN FLOATING MODE */
+      !isVisible ? null : isFullScreen ? (
         isMinimizedInFullScreen ? (
           /* Minimized Floating Audio Pill in Bottom Corner */
           <div className="fixed bottom-4 right-4 z-[60] flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2">
             <div
               className={`flex items-center gap-2 py-1.5 px-3 rounded-full shadow-2xl backdrop-blur-xl border transition-all ${
                 isPlaying
-                  ? 'bg-[#142038]/95 border-[#D9B45A]/55 text-[#F6EFDD]'
-                  : 'bg-[#10161f]/95 border-slate-700/80 text-slate-300'
+                  ? 'bg-[#FBF7EE]/95 dark:bg-[#142038]/95 border-[#D9B45A]/65 text-[#1B1A17] dark:text-[#F6EFDD]'
+                  : 'bg-[#FBF7EE]/95 dark:bg-[#10161f]/95 border-[#D9B45A]/30 dark:border-slate-700/80 text-[#3F3A32] dark:text-slate-300'
               }`}
             >
               <button
                 type="button"
                 onClick={() => setIsMinimizedInFullScreen(false)}
-                className="min-h-[36px] flex items-center gap-2 hover:text-white cursor-pointer"
+                className="min-h-[36px] flex items-center gap-2 hover:text-[#8A6418] dark:hover:text-white cursor-pointer"
                 title="إظهار مشغل التلاوة الكامل"
               >
                 <div className="relative flex items-center justify-center">
-                  <Volume2 className="w-4 h-4 text-[#D9B45A]" />
+                  <Volume2 className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
                   {isPlaying && (
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 mr-1" />
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 mr-1" />
                   )}
                 </div>
                 <span className="text-xs font-bold font-kufi">{selectedReciter.name.split(' ')[0]}</span>
-                <span className="text-[11px] text-[#D9B45A] tabular-nums">({toArabicIndic(currentAyahNumber)})</span>
+                <span className="text-[11px] text-[#8A6418] dark:text-[#D9B45A] tabular-nums">({toArabicIndic(currentAyahNumber)})</span>
               </button>
               <button
                 type="button"
@@ -425,7 +825,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                   type="button"
                   onClick={onHideBar}
                   aria-label="إخفاء الشريط الصوتي"
-                  className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                  className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-full text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white hover:bg-[#EFE6D1] dark:hover:bg-slate-800 transition-colors cursor-pointer"
                   title="إخفاء الشريط الصوتي للقراءة بالعين"
                 >
                   <EyeOff className="w-3.5 h-3.5" />
@@ -435,12 +835,12 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
           </div>
         ) : (
           /* Floating Audio Capsule in Full-Screen */
-          <div className="fixed bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 z-[60] w-[calc(100vw-1.5rem)] sm:w-auto sm:min-w-[480px] max-w-xl bg-[#10161f]/95 border border-[#D9B45A]/30 shadow-2xl backdrop-blur-xl rounded-2xl p-2 sm:p-3 animate-in fade-in slide-in-from-bottom-3 space-y-2">
+          <div className="fixed bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 z-[60] w-[calc(100vw-1.5rem)] sm:w-auto sm:min-w-[480px] max-w-xl bg-[#FBF7EE]/95 dark:bg-[#10161f]/95 border border-[#D9B45A]/35 shadow-2xl backdrop-blur-xl rounded-2xl p-2 sm:p-3 animate-in fade-in slide-in-from-bottom-3 space-y-2">
             {/* Top Interactive Progress Line (LTR for accurate scrub positioning) */}
             <div
               dir="ltr"
               onClick={handleSeek}
-              className="w-full h-1.5 bg-slate-800 hover:h-2 rounded-full cursor-pointer transition-all relative overflow-hidden"
+              className="w-full h-1.5 bg-[#E5DAC0] dark:bg-slate-800 hover:h-2 rounded-full cursor-pointer transition-all relative overflow-hidden"
               title="تقديم وتأخير التلاوة"
             >
               <div
@@ -459,7 +859,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                     if (found) setSelectedReciter(found);
                   }}
                   aria-label="اختيار القارئ"
-                  className="bg-slate-950/90 border border-slate-700/80 rounded-lg text-xs font-bold text-[#F6EFDD] py-1.5 px-2 outline-none max-w-[165px] cursor-pointer"
+                  className="bg-white dark:bg-slate-950/90 border border-[#D9B45A]/30 dark:border-slate-700/80 rounded-lg text-xs font-bold text-[#1B1A17] dark:text-[#F6EFDD] py-1.5 px-2 outline-none max-w-[165px] cursor-pointer"
                 >
                   {RECITERS_LIST.map((r) => (
                     <option key={r.id} value={r.id}>
@@ -469,14 +869,14 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                 </select>
 
                 <div className="flex items-center gap-1">
-                  <span className="text-[11px] tabular-nums whitespace-nowrap px-2 py-1 rounded-md bg-slate-950 border border-slate-800 text-[#D9B45A] font-semibold shrink-0">
+                  <span className="text-[11px] tabular-nums whitespace-nowrap px-2 py-1 rounded-md bg-white dark:bg-slate-950 border border-[#D9B45A]/25 dark:border-slate-800 text-[#8A6418] dark:text-[#D9B45A] font-semibold shrink-0">
                     {toArabicIndic(currentAyahNumber)} / {toArabicIndic(totalAyahs)}
                   </span>
                   <button
                     type="button"
                     onClick={() => setIsExpanded(!isExpanded)}
                     aria-label="خيارات إضافية"
-                    className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                    className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-[#5C5549] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white hover:bg-[#EFE6D1] dark:hover:bg-slate-800 transition-colors cursor-pointer"
                     title="خيارات إضافية"
                   >
                     <SlidersHorizontal className="w-3.5 h-3.5" />
@@ -486,7 +886,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                       type="button"
                       onClick={onHideBar}
                       aria-label="إخفاء الشريط الصوتي"
-                      className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                      className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-[#5C5549] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white hover:bg-[#EFE6D1] dark:hover:bg-slate-800 transition-colors cursor-pointer"
                       title="إخفاء الشريط الصوتي"
                     >
                       <EyeOff className="w-3.5 h-3.5" />
@@ -502,7 +902,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                   disabled={currentAyahNumber <= 1}
                   aria-label="الآية السابقة"
                   title="الآية السابقة"
-                  className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-slate-300 hover:text-white disabled:opacity-30 hover:bg-slate-800 transition-colors cursor-pointer"
+                  className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-[#3F3A32] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white disabled:opacity-30 hover:bg-[#EFE6D1] dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 >
                   <SkipForward className="w-4 h-4" />
                 </button>
@@ -523,7 +923,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                   disabled={currentAyahNumber >= totalAyahs}
                   aria-label="الآية التالية"
                   title="الآية التالية"
-                  className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-slate-300 hover:text-white disabled:opacity-30 hover:bg-slate-800 transition-colors cursor-pointer"
+                  className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-[#3F3A32] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white disabled:opacity-30 hover:bg-[#EFE6D1] dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 >
                   <SkipBack className="w-4 h-4" />
                 </button>
@@ -533,7 +933,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             {/* Desktop single-row layout (sm+) */}
             <div className="hidden sm:flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 min-w-0">
-                <div className="w-8 h-8 rounded-lg bg-[#1F3A6E]/50 border border-[#648CD4]/40 flex items-center justify-center text-[#D9B45A] shrink-0">
+                <div className="w-8 h-8 rounded-lg bg-[#1F3A6E]/10 dark:bg-[#1F3A6E]/50 border border-[#648CD4]/35 flex items-center justify-center text-[#8A6418] dark:text-[#D9B45A] shrink-0">
                   <Volume2 className="w-4 h-4" />
                 </div>
                 <select
@@ -543,7 +943,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                     if (found) setSelectedReciter(found);
                   }}
                   aria-label="اختيار القارئ"
-                  className="bg-slate-950/90 border border-slate-700/80 rounded-lg text-xs font-bold text-[#F6EFDD] py-1.5 px-2 outline-none max-w-[155px] cursor-pointer"
+                  className="bg-white dark:bg-slate-950/90 border border-[#D9B45A]/30 dark:border-slate-700/80 rounded-lg text-xs font-bold text-[#1B1A17] dark:text-[#F6EFDD] py-1.5 px-2 outline-none max-w-[155px] cursor-pointer"
                   title="اختيار القارئ"
                 >
                   {RECITERS_LIST.map((r) => (
@@ -561,7 +961,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                   disabled={currentAyahNumber <= 1}
                   aria-label="الآية السابقة"
                   title="الآية السابقة"
-                  className="min-w-[38px] min-h-[38px] flex items-center justify-center rounded-lg text-slate-300 hover:text-white disabled:opacity-30 hover:bg-slate-800 transition-colors cursor-pointer"
+                  className="min-w-[38px] min-h-[38px] flex items-center justify-center rounded-lg text-[#3F3A32] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white disabled:opacity-30 hover:bg-[#EFE6D1] dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 >
                   <SkipForward className="w-4 h-4" />
                 </button>
@@ -582,14 +982,14 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                   disabled={currentAyahNumber >= totalAyahs}
                   aria-label="الآية التالية"
                   title="الآية التالية"
-                  className="min-w-[38px] min-h-[38px] flex items-center justify-center rounded-lg text-slate-300 hover:text-white disabled:opacity-30 hover:bg-slate-800 transition-colors cursor-pointer"
+                  className="min-w-[38px] min-h-[38px] flex items-center justify-center rounded-lg text-[#3F3A32] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white disabled:opacity-30 hover:bg-[#EFE6D1] dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 >
                   <SkipBack className="w-4 h-4" />
                 </button>
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0">
-                <span className="text-[11px] tabular-nums whitespace-nowrap px-2 py-1 rounded-md bg-slate-950 border border-slate-800 text-[#D9B45A] font-semibold shrink-0">
+                <span className="text-[11px] tabular-nums whitespace-nowrap px-2 py-1 rounded-md bg-white dark:bg-slate-950 border border-[#D9B45A]/25 dark:border-slate-800 text-[#8A6418] dark:text-[#D9B45A] font-semibold shrink-0">
                   {toArabicIndic(currentAyahNumber)} / {toArabicIndic(totalAyahs)}
                 </span>
 
@@ -597,7 +997,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                   type="button"
                   onClick={() => setIsExpanded(!isExpanded)}
                   aria-label="خيارات إضافية"
-                  className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                  className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-[#5C5549] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white hover:bg-[#EFE6D1] dark:hover:bg-slate-800 transition-colors cursor-pointer"
                   title="خيارات إضافية (تكرار، سرعة الصوت)"
                 >
                   <SlidersHorizontal className="w-3.5 h-3.5" />
@@ -607,7 +1007,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                   type="button"
                   onClick={() => setIsMinimizedInFullScreen(true)}
                   aria-label="تصغير الشريط الصوتي"
-                  className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                  className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-[#5C5549] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white hover:bg-[#EFE6D1] dark:hover:bg-slate-800 transition-colors cursor-pointer"
                   title="تصغير شريط الصوت لأيقونة"
                 >
                   <ChevronDown className="w-4 h-4" />
@@ -618,7 +1018,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                     type="button"
                     onClick={onHideBar}
                     aria-label="إخفاء الشريط الصوتي"
-                    className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                    className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-[#5C5549] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white hover:bg-[#EFE6D1] dark:hover:bg-slate-800 transition-colors cursor-pointer"
                     title="إخفاء الشريط الصوتي للقراءة بالعين"
                   >
                     <EyeOff className="w-3.5 h-3.5" />
@@ -629,10 +1029,10 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
 
             {/* Expanded Options in Full-Screen Mode */}
             {isExpanded && (
-              <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="pt-2 border-t border-[#D9B45A]/20 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
                 {/* Repeat Mode */}
                 <div className="flex items-center gap-1.5">
-                  <span className="text-slate-400 text-[11px]">التكرار:</span>
+                  <span className="text-[#5C5549] dark:text-slate-400 text-[11px]">التكرار:</span>
                   <button
                     type="button"
                     onClick={() => {
@@ -643,8 +1043,8 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                     }}
                     className={`min-h-[32px] py-1 px-2.5 rounded-md font-medium border text-[11px] flex items-center gap-1 cursor-pointer ${
                       repeatMode !== 'none'
-                        ? 'bg-[#D9B45A]/20 border-[#D9B45A]/60 text-[#D9B45A]'
-                        : 'bg-slate-950 border-slate-800 text-slate-300'
+                        ? 'bg-[#D9B45A]/20 border-[#D9B45A]/60 text-[#8A6418] dark:text-[#D9B45A]'
+                        : 'bg-white dark:bg-slate-950 border-[#D9B45A]/25 dark:border-slate-800 text-[#3F3A32] dark:text-slate-300'
                     }`}
                   >
                     <RotateCcw className="w-3 h-3" />
@@ -662,7 +1062,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
 
                 {/* Audio Speed */}
                 <div className="flex items-center gap-1.5">
-                  <span className="text-slate-400 text-[11px]">السرعة:</span>
+                  <span className="text-[#5C5549] dark:text-slate-400 text-[11px]">السرعة:</span>
                   <div className="flex gap-1">
                     {[0.75, 1.0, 1.25].map((speed) => (
                       <button
@@ -672,7 +1072,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                         className={`min-h-[30px] py-0.5 px-2 rounded font-semibold text-[11px] cursor-pointer ${
                           playbackSpeed === speed
                             ? 'bg-[#1F3A6E] text-[#F6EFDD] border border-[#648CD4]/50'
-                            : 'bg-slate-950 text-slate-300 hover:text-white'
+                            : 'bg-white dark:bg-slate-950 border border-[#D9B45A]/20 dark:border-transparent text-[#3F3A32] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white'
                         }`}
                       >
                         {speed}x
@@ -687,8 +1087,8 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                   onClick={onToggleSmartScroll}
                   className={`min-h-[32px] py-1 px-2.5 rounded-md font-medium border text-[11px] flex items-center gap-1 cursor-pointer ${
                     isSmartScrollEnabled
-                      ? 'bg-[#1F3A6E]/50 border-[#648CD4]/50 text-[#D9B45A]'
-                      : 'bg-slate-950 border-slate-800 text-slate-300'
+                      ? 'bg-[#1F3A6E] dark:bg-[#1F3A6E]/50 border-[#648CD4]/50 text-[#F6EFDD] dark:text-[#D9B45A]'
+                      : 'bg-white dark:bg-slate-950 border-[#D9B45A]/25 dark:border-slate-800 text-[#3F3A32] dark:text-slate-300'
                   }`}
                   title="مزامنة نزول الصفحة مع تلاوة الشيخ"
                 >
@@ -701,12 +1101,12 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
         )
       ) : (
         /* STANDARD DOCKED BOTTOM BAR (Normal View) */
-        <div className="fixed bottom-16 lg:bottom-0 left-0 right-0 z-30 bg-[#0d121a]/95 border-t border-slate-800 backdrop-blur-md shadow-2xl transition-all pb-[env(safe-area-inset-bottom)] lg:pb-0">
+        <div className="fixed bottom-16 lg:bottom-0 left-0 right-0 z-30 bg-[#FBF7EE]/95 dark:bg-[#0d121a]/95 border-t border-[#D9B45A]/25 dark:border-slate-800 backdrop-blur-md shadow-2xl transition-all pb-[env(safe-area-inset-bottom)] lg:pb-0">
           {/* Progress line (LTR for accurate scrub positioning) */}
           <div
             dir="ltr"
             onClick={handleSeek}
-            className="w-full h-1 bg-slate-800 hover:h-2 cursor-pointer transition-all relative"
+            className="w-full h-1 bg-[#E5DAC0] dark:bg-slate-800 hover:h-2 cursor-pointer transition-all relative"
           >
             <div
               className="h-full bg-gradient-to-r from-[#2E5499] to-[#D9B45A]"
@@ -714,108 +1114,63 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             />
           </div>
 
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 py-1.5 sm:py-2.5 flex flex-col gap-1.5">
-        {/* Mobile Layout (< md): Clean compact bar leaving maximum vertical Mushaf space */}
-        <div className="flex flex-col gap-1.5 md:hidden">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="font-bold text-[#F6EFDD] text-xs truncate">
-                سورة {surahName}
-              </span>
-              <span className="text-[11px] text-[#D9B45A] font-semibold tabular-nums whitespace-nowrap shrink-0">
-                الآية {toArabicIndic(currentAyahNumber)} / {toArabicIndic(totalAyahs)}
-              </span>
-            </div>
-
-            <select
-              value={selectedReciter.id}
-              onChange={(e) => {
-                const found = RECITERS_LIST.find(r => r.id === e.target.value);
-                if (found) setSelectedReciter(found);
-              }}
-              aria-label="اختيار القارئ"
-              className="bg-slate-900 border border-slate-700/80 rounded-lg text-[11px] text-[#F6EFDD] py-1 px-2 outline-none max-w-[145px] shrink-0"
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 py-1.5 sm:py-2 flex flex-col gap-1.5">
+        {/* Mobile Layout (< md): 1-row collapsible Mini-Player respecting 15% mobile sticky cap */}
+        <div className="flex items-center justify-between gap-2 md:hidden min-h-[44px]">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <button
+              type="button"
+              onClick={() => onPlayPauseToggle(!isPlaying)}
+              aria-label={isPlaying ? 'إيقاف مؤقت' : 'تشغيل التلاوة'}
+              title={isPlaying ? 'إيقاف مؤقت' : 'تشغيل التلاوة'}
+              className="w-9 h-9 shrink-0 rounded-full bg-[#1F3A6E] hover:bg-[#2E5499] border border-[#648CD4]/50 text-[#F6EFDD] flex items-center justify-center shadow-md transition-transform active:scale-95 cursor-pointer"
             >
-              {RECITERS_LIST.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
+              {isPlaying ? (
+                <Pause className="w-4 h-4" />
+              ) : (
+                <Play className="w-4 h-4 ml-0.5 text-[#D9B45A] fill-[#D9B45A]" />
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="min-w-0 flex-1 text-right cursor-pointer"
+              title="توسيع أدوات التلاوة"
+            >
+              <div className="flex items-center gap-1.5 text-xs font-bold text-[#1B1A17] dark:text-[#F6EFDD] truncate">
+                <span className="truncate">سورة {surahName}</span>
+                <span className="text-[#8A6418] dark:text-[#D9B45A] tabular-nums shrink-0">
+                  · {toArabicIndic(currentAyahNumber)}/{toArabicIndic(totalAyahs)}
+                </span>
+              </div>
+              <div className="text-[11px] text-[#5C5549] dark:text-slate-400 truncate">
+                {selectedReciter.name}
+              </div>
+            </button>
           </div>
 
-          <div className="flex items-center justify-between gap-1.5">
-            <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsExpanded(!isExpanded)}
+              aria-expanded={isExpanded}
+              aria-label={isExpanded ? 'طي خيارات المشغّل' : 'توسيع خيارات المشغّل'}
+              className="min-w-[38px] min-h-[38px] flex items-center justify-center rounded-xl text-[#3F3A32] dark:text-slate-300 hover:bg-[#EFE6D1] dark:hover:bg-slate-800 border border-[#D9B45A]/25 dark:border-slate-800 bg-white dark:bg-slate-900 transition-colors cursor-pointer"
+            >
+              {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+            </button>
+
+            {onHideBar && (
               <button
                 type="button"
-                onClick={() => onAyahChange(Math.max(1, currentAyahNumber - 1))}
-                disabled={currentAyahNumber <= 1}
-                aria-label="الآية السابقة"
-                title="الآية السابقة"
-                className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-slate-300 hover:text-white disabled:opacity-40 hover:bg-slate-800 transition-colors cursor-pointer"
+                onClick={onHideBar}
+                aria-label="إخفاء الشريط الصوتي للقراءة بالعين"
+                className="min-w-[38px] min-h-[38px] flex items-center justify-center rounded-xl text-[#3F3A32] dark:text-slate-300 hover:bg-[#EFE6D1] dark:hover:bg-slate-800 border border-[#D9B45A]/25 dark:border-slate-800 bg-white dark:bg-slate-900 transition-colors cursor-pointer"
               >
-                <SkipForward className="w-4 h-4" />
+                <EyeOff className="w-4 h-4" />
               </button>
-
-              <button
-                type="button"
-                onClick={() => onPlayPauseToggle(!isPlaying)}
-                aria-label={isPlaying ? 'إيقاف مؤقت' : 'تشغيل التلاوة'}
-                title={isPlaying ? 'إيقاف مؤقت' : 'تشغيل التلاوة'}
-                className="w-10 h-10 rounded-full bg-[#1F3A6E] hover:bg-[#2E5499] border border-[#648CD4]/50 text-[#F6EFDD] flex items-center justify-center shadow-lg transition-transform active:scale-95 cursor-pointer"
-              >
-                {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5 text-[#D9B45A] fill-[#D9B45A]" />}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onAyahChange(Math.min(totalAyahs, currentAyahNumber + 1))}
-                disabled={currentAyahNumber >= totalAyahs}
-                aria-label="الآية التالية"
-                title="الآية التالية"
-                className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-slate-300 hover:text-white disabled:opacity-40 hover:bg-slate-800 transition-colors cursor-pointer"
-              >
-                <SkipBack className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={onToggleSmartScroll}
-                className={`min-h-[38px] flex items-center gap-1 py-1.5 px-2.5 rounded-xl text-[11px] font-semibold border transition-all cursor-pointer whitespace-nowrap ${
-                  isSmartScrollEnabled
-                    ? 'bg-[#1F3A6E]/55 border-[#648CD4]/50 text-[#D9B45A]'
-                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white'
-                }`}
-                title="مزامنة التمرير مع التلاوة"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>المزامنة</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsExpanded(!isExpanded)}
-                aria-label="خيارات الختمة والتكرار والسرعة"
-                className="min-w-[38px] min-h-[38px] flex items-center justify-center rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-800 bg-slate-900 transition-colors cursor-pointer"
-                title="خيارات الختمة والتكرار والسرعة"
-              >
-                {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
-              </button>
-
-              {onHideBar && (
-                <button
-                  type="button"
-                  onClick={onHideBar}
-                  aria-label="إخفاء الشريط الصوتي للقراءة بالعين"
-                  className="min-w-[38px] min-h-[38px] flex items-center justify-center rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-800 bg-slate-900 transition-colors cursor-pointer"
-                  title="إخفاء الشريط الصوتي للقراءة بالعين"
-                >
-                  <EyeOff className="w-4 h-4" />
-                </button>
-              )}
-            </div>
+            )}
           </div>
         </div>
 
@@ -825,20 +1180,20 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
           <div className="flex items-center gap-3 min-w-0">
             <div className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 ${
               isPlaying
-                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400'
-                : 'bg-[#1F3A6E]/40 border-[#648CD4]/35 text-[#D9B45A]'
+                ? 'bg-[#1F3A6E] border-[#648CD4]/60 text-[#D9B45A]'
+                : 'bg-[#EFE6D1] dark:bg-[#1F3A6E]/40 border-[#D9B45A]/30 dark:border-[#648CD4]/35 text-[#8A6418] dark:text-[#D9B45A]'
             }`}>
               <Volume2 className="w-4 h-4" />
             </div>
             <div className="min-w-0">
-              <div className="font-bold text-[#F6EFDD] text-sm truncate flex items-center gap-2">
+              <div className="font-bold text-[#1B1A17] dark:text-[#F6EFDD] text-sm truncate flex items-center gap-2">
                 <span className="truncate">سورة {surahName}</span>
-                <span className="text-[11px] text-[#D9B45A] font-medium tabular-nums whitespace-nowrap shrink-0">
+                <span className="text-[11px] text-[#8A6418] dark:text-[#D9B45A] font-medium tabular-nums whitespace-nowrap shrink-0">
                   الآية {toArabicIndic(currentAyahNumber)} / {toArabicIndic(totalAyahs)}
                 </span>
               </div>
-              <div className="text-[11px] text-slate-400 truncate">
-                بصوت: <strong className="text-slate-200">{selectedReciter.name}</strong> · {selectedReciter.style}
+              <div className="text-[11px] text-[#5C5549] dark:text-slate-400 truncate">
+                بصوت: <strong className="text-[#1B1A17] dark:text-slate-200">{selectedReciter.name}</strong> · {selectedReciter.style}
               </div>
             </div>
           </div>
@@ -851,7 +1206,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
               disabled={currentAyahNumber <= 1}
               aria-label="الآية السابقة"
               title="الآية السابقة"
-              className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-slate-300 hover:text-white disabled:opacity-40 hover:bg-slate-800 transition-colors cursor-pointer"
+              className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-[#3F3A32] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white disabled:opacity-40 hover:bg-[#EFE6D1] dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <SkipForward className="w-4 h-4" />
             </button>
@@ -872,7 +1227,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
               disabled={currentAyahNumber >= totalAyahs}
               aria-label="الآية التالية"
               title="الآية التالية"
-              className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-slate-300 hover:text-white disabled:opacity-40 hover:bg-slate-800 transition-colors cursor-pointer"
+              className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-[#3F3A32] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white disabled:opacity-40 hover:bg-[#EFE6D1] dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <SkipBack className="w-4 h-4" />
             </button>
@@ -885,8 +1240,8 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
               onClick={onToggleSmartScroll}
               className={`min-h-[38px] flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-xs font-semibold border transition-all cursor-pointer whitespace-nowrap ${
                 isSmartScrollEnabled
-                  ? 'bg-[#1F3A6E]/55 border-[#648CD4]/50 text-[#D9B45A] shadow-sm'
-                  : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white'
+                  ? 'bg-[#1F3A6E] border-[#648CD4]/60 text-[#D9B45A] shadow-sm'
+                  : 'bg-white dark:bg-slate-900 border-[#D9B45A]/25 dark:border-slate-800 text-[#3F3A32] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white'
               }`}
               title="تمرير تلقائي يتوقف عند رأس كل آية ﴿﴾ للتدبر"
             >
@@ -901,7 +1256,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                 if (found) setSelectedReciter(found);
               }}
               aria-label="اختيار القارئ"
-              className="min-h-[38px] bg-slate-900 border border-slate-700/80 rounded-xl text-xs text-[#F6EFDD] py-1.5 px-2.5 outline-none max-w-[175px] cursor-pointer"
+              className="min-h-[38px] bg-white dark:bg-slate-900 border border-[#D9B45A]/30 dark:border-slate-700/80 rounded-xl text-xs text-[#1B1A17] dark:text-[#F6EFDD] py-1.5 px-2.5 outline-none max-w-[175px] cursor-pointer"
             >
               {RECITERS_LIST.map((r) => (
                 <option key={r.id} value={r.id}>
@@ -914,7 +1269,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
               type="button"
               onClick={() => setIsExpanded(!isExpanded)}
               aria-label="خيارات الختمة والتكرار والسرعة"
-              className="min-w-[38px] min-h-[38px] flex items-center justify-center rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              className="min-w-[38px] min-h-[38px] flex items-center justify-center rounded-xl text-[#3F3A32] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white hover:bg-[#EFE6D1] dark:hover:bg-slate-800 transition-colors cursor-pointer"
               title="خيارات الختمة والتكرار والسرعة"
             >
               {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
@@ -925,7 +1280,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                 type="button"
                 onClick={onHideBar}
                 aria-label="إخفاء الشريط الصوتي للقراءة بالعين"
-                className="min-w-[38px] min-h-[38px] flex items-center justify-center rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                className="min-w-[38px] min-h-[38px] flex items-center justify-center rounded-xl text-[#3F3A32] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white hover:bg-[#EFE6D1] dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 title="إخفاء الشريط الصوتي للقراءة بالعين"
               >
                 <EyeOff className="w-4 h-4" />
@@ -934,128 +1289,185 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
           </div>
         </div>
 
-        {/* Expanded Options Drawer */}
+        {/* Expanded Options Drawer (Mobile includes Prev/Next + Reciter + Smart Scroll) */}
         {isExpanded && (
-          <div className="pt-2.5 pb-1 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2.5 text-xs animate-in fade-in duration-150">
-            {/* Repeat Mode */}
-            <div className="flex items-center gap-2">
-              <span className="text-slate-400">تكرار الآية:</span>
-              <button
-                type="button"
-                onClick={() => {
-                  if (repeatMode === 'none') setRepeatMode('2-times');
-                  else if (repeatMode === '2-times') setRepeatMode('3-times');
-                  else if (repeatMode === '3-times') setRepeatMode('loop');
-                  else setRepeatMode('none');
-                }}
-                className={`min-h-[34px] py-1 px-2.5 rounded-lg font-medium border flex items-center gap-1 cursor-pointer ${
-                  repeatMode !== 'none'
-                    ? 'bg-[#D9B45A]/20 border-[#D9B45A]/60 text-[#D9B45A]'
-                    : 'bg-slate-900 border-slate-800 text-slate-300'
-                }`}
-              >
-                <RotateCcw className="w-3 h-3" />
-                <span>
-                  {repeatMode === 'none'
-                    ? 'بدون تكرار'
-                    : repeatMode === '2-times'
-                    ? `مرتان (${repeatCounter}/2)`
-                    : repeatMode === '3-times'
-                    ? `3 مرات (${repeatCounter}/3)`
-                    : 'تكرار مستمر'}
-                </span>
-              </button>
-            </div>
+          <div className="pt-2.5 pb-1.5 border-t border-[#D9B45A]/20 dark:border-slate-800/80 flex flex-col gap-2.5 text-xs animate-in fade-in duration-150">
+            {/* Mobile-only Prev/Next + Reciter + Smart Scroll */}
+            <div className="flex flex-wrap items-center justify-between gap-2 md:hidden">
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => onAyahChange(Math.max(1, currentAyahNumber - 1))}
+                  disabled={currentAyahNumber <= 1}
+                  className="min-h-[36px] px-2.5 rounded-lg bg-white dark:bg-slate-900 border border-[#D9B45A]/25 dark:border-slate-800 text-[#1B1A17] dark:text-slate-200 disabled:opacity-40 flex items-center gap-1 cursor-pointer"
+                >
+                  <SkipForward className="w-3.5 h-3.5" />
+                  <span>السابقة</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onAyahChange(Math.min(totalAyahs, currentAyahNumber + 1))}
+                  disabled={currentAyahNumber >= totalAyahs}
+                  className="min-h-[36px] px-2.5 rounded-lg bg-white dark:bg-slate-900 border border-[#D9B45A]/25 dark:border-slate-800 text-[#1B1A17] dark:text-slate-200 disabled:opacity-40 flex items-center gap-1 cursor-pointer"
+                >
+                  <span>التالية</span>
+                  <SkipBack className="w-3.5 h-3.5" />
+                </button>
+              </div>
 
-            {/* Playback Speed */}
-            <div className="flex items-center gap-2">
-              <span className="text-slate-400">السرعة:</span>
-              <div className="flex gap-1">
-                {[0.75, 1.0, 1.25].map((speed) => (
-                  <button
-                    key={speed}
-                    type="button"
-                    onClick={() => setPlaybackSpeed(speed)}
-                    className={`min-h-[32px] py-0.5 px-2.5 rounded-md font-semibold cursor-pointer ${
-                      playbackSpeed === speed
-                        ? 'bg-[#1F3A6E] text-[#F6EFDD] border border-[#648CD4]/50'
-                        : 'bg-slate-800 text-slate-300 hover:text-white'
-                    }`}
-                  >
-                    {speed}x
-                  </button>
-                ))}
+              <div className="flex items-center gap-1.5">
+                <select
+                  value={selectedReciter.id}
+                  onChange={(e) => {
+                    const found = RECITERS_LIST.find(r => r.id === e.target.value);
+                    if (found) setSelectedReciter(found);
+                  }}
+                  aria-label="اختيار القارئ"
+                  className="min-h-[36px] bg-white dark:bg-slate-900 border border-[#D9B45A]/30 dark:border-slate-700/80 rounded-lg text-[11px] text-[#1B1A17] dark:text-[#F6EFDD] py-1 px-2 outline-none max-w-[140px]"
+                >
+                  {RECITERS_LIST.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  onClick={onToggleSmartScroll}
+                  className={`min-h-[36px] px-2.5 rounded-lg text-[11px] font-semibold border flex items-center gap-1 cursor-pointer ${
+                    isSmartScrollEnabled
+                      ? 'bg-[#1F3A6E] border-[#648CD4]/60 text-[#D9B45A]'
+                      : 'bg-white dark:bg-slate-900 border-[#D9B45A]/25 dark:border-slate-800 text-[#3F3A32] dark:text-slate-300'
+                  }`}
+                >
+                  <Sparkles className="w-3 h-3" />
+                  <span>المزامنة</span>
+                </button>
               </div>
             </div>
 
-            {/* Daily Khatma Sleep Timer */}
-            <div className="flex items-center gap-2">
-              <Clock className="w-3.5 h-3.5 text-slate-400" />
-              <span className="text-slate-400">مؤقت الورد:</span>
-              <select
-                value={khatmaTimerMinutes}
-                onChange={(e) => setKhatmaTimerMinutes(Number(e.target.value))}
-                aria-label="مؤقت إيقاف الورد"
-                className="min-h-[34px] bg-slate-900 border border-slate-800 rounded-md text-[#F6EFDD] py-0.5 px-2 outline-none"
-              >
-                <option value={0}>بدون إيقاف</option>
-                <option value={15}>15 دقيقة</option>
-                <option value={30}>30 دقيقة</option>
-                <option value={45}>45 دقيقة</option>
-                <option value={60}>ساعة كاملة</option>
-              </select>
-              {timeRemaining > 0 && (
-                <span className="text-[#D9B45A] font-mono text-[11px]">
-                  ({Math.floor(timeRemaining / 60)}د)
-                </span>
-              )}
-            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
+              {/* Repeat Mode */}
+              <div className="flex items-center gap-2">
+                <span className="text-[#5C5549] dark:text-slate-400">تكرار الآية:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (repeatMode === 'none') setRepeatMode('2-times');
+                    else if (repeatMode === '2-times') setRepeatMode('3-times');
+                    else if (repeatMode === '3-times') setRepeatMode('loop');
+                    else setRepeatMode('none');
+                  }}
+                  className={`min-h-[34px] py-1 px-2.5 rounded-lg font-medium border flex items-center gap-1 cursor-pointer ${
+                    repeatMode !== 'none'
+                      ? 'bg-[#D9B45A]/20 border-[#D9B45A]/60 text-[#8A6418] dark:text-[#D9B45A]'
+                      : 'bg-white dark:bg-slate-900 border-[#D9B45A]/25 dark:border-slate-800 text-[#3F3A32] dark:text-slate-300'
+                  }`}
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>
+                    {repeatMode === 'none'
+                      ? 'بدون تكرار'
+                      : repeatMode === '2-times'
+                      ? `مرتان (${repeatCounter}/2)`
+                      : repeatMode === '3-times'
+                      ? `3 مرات (${repeatCounter}/3)`
+                      : 'تكرار مستمر'}
+                  </span>
+                </button>
+              </div>
 
-            {/* Real Offline Audio Cache Download */}
-            <div className="flex flex-col items-end justify-center gap-1">
-              <button
-                type="button"
-                onClick={handleDownloadSurah}
-                disabled={isDownloaded || isDownloading}
-                className={`min-h-[34px] py-1 px-2.5 rounded-lg font-medium border flex items-center gap-1.5 transition-colors cursor-pointer ${
-                  isDownloaded
-                    ? 'bg-[#172848]/70 border-[#648CD4]/40 text-[#D9B45A]'
-                    : downloadError
-                    ? 'bg-rose-950/40 border-rose-500/40 text-rose-300 hover:bg-rose-950/60'
-                    : 'bg-slate-900 border-slate-800 text-slate-200 hover:border-slate-700'
-                }`}
-                title={
-                  isDownloaded
-                    ? 'السورة محفوظة بالكامل في ذاكرة المتصفح للاستماع دون إنترنت'
-                    : downloadError || 'تخزين تلاوات هذه السورة للعمل دون اتصال بالإنترنت'
-                }
-              >
-                {isDownloaded ? (
-                  <>
-                    <CheckCircle2 className="w-3.5 h-3.5 text-[#D9B45A]" />
-                    <span>محفوظة دون إنترنت</span>
-                  </>
-                ) : isDownloading ? (
-                  <>
-                    <Download className="w-3.5 h-3.5 animate-bounce text-[#D9B45A]" />
-                    <span>
-                      {downloadProgress
-                        ? `جارٍ الحفظ (${downloadProgress.completed}/${downloadProgress.total})...`
-                        : 'جارِ التخزين...'}
-                    </span>
-                  </>
-                ) : downloadError ? (
-                  <>
-                    <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
-                    <span>تعذر التحميل · أعد المحاولة</span>
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-3.5 h-3.5 text-[#648CD4]" />
-                    <span>حفظ السورة دون إنترنت</span>
-                  </>
+              {/* Playback Speed */}
+              <div className="flex items-center gap-2">
+                <span className="text-[#5C5549] dark:text-slate-400">السرعة:</span>
+                <div className="flex gap-1">
+                  {[0.75, 1.0, 1.25].map((speed) => (
+                    <button
+                      key={speed}
+                      type="button"
+                      onClick={() => setPlaybackSpeed(speed)}
+                      className={`min-h-[32px] py-0.5 px-2.5 rounded-md font-semibold cursor-pointer ${
+                        playbackSpeed === speed
+                          ? 'bg-[#1F3A6E] text-[#F6EFDD] border border-[#648CD4]/50'
+                          : 'bg-white dark:bg-slate-800 border border-[#D9B45A]/20 dark:border-transparent text-[#3F3A32] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white'
+                      }`}
+                    >
+                      {speed}x
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Daily Khatma Sleep Timer */}
+              <div className="flex items-center gap-2">
+                <Clock className="w-3.5 h-3.5 text-[#5C5549] dark:text-slate-400" />
+                <span className="text-[#5C5549] dark:text-slate-400">مؤقت الورد:</span>
+                <select
+                  value={khatmaTimerMinutes}
+                  onChange={(e) => setKhatmaTimerMinutes(Number(e.target.value))}
+                  aria-label="مؤقت إيقاف الورد"
+                  className="min-h-[34px] bg-white dark:bg-slate-900 border border-[#D9B45A]/25 dark:border-slate-800 rounded-md text-[#1B1A17] dark:text-[#F6EFDD] py-0.5 px-2 outline-none"
+                >
+                  <option value={0}>بدون إيقاف</option>
+                  <option value={15}>15 دقيقة</option>
+                  <option value={30}>30 دقيقة</option>
+                  <option value={45}>45 دقيقة</option>
+                  <option value={60}>ساعة كاملة</option>
+                </select>
+                {timeRemaining > 0 && (
+                  <span className="text-[#8A6418] dark:text-[#D9B45A] font-mono text-[11px]">
+                    ({Math.floor(timeRemaining / 60)}د)
+                  </span>
                 )}
-              </button>
+              </div>
+
+              {/* Real Offline Audio Cache Download */}
+              <div className="flex flex-col items-end justify-center gap-1">
+                <button
+                  type="button"
+                  onClick={handleDownloadSurah}
+                  disabled={isDownloaded || isDownloading}
+                  className={`min-h-[34px] py-1 px-2.5 rounded-lg font-medium border flex items-center gap-1.5 transition-colors cursor-pointer ${
+                    isDownloaded
+                      ? 'bg-[#1F3A6E] border-[#648CD4]/40 text-[#D9B45A]'
+                      : downloadError
+                      ? 'bg-rose-950/40 border-rose-500/40 text-rose-600 dark:text-rose-300'
+                      : 'bg-white dark:bg-slate-900 border-[#D9B45A]/25 dark:border-slate-800 text-[#1B1A17] dark:text-slate-200 hover:border-[#8A6418]/45 dark:hover:border-slate-700'
+                  }`}
+                  title={
+                    isDownloaded
+                      ? 'السورة محفوظة بالكامل في ذاكرة المتصفح للاستماع دون إنترنت'
+                      : downloadError || 'تخزين تلاوات هذه السورة للعمل دون اتصال بالإنترنت'
+                  }
+                >
+                  {isDownloaded ? (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-[#D9B45A]" />
+                      <span>محفوظة دون إنترنت</span>
+                    </>
+                  ) : isDownloading ? (
+                    <>
+                      <Download className="w-3.5 h-3.5 animate-bounce text-[#D9B45A]" />
+                      <span>
+                        {downloadProgress
+                          ? `جارٍ الحفظ (${downloadProgress.completed}/${downloadProgress.total})...`
+                          : 'جارِ التخزين...'}
+                      </span>
+                    </>
+                  ) : downloadError ? (
+                    <>
+                      <AlertCircle className="w-3.5 h-3.5 text-rose-500 dark:text-rose-400" />
+                      <span>تعذر التحميل · أعد المحاولة</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3.5 h-3.5 text-[#1F3A6E] dark:text-[#648CD4]" />
+                      <span>حفظ السورة دون إنترنت</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         )}

@@ -117,24 +117,24 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="tadabbur-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/55 dark:bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
     >
-      <div className="relative w-full max-w-2xl max-h-[90vh] bg-[#10161f] border border-[#D9B45A]/30 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="relative w-full max-w-2xl max-h-[90vh] bg-[#FBF7EE] dark:bg-[#10161f] border border-[#8A6418]/30 dark:border-[#D9B45A]/30 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
 
         {/* Header */}
-        <div className="p-4 sm:p-5 border-b border-slate-800 bg-gradient-to-l from-[#142038] via-[#10161f] to-[#0c1118] flex items-center justify-between gap-2">
+        <div className="p-4 sm:p-5 border-b border-[#E3D9C3] dark:border-slate-800 bg-gradient-to-l from-[#EFE6D1] via-[#FBF7EE] to-[#F6EFDD] dark:from-[#142038] dark:via-[#10161f] dark:to-[#0c1118] flex items-center justify-between gap-2">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-[#1F3A6E]/50 border border-[#648CD4]/40 flex items-center justify-center text-[#D9B45A] shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-[#1F3A6E]/10 dark:bg-[#1F3A6E]/50 border border-[#1F3A6E]/25 dark:border-[#648CD4]/40 flex items-center justify-center text-[#8A6418] dark:text-[#D9B45A] shrink-0">
               <Sparkles className="w-5 h-5" />
             </div>
             <div className="min-w-0">
-              <h3 id="tadabbur-modal-title" className="font-bold text-[#F6EFDD] text-base sm:text-lg flex items-center gap-2 truncate">
+              <h3 id="tadabbur-modal-title" className="font-bold text-[#1B1A17] dark:text-[#F6EFDD] text-base sm:text-lg flex items-center gap-2 truncate">
                 <span>سورة {surahName}</span>
-                <span className="text-xs text-[#D9B45A] font-normal">
+                <span className="text-xs text-[#8A6418] dark:text-[#D9B45A] font-normal">
                   · الآية {toArabicIndic(ayah.numberInSurah)}
                 </span>
               </h3>
-              <p className="text-xs text-slate-400 truncate">مساعد الفهم العميق والتدبر والتفاسير المعتمدة</p>
+              <p className="text-xs text-[#5E584E] dark:text-slate-400 truncate">مساعد الفهم العميق والتدبر والتفاسير المعتمدة</p>
             </div>
           </div>
 
@@ -145,7 +145,7 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
                 onClick={() => onPlayAyah(ayah.numberInSurah)}
                 aria-label="استماع للآية"
                 title="استماع للآية"
-                className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-slate-300 hover:text-[#D9B45A] hover:bg-slate-800 transition-colors cursor-pointer"
+                className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-[#5E584E] dark:text-slate-300 hover:text-[#1F3A6E] dark:hover:text-[#D9B45A] hover:bg-[#EFE6D1] dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <Volume2 className="w-5 h-5" />
               </button>
@@ -156,7 +156,7 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
                 onClick={() => onOpenShareModal(ayah)}
                 aria-label="مشاركة كبطاقة"
                 title="مشاركة كبطاقة"
-                className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-slate-300 hover:text-[#D9B45A] hover:bg-slate-800 transition-colors cursor-pointer"
+                className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-[#5E584E] dark:text-slate-300 hover:text-[#1F3A6E] dark:hover:text-[#D9B45A] hover:bg-[#EFE6D1] dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <Share2 className="w-5 h-5" />
               </button>
@@ -165,7 +165,7 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
               type="button"
               onClick={onClose}
               aria-label="إغلاق النافذة"
-              className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-[#5E584E] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white hover:bg-[#EFE6D1] dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -173,11 +173,11 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
         </div>
 
         {/* Highlighted Ayah Banner */}
-        <div className="p-4 sm:p-5 bg-[#0b1018] border-b border-slate-800 text-center">
-          <p className="font-quran text-xl sm:text-2xl text-[#F6EFDD] leading-loose">
+        <div className="p-4 sm:p-5 bg-[#F6EFDD] dark:bg-[#0b1018] border-b border-[#E3D9C3] dark:border-slate-800 text-center">
+          <p className="font-quran text-xl sm:text-2xl text-[#1B1A17] dark:text-[#F6EFDD] leading-loose">
             ﴿ {ayah.text} ﴾
           </p>
-          <div className="mt-2 text-xs text-slate-400 flex justify-center gap-3 tabular-nums">
+          <div className="mt-2 text-xs text-[#5E584E] dark:text-slate-400 flex justify-center gap-3 tabular-nums">
             <span>الجزء {toArabicIndic(ayah.juz)}</span>
             <span aria-hidden="true">·</span>
             <span>الصفحة {toArabicIndic(ayah.page)}</span>
@@ -187,7 +187,7 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-slate-800 bg-slate-950/40 px-3 pt-2 gap-1 overflow-x-auto">
+        <div className="flex border-b border-[#E3D9C3] dark:border-slate-800 bg-[#EFE6D1]/70 dark:bg-slate-950/40 px-3 pt-2 gap-1 overflow-x-auto">
           {[
             { id: 'tadabbur', label: 'التدبر والعمل', icon: Sparkles },
             { id: 'tafsir', label: 'التفاسير المعتمدة', icon: BookOpen },
@@ -203,8 +203,8 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
                 onClick={() => setActiveTab(tab.id as 'tafsir' | 'tadabbur' | 'irab' | 'journal')}
                 className={`min-h-[42px] flex items-center gap-2 py-2 px-3.5 text-xs sm:text-sm font-semibold rounded-t-xl transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                   isActive
-                    ? 'bg-[#10161f] text-[#D9B45A] border-t-2 border-[#D9B45A] shadow-lg'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+                    ? 'bg-[#FBF7EE] dark:bg-[#10161f] text-[#1F3A6E] dark:text-[#D9B45A] border-t-2 border-[#8A6418] dark:border-[#D9B45A] shadow-sm dark:shadow-lg'
+                    : 'text-[#5E584E] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-slate-200 hover:bg-[#FBF7EE]/60 dark:hover:bg-slate-900/50'
                 }`}
               >
                 <Icon className="w-4 h-4" />
@@ -218,32 +218,32 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
         <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-4">
           {activeTab === 'tadabbur' && (
             <div className="space-y-4 animate-in fade-in duration-200">
-              <div className="p-4 rounded-xl bg-gradient-to-br from-[#D9B45A]/10 to-[#0b1018] border border-[#D9B45A]/25">
-                <div className="flex items-center gap-2 text-[#D9B45A] text-xs font-bold mb-2">
+              <div className="p-4 rounded-xl bg-gradient-to-br from-[#8A6418]/10 to-[#F6EFDD] dark:from-[#D9B45A]/10 dark:to-[#0b1018] border border-[#8A6418]/25 dark:border-[#D9B45A]/25">
+                <div className="flex items-center gap-2 text-[#8A6418] dark:text-[#D9B45A] text-xs font-bold mb-2">
                   <Lightbulb className="w-4 h-4" />
                   <span>سؤال التدبر واللمحة الإيمانية</span>
                 </div>
-                <p className="font-naskh text-[#F6EFDD] text-[17px] leading-[1.85]">
+                <p className="font-naskh text-[#1B1A17] dark:text-[#F6EFDD] text-[17px] leading-[1.85]">
                   {ayah.reflectionQuestion ||
                     'تأمل في دلالات هذه الآية الكريمة العظيمة: كيف تخاطب واقعك اليوم، وما الهداية القلبية التي تستنبطها من هذا البيان الإلهي؟'}
                 </p>
               </div>
 
-              <div className="p-4 rounded-xl bg-gradient-to-br from-[#1F3A6E]/35 to-[#0b1018] border border-[#648CD4]/30">
-                <div className="flex items-center gap-2 text-[#648CD4] text-xs font-bold mb-2">
+              <div className="p-4 rounded-xl bg-gradient-to-br from-[#1F3A6E]/10 to-[#F6EFDD] dark:from-[#1F3A6E]/35 dark:to-[#0b1018] border border-[#1F3A6E]/25 dark:border-[#648CD4]/30">
+                <div className="flex items-center gap-2 text-[#1F3A6E] dark:text-[#648CD4] text-xs font-bold mb-2">
                   <Sparkles className="w-4 h-4" />
                   <span>الواجب العملي المعاش (كيف أطبق الآية اليوم؟)</span>
                 </div>
-                <p className="font-naskh text-[#F6EFDD] text-[17px] leading-[1.85]">
+                <p className="font-naskh text-[#1B1A17] dark:text-[#F6EFDD] text-[17px] leading-[1.85]">
                   {ayah.practicalAction ||
                     'اعمل بمقتضى التفسير الميسر للآية، وحوّل فهمك لها إلى نية صالحة أو خلق حميد تطبقه في تعاملك مع نفسك والناس اليوم.'}
                 </p>
               </div>
 
               {ayah.asbabNuzul && (
-                <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800">
-                  <span className="text-xs font-bold text-[#D9B45A] block mb-1">سبب النزول ومقصد السورة:</span>
-                  <p className="font-naskh text-slate-200 text-base leading-[1.85]">
+                <div className="p-4 rounded-xl bg-[#EFE6D1]/70 dark:bg-slate-950/80 border border-[#E3D9C3] dark:border-slate-800">
+                  <span className="text-xs font-bold text-[#8A6418] dark:text-[#D9B45A] block mb-1">سبب النزول ومقصد السورة:</span>
+                  <p className="font-naskh text-[#2E2A24] dark:text-slate-200 text-base leading-[1.85]">
                     {ayah.asbabNuzul}
                   </p>
                 </div>
@@ -253,7 +253,7 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
 
           {activeTab === 'tafsir' && (
             <div className="space-y-4 animate-in fade-in duration-200">
-              <div className="flex flex-wrap gap-1.5 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
+              <div className="flex flex-wrap gap-1.5 bg-[#EFE6D1] dark:bg-slate-950 p-1.5 rounded-xl border border-[#E3D9C3] dark:border-slate-800">
                 {TAFSIR_EDITIONS.map((ed) => {
                   const isSel = selectedEdition === ed.id;
                   return (
@@ -263,8 +263,8 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
                       onClick={() => setSelectedEdition(ed.id)}
                       className={`min-h-[36px] py-1.5 px-3 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                         isSel
-                          ? 'bg-[#1F3A6E] text-[#F6EFDD] border border-[#648CD4]/50 shadow-sm'
-                          : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                          ? 'bg-[#1F3A6E] text-[#FBF7EE] dark:text-[#F6EFDD] border border-[#2E5499] dark:border-[#648CD4]/50 shadow-sm'
+                          : 'text-[#5E584E] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white hover:bg-[#FBF7EE] dark:hover:bg-slate-800'
                       }`}
                     >
                       {ed.name}
@@ -273,24 +273,24 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
                 })}
               </div>
 
-              <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
-                <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-800/80">
-                  <div className="flex items-center gap-2 text-[#D9B45A] font-bold">
+              <div className="p-4 rounded-xl bg-[#F6EFDD] dark:bg-slate-950/70 border border-[#E3D9C3] dark:border-slate-800 space-y-2">
+                <div className="flex items-center justify-between text-xs pb-2 border-b border-[#E3D9C3] dark:border-slate-800/80">
+                  <div className="flex items-center gap-2 text-[#8A6418] dark:text-[#D9B45A] font-bold">
                     <BookOpen className="w-4 h-4" />
                     <span>{activeEditionMeta.name}</span>
                   </div>
-                  <span className="text-[11px] text-slate-400">{activeEditionMeta.description}</span>
+                  <span className="text-[11px] text-[#5E584E] dark:text-slate-400">{activeEditionMeta.description}</span>
                 </div>
 
                 {isLoadingTafsir ? (
-                  <div className="py-8 flex items-center justify-center gap-2 text-xs text-slate-300">
-                    <Loader2 className="w-4 h-4 animate-spin text-[#D9B45A]" />
+                  <div className="py-8 flex items-center justify-center gap-2 text-xs text-[#5E584E] dark:text-slate-300">
+                    <Loader2 className="w-4 h-4 animate-spin text-[#8A6418] dark:text-[#D9B45A]" />
                     <span>جارٍ جلب {activeEditionMeta.name}...</span>
                   </div>
                 ) : tafsirError ? (
-                  <p className="text-xs text-rose-300 py-3">{tafsirError}</p>
+                  <p className="text-xs text-rose-700 dark:text-rose-300 py-3">{tafsirError}</p>
                 ) : (
-                  <p className="font-naskh text-[#F6EFDD]/95 text-[17px] leading-[1.9] pt-1">
+                  <p className="font-naskh text-[#1B1A17] dark:text-[#F6EFDD]/95 text-[17px] leading-[1.9] pt-1">
                     {editionTafsirText || ayah.tafsir}
                   </p>
                 )}
@@ -300,12 +300,12 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
 
           {activeTab === 'irab' && (
             <div className="space-y-4 animate-in fade-in duration-200">
-              <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800">
-                <div className="flex items-center gap-2 text-[#648CD4] text-xs font-bold mb-2">
+              <div className="p-4 rounded-xl bg-[#F6EFDD] dark:bg-slate-950/70 border border-[#E3D9C3] dark:border-slate-800">
+                <div className="flex items-center gap-2 text-[#1F3A6E] dark:text-[#648CD4] text-xs font-bold mb-2">
                   <Compass className="w-4 h-4" />
                   <span>اللمحة النحوية والإعراب</span>
                 </div>
-                <p className="font-naskh text-[#F6EFDD]/95 text-[17px] leading-[1.85]">
+                <p className="font-naskh text-[#1B1A17] dark:text-[#F6EFDD]/95 text-[17px] leading-[1.85]">
                   {ayah.irabHint ||
                     'الإعراب التفصيلي الكامل لكلمات هذه الآية الكريمة متاح في طبعة المصحف الإعرابي. يمكنك الاسترشاد بالتفسير الميسر لاستجلاء وجوه الإعراب والمعاني.'}
                 </p>
@@ -316,7 +316,7 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
           {activeTab === 'journal' && (
             <div className="space-y-4 animate-in fade-in duration-200">
               <div>
-                <label htmlFor="tadabbur-journal-input" className="block text-xs font-semibold text-slate-300 mb-2">
+                <label htmlFor="tadabbur-journal-input" className="block text-xs font-semibold text-[#5E584E] dark:text-slate-300 mb-2">
                   خواطري وتأملاتي الخاصة حول هذه الآية (محفوظة محلياً في متصفحك):
                 </label>
                 <textarea
@@ -325,7 +325,7 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
                   value={journalInput}
                   onChange={(e) => setJournalInput(e.target.value)}
                   placeholder="سجل هنا ما لامس قلبك من معانٍ، موقفاً حياتياً ذكرتك به الآية، أو عهداً تقطعه على نفسك..."
-                  className="font-naskh w-full p-3.5 rounded-xl bg-slate-950 border border-slate-700 focus:border-[#D9B45A] focus:ring-1 focus:ring-[#D9B45A] text-[#F6EFDD] text-base placeholder:text-slate-500 resize-none outline-none leading-[1.8]"
+                  className="font-naskh w-full p-3.5 rounded-xl bg-[#F6EFDD] dark:bg-slate-950 border border-[#D4C7AE] dark:border-slate-700 focus:border-[#8A6418] dark:focus:border-[#D9B45A] focus:ring-1 focus:ring-[#8A6418] dark:focus:ring-[#D9B45A] text-[#1B1A17] dark:text-[#F6EFDD] text-base placeholder:text-[#8E8677] dark:placeholder:text-slate-500 resize-none outline-none leading-[1.8]"
                 />
               </div>
 
@@ -333,14 +333,14 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
                 <button
                   type="button"
                   onClick={handleSaveNote}
-                  className="min-h-[42px] py-2.5 px-5 bg-[#1F3A6E] hover:bg-[#2E5499] border border-[#648CD4]/40 text-[#F6EFDD] rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 shadow-lg transition-all cursor-pointer"
+                  className="min-h-[42px] py-2.5 px-5 bg-[#1F3A6E] hover:bg-[#2E5499] border border-[#2E5499] dark:border-[#648CD4]/40 text-[#FBF7EE] dark:text-[#F6EFDD] rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 shadow-md transition-all cursor-pointer"
                 >
                   <PenLine className="w-4 h-4 text-[#D9B45A]" />
                   <span>حفظ في مفكرتي</span>
                 </button>
 
                 {isSavedAlert && (
-                  <span className="text-xs text-[#D9B45A] font-semibold flex items-center gap-1">
+                  <span className="text-xs text-emerald-700 dark:text-emerald-400 font-semibold flex items-center gap-1">
                     <Check className="w-4 h-4" />
                     تم الحفظ بنجاح في المفكرة
                   </span>
@@ -351,12 +351,12 @@ export const TadabburModal: React.FC<TadabburModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="p-3 sm:p-4 border-t border-slate-800 bg-slate-950/90 flex items-center justify-between text-xs text-slate-400">
+        <div className="p-3 sm:p-4 border-t border-[#E3D9C3] dark:border-slate-800 bg-[#EFE6D1]/70 dark:bg-slate-950/90 flex items-center justify-between text-xs text-[#5E584E] dark:text-slate-400">
           <span>بيان · مصحف وقف لوجه الله تعالى</span>
           <button
             type="button"
             onClick={onClose}
-            className="min-h-[36px] px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-[#F6EFDD] font-medium transition-colors cursor-pointer"
+            className="min-h-[36px] px-4 py-1.5 rounded-lg bg-[#FBF7EE] dark:bg-slate-800 hover:bg-[#E3D9C3] dark:hover:bg-slate-700 border border-[#D4C7AE] dark:border-transparent text-[#1B1A17] dark:text-[#F6EFDD] font-medium transition-colors cursor-pointer"
           >
             إغلاق
           </button>

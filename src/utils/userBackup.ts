@@ -18,6 +18,7 @@ export interface BayanUserBackup {
   faithStats: Record<string, unknown> | null;
   memorizationSrs: Record<string, unknown>;
   bookmarks: Record<string, string>;
+  bookmarksMeta?: Record<string, unknown> | null;
   customRuqyah?: unknown[];
   khatmaPlan?: Record<string, unknown> | null;
   tajweedMastered?: unknown[];
@@ -29,6 +30,7 @@ const JOURNAL_KEY = 'bayan_journal_notes';
 const FAITH_KEY = 'bayan_faith_analytics_v2';
 const SRS_KEY = 'bayan_memorization_srs_v2';
 const BOOKMARK_PREFIX = 'bayan_bookmark_';
+const BOOKMARKS_META_KEY = 'bayan_bookmarks_meta_v1';
 const CUSTOM_RUQYAH_KEY = 'bayan_custom_ruqyah_items';
 const KHATMA_PLAN_KEY = 'bayan_khatma_plan';
 const TAJWEED_MASTERED_KEY = 'bayan_tajweed_mastered_v1';
@@ -74,6 +76,7 @@ export function buildUserBackupPayload(overrideNotes?: ValidatedJournalNote[]): 
   const tajweedMastered = safeLocalStorage.getJSON<unknown[]>(TAJWEED_MASTERED_KEY, []);
   const tajweedQuizStats = safeLocalStorage.getJSON<Record<string, unknown> | null>(TAJWEED_QUIZ_KEY, null);
   const readerPrefs = safeLocalStorage.getJSON<Record<string, unknown> | null>(READER_PREFS_KEY, null);
+  const bookmarksMeta = safeLocalStorage.getJSON<Record<string, unknown> | null>(BOOKMARKS_META_KEY, null);
 
   const bookmarks: Record<string, string> = {};
   if (typeof window !== 'undefined' && window.localStorage) {
@@ -98,6 +101,7 @@ export function buildUserBackupPayload(overrideNotes?: ValidatedJournalNote[]): 
     faithStats,
     memorizationSrs: memorizationSrs && typeof memorizationSrs === 'object' ? memorizationSrs : {},
     bookmarks,
+    bookmarksMeta: bookmarksMeta && typeof bookmarksMeta === 'object' ? bookmarksMeta : null,
     customRuqyah: Array.isArray(customRuqyah) ? customRuqyah : [],
     khatmaPlan: khatmaPlan && typeof khatmaPlan === 'object' ? khatmaPlan : null,
     tajweedMastered: Array.isArray(tajweedMastered) ? tajweedMastered : [],
@@ -157,6 +161,10 @@ export function validateAndParseUserBackup(
         faithStats: parsed.faithStats && typeof parsed.faithStats === 'object' ? parsed.faithStats : null,
         memorizationSrs: parsed.memorizationSrs && typeof parsed.memorizationSrs === 'object' ? parsed.memorizationSrs : {},
         bookmarks: sanitizedBookmarks,
+        bookmarksMeta:
+          parsed.bookmarksMeta && typeof parsed.bookmarksMeta === 'object'
+            ? parsed.bookmarksMeta
+            : undefined,
         customRuqyah: Array.isArray(parsed.customRuqyah) ? parsed.customRuqyah : undefined,
         khatmaPlan: parsed.khatmaPlan && typeof parsed.khatmaPlan === 'object' ? parsed.khatmaPlan : undefined,
         tajweedMastered: Array.isArray(parsed.tajweedMastered) ? parsed.tajweedMastered : undefined,
@@ -198,6 +206,9 @@ export async function restoreUserBackupData(
   }
   if (backup.readerPrefs) {
     ok = safeLocalStorage.setJSON(READER_PREFS_KEY, backup.readerPrefs) && ok;
+  }
+  if (backup.bookmarksMeta) {
+    ok = safeLocalStorage.setJSON(BOOKMARKS_META_KEY, backup.bookmarksMeta) && ok;
   }
 
   let bookmarksCount = 0;

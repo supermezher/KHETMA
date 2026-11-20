@@ -1,0 +1,240 @@
+import { describe, expect, it } from 'vitest';
+import {
+  appendUniquePageItem,
+  clampMushafFontSize,
+  computePinchFontSize,
+  computeRuledLineMetrics,
+  computeShortPageDwellMs,
+  computeTrimmedPageStream,
+  getArabicJuzLabel,
+  resolveAutoScrollEndAction,
+  resolveRtlPageSwipeDelta,
+  resolveVisiblePageFromOffsets,
+  shouldToggleImmersiveTap,
+} from '../utils/mushafGestures';
+
+describe('mushafGestures helpers', () => {
+  it('formats all 30 classical Arabic Juz ordinal labels accurately', () => {
+    expect(getArabicJuzLabel(1)).toBe('الجزء الأول');
+    expect(getArabicJuzLabel(15)).toBe('الجزء الخامس عشر');
+    expect(getArabicJuzLabel(30)).toBe('الجزء الثلاثون');
+    expect(getArabicJuzLabel(0)).toBe('الجزء الأول');
+    expect(getArabicJuzLabel(99)).toBe('الجزء الثلاثون');
+  });
+
+  it('clamps font size cleanly between 20 and 48 and handles two-finger pinch scaling', () => {
+    expect(clampMushafFontSize(14)).toBe(20);
+    expect(clampMushafFontSize(60)).toBe(48);
+    expect(clampMushafFontSize(30.4)).toBe(30);
+
+    expect(computePinchFontSize(28, 100, 125)).toBe(35);
+    expect(computePinchFontSize(28, 100, 50)).toBe(20);
+    expect(computePinchFontSize(36, 100, 180)).toBe(48);
+    expect(computePinchFontSize(28, 0, 120)).toBe(28);
+  });
+
+  it('resolves RTL Mushaf page swipes without triggering on vertical scroll', () => {
+    // Swiping rightward advances to next Arabic Mushaf page (+1)
+    expect(resolveRtlPageSwipeDelta(90, 10)).toBe(1);
+    // Swiping leftward goes back to previous Arabic Mushaf page (-1)
+    expect(resolveRtlPageSwipeDelta(-95, 15)).toBe(-1);
+    // Short jitter or vertical scroll is ignored
+    expect(resolveRtlPageSwipeDelta(35, 5)).toBe(0);
+    expect(resolveRtlPageSwipeDelta(80, 75)).toBe(0);
+  });
+
+  it('toggles immersive mode only on clean short single taps', () => {
+    expect(
+      shouldToggleImmersiveTap({
+        dx: 2,
+        dy: -3,
+        durationMs: 140,
+        didPinch: false,
+        didLongPress: false,
+        didSwipe: false,
+        hasSelection: false,
+        isInteractiveTarget: false,
+      })
+    ).toBe(true);
+
+    // Rejects taps on buttons/links, drags, long-presses, text selections, pinches, or swipes
+    expect(
+      shouldToggleImmersiveTap({
+        dx: 0,
+        dy: 0,
+        durationMs: 120,
+        didPinch: false,
+        didLongPress: false,
+        didSwipe: false,
+        hasSelection: false,
+        isInteractiveTarget: true,
+      })
+    ).toBe(false);
+
+    expect(
+      shouldToggleImmersiveTap({
+        dx: 1,
+        dy: 1,
+        durationMs: 150,
+        didPinch: false,
+        didLongPress: true,
+        didSwipe: false,
+        hasSelection: false,
+        isInteractiveTarget: false,
+      })
+    ).toBe(false);
+
+    expect(
+      shouldToggleImmersiveTap({
+        dx: 14,
+        dy: 2,
+        durationMs: 150,
+        didPinch: false,
+        didLongPress: false,
+        didSwipe: false,
+        hasSelection: false,
+        isInteractiveTarget: false,
+      })
+    ).toBe(false);
+
+    expect(
+      shouldToggleImmersiveTap({
+        dx: 0,
+        dy: 0,
+        durationMs: 120,
+        didPinch: false,
+        didLongPress: false,
+        didSwipe: false,
+        hasSelection: true,
+        isInteractiveTarget: false,
+      })
+    ).toBe(false);
+  });
+
+  it('computes consistent ruled line spacing metrics scaled to font size', () => {
+    expect(computeRuledLineMetrics(28).lineHeightPx).toBe(63);
+    expect(computeRuledLineMetrics(20).lineHeightPx).toBe(45);
+    expect(computeRuledLineMetrics(48).lineHeightPx).toBe(108);
+  });
+
+  it('resolves auto-scroll end action across page and surah modes without skipping while loading', () => {
+    expect(
+      resolveAutoScrollEndAction({
+        readerMode: 'page',
+        currentPage: 12,
+        currentSurah: 2,
+        autoAdvancePage: true,
+        isLoadingPage: false,
+        isAdvancingPage: false,
+        canNavigateSurah: true,
+      })
+    ).toEqual({ action: 'advance-page', nextPage: 13 });
+
+    // Never skips page 604
+    expect(
+      resolveAutoScrollEndAction({
+        readerMode: 'page',
+        currentPage: 604,
+        currentSurah: 114,
+        autoAdvancePage: true,
+        isLoadingPage: false,
+        isAdvancingPage: false,
+        canNavigateSurah: true,
+      })
+    ).toEqual({ action: 'stop' });
+
+    // Waits cleanly while loading or mid-transition
+    expect(
+      resolveAutoScrollEndAction({
+        readerMode: 'page',
+        currentPage: 12,
+        currentSurah: 2,
+        autoAdvancePage: true,
+        isLoadingPage: true,
+        isAdvancingPage: false,
+        canNavigateSurah: true,
+      })
+    ).toEqual({ action: 'wait' });
+
+    expect(
+      resolveAutoScrollEndAction({
+        readerMode: 'page',
+        currentPage: 12,
+        currentSurah: 2,
+        autoAdvancePage: true,
+        isLoadingPage: false,
+        isAdvancingPage: true,
+        canNavigateSurah: true,
+      })
+    ).toEqual({ action: 'wait' });
+
+    // Stops when user disables autoAdvancePage
+    expect(
+      resolveAutoScrollEndAction({
+        readerMode: 'page',
+        currentPage: 12,
+        currentSurah: 2,
+        autoAdvancePage: false,
+        isLoadingPage: false,
+        isAdvancingPage: false,
+        canNavigateSurah: true,
+      })
+    ).toEqual({ action: 'stop' });
+
+    // Advances Surah in full-surah mode up to 114
+    expect(
+      resolveAutoScrollEndAction({
+        readerMode: 'surah',
+        currentPage: 590,
+        currentSurah: 87,
+        autoAdvancePage: true,
+        isLoadingPage: false,
+        isAdvancingPage: false,
+        canNavigateSurah: true,
+      })
+    ).toEqual({ action: 'advance-surah', nextSurah: 88 });
+
+    expect(
+      resolveAutoScrollEndAction({
+        readerMode: 'surah',
+        currentPage: 604,
+        currentSurah: 114,
+        autoAdvancePage: true,
+        isLoadingPage: false,
+        isAdvancingPage: false,
+        canNavigateSurah: true,
+      })
+    ).toEqual({ action: 'stop' });
+  });
+
+  it('computes calm dwell time for short pages that fit on screen without scrolling', () => {
+    expect(computeShortPageDwellMs(1)).toBe(12000);
+    expect(computeShortPageDwellMs(2)).toBe(6000);
+    expect(computeShortPageDwellMs(5)).toBe(2500);
+    expect(computeShortPageDwellMs(99)).toBe(2500);
+  });
+
+  it('manages continuous Mushaf page stream without duplicates and resolves visible page cleanly', () => {
+    const initial = [{ pageNumber: 10 }, { pageNumber: 11 }];
+    expect(appendUniquePageItem(initial, { pageNumber: 11 })).toBe(initial);
+    expect(appendUniquePageItem(initial, { pageNumber: 12 })).toEqual([
+      { pageNumber: 10 },
+      { pageNumber: 11 },
+      { pageNumber: 12 },
+    ]);
+
+    const offsets = [
+      { pageNumber: 10, top: -450, bottom: 210 },
+      { pageNumber: 11, top: 218, bottom: 900 },
+      { pageNumber: 12, top: 908, bottom: 1600 },
+    ];
+    expect(resolveVisiblePageFromOffsets(offsets, 200, 10)).toBe(10);
+    expect(resolveVisiblePageFromOffsets(offsets, 260, 10)).toBe(11);
+    expect(resolveVisiblePageFromOffsets(offsets, 920, 11)).toBe(12);
+
+    const longStream = [10, 11, 12, 13, 14, 15, 16, 17].map((p) => ({ pageNumber: p }));
+    const trimmed = computeTrimmedPageStream(longStream, 16, 6);
+    expect(trimmed.trimmedPageNumbers).toEqual([10, 11]);
+    expect(trimmed.kept.map((p) => p.pageNumber)).toEqual([12, 13, 14, 15, 16, 17]);
+  });
+});

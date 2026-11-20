@@ -1,8 +1,15 @@
 <!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="ar" dir="rtl" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      try {
+        if (localStorage.getItem('bayan_app_theme_v1') === 'light') {
+          document.documentElement.classList.remove('dark');
+        }
+      } catch (e) {}
+    </script>
     <title>بيان — مصحف وقف بالرسم العثماني</title>
     <meta name="description" content="مصحف رقمي وقفي مجاني بالرسم العثماني وألوان التجويد والتفسير الميسر والحفظ والختمات." />
     <meta property="og:title" content="بيان — مصحف وقف بالرسم العثماني" />
@@ -20,7 +27,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Amiri:wght@400;700&family=Cairo:wght@400;500;600;700&family=Noto+Naskh+Arabic:wght@400;500;600;700&family=Reem+Kufi:wght@500;600;700&display=swap" rel="stylesheet">
   </head>
-  <body class="bg-[#10161f] text-[#e9e3d3] selection:bg-[#1f3a6e]/40 selection:text-[#f6efdd] antialiased">
+  <body class="bg-[#F6EFDD] text-[#1B1A17] dark:bg-[#10161f] dark:text-[#e9e3d3] selection:bg-[#D9B45A]/30 selection:text-[#1B1A17] dark:selection:text-[#f6efdd] antialiased transition-colors duration-200">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
