@@ -19,7 +19,7 @@ import {
   Bookmark, HelpCircle, Play, Pause, X, Radio, Hand,
   ChevronDown, SlidersHorizontal, Volume2,
   ChevronRight, ChevronLeft, RefreshCw, AlertCircle, Check, Share2, PenLine,
-  Award, MoreHorizontal, ChevronsDown, Sun, Moon, ShieldCheck, Calendar,
+  Award, ChevronsDown, Sun, Moon, ShieldCheck, Calendar,
   Heart, Sprout, Compass, AlignJustify, LayoutGrid
 } from 'lucide-react';
 import { APP_THEME_EVENT, AppTheme, LastReadingPosition, loadAppTheme, saveAppTheme } from '../utils/appTheme';
@@ -56,6 +56,7 @@ import {
   resolveRtlPageSwipeDelta,
   resolveVisiblePageFromOffsets,
   shouldToggleImmersiveTap,
+  wrapCircularIndex,
 } from '../utils/mushafGestures';
 
 export type ReaderTheme = 'parchment' | 'sepia' | 'dark' | 'emerald';
@@ -1587,6 +1588,7 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
       onClick: () => void;
       onContextMenu?: (e: React.MouseEvent<HTMLButtonElement>) => void;
     }> = [
+      // Wave 1 (First 4 visible beside تلاوة): Active reading & immediate actions
       {
         id: 'autoscroll',
         label: isAutoScrolling ? `${autoScrollSpeed}x` : 'آلي',
@@ -1612,6 +1614,26 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
           setActiveDockSheet((s) => (s === 'autoscroll' ? 'none' : 'autoscroll'));
         },
       },
+    ];
+
+    if (activeAyahContext.ayah) {
+      const targetAyah = activeAyahContext.ayah;
+      const targetSurahNum = activeAyahContext.surahNumber;
+      const targetSurahName = activeAyahContext.surahName;
+      items.push({
+        id: 'tafsir',
+        label: 'التفسير',
+        title: 'التفسير والتدبر للآية النشطة',
+        isActive: false,
+        icon: <BookOpen className={`w-4 h-4 ${isLightPaper ? 'text-[#1F3A6E]' : 'text-[#D9B45A]'}`} />,
+        onClick: () => {
+          setActiveDockSheet('none');
+          onOpenTadabburModal(targetAyah, targetSurahNum, targetSurahName);
+        },
+      });
+    }
+
+    items.push(
       {
         id: 'bookmarks',
         label: 'المراجع',
@@ -1645,38 +1667,10 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
             onNavigateView?.('memorization');
           }
         },
-      },
-      {
-        id: 'more',
-        label: 'المزيد',
-        title: 'إعدادات المصحف وأقسام بيان',
-        isActive: activeDockSheet === 'more',
-        icon: (
-          <MoreHorizontal
-            className={`w-4 h-4 ${activeDockSheet === 'more' ? '' : isLightPaper ? 'text-[#1F3A6E]' : 'text-[#D9B45A]'}`}
-          />
-        ),
-        onClick: () => setActiveDockSheet((s) => (s === 'more' ? 'none' : 'more')),
-      },
-    ];
+      }
+    );
 
-    if (activeAyahContext.ayah) {
-      const targetAyah = activeAyahContext.ayah;
-      const targetSurahNum = activeAyahContext.surahNumber;
-      const targetSurahName = activeAyahContext.surahName;
-      items.push({
-        id: 'tafsir',
-        label: 'التفسير',
-        title: 'التفسير والتدبر للآية النشطة',
-        isActive: false,
-        icon: <BookOpen className={`w-4 h-4 ${isLightPaper ? 'text-[#1F3A6E]' : 'text-[#D9B45A]'}`} />,
-        onClick: () => {
-          setActiveDockSheet('none');
-          onOpenTadabburModal(targetAyah, targetSurahNum, targetSurahName);
-        },
-      });
-    }
-
+    // Wave 2: Family Hifz, Tajweed & Devotional sections
     if (onNavigateView) {
       items.push({
         id: 'kids',
@@ -1710,17 +1704,6 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
     if (onNavigateView) {
       items.push(
         {
-          id: 'ruqyah',
-          label: 'الرقية',
-          title: 'الرقية الشرعية والأذكار',
-          isActive: false,
-          icon: <ShieldCheck className={`w-4 h-4 ${isLightPaper ? 'text-[#1F3A6E]' : 'text-[#D9B45A]'}`} />,
-          onClick: () => {
-            setActiveDockSheet('none');
-            onNavigateView('ruqyah');
-          },
-        },
-        {
           id: 'khatma',
           label: 'الختمات',
           title: 'الختمات والورد اليومي',
@@ -1731,6 +1714,18 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
             onNavigateView('khatma');
           },
         },
+        {
+          id: 'ruqyah',
+          label: 'الرقية',
+          title: 'الرقية الشرعية والأذكار',
+          isActive: false,
+          icon: <ShieldCheck className={`w-4 h-4 ${isLightPaper ? 'text-[#1F3A6E]' : 'text-[#D9B45A]'}`} />,
+          onClick: () => {
+            setActiveDockSheet('none');
+            onNavigateView('ruqyah');
+          },
+        },
+        // Wave 3: Journaling & Settings
         {
           id: 'journal',
           label: 'مفكرتي',
@@ -1744,6 +1739,19 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
         }
       );
     }
+
+    items.push({
+      id: 'more',
+      label: 'الضبط',
+      title: 'إعدادات المصحف وبقية أقسام بيان',
+      isActive: activeDockSheet === 'more',
+      icon: (
+        <SlidersHorizontal
+          className={`w-4 h-4 ${activeDockSheet === 'more' ? '' : isLightPaper ? 'text-[#1F3A6E]' : 'text-[#D9B45A]'}`}
+        />
+      ),
+      onClick: () => setActiveDockSheet((s) => (s === 'more' ? 'none' : 'more')),
+    });
 
     return items;
   }, [
@@ -1896,7 +1904,7 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
       if (!drag.didDrag) return;
       suppressDialClickUntilRef.current = performance.now() + 260;
 
-      const extraSlots = clampCircularMomentumSlots(drag.velocitySlotsPerSec, 2.5);
+      const extraSlots = clampCircularMomentumSlots(drag.velocitySlotsPerSec, 3.5);
       const snappedTarget = Math.round(dialOffsetRef.current + extraSlots);
       animateDialTo(snappedTarget);
     },
@@ -1906,6 +1914,24 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
   const circularDialSlots = useMemo(
     () => computeCircularDialSlots(dialOffset, dialItems.length, 4),
     [dialOffset, dialItems.length]
+  );
+
+  const dialWaveCount = Math.max(1, Math.ceil(dialItems.length / 4));
+  const activeDialIndex = wrapCircularIndex(Math.round(dialOffset), dialItems.length);
+  const activeDialWave = Math.min(dialWaveCount - 1, Math.floor(activeDialIndex / 4));
+
+  const jumpDialToWave = useCallback(
+    (waveIdx: number) => {
+      const count = dialItems.length || 1;
+      const targetMod = Math.min(count - 1, waveIdx * 4);
+      const currentRounded = Math.round(dialOffsetRef.current);
+      const currentMod = wrapCircularIndex(currentRounded, count);
+      let diff = targetMod - currentMod;
+      if (diff > count / 2) diff -= count;
+      if (diff < -count / 2) diff += count;
+      animateDialTo(currentRounded + diff);
+    },
+    [dialItems.length, animateDialTo]
   );
 
   return (
@@ -2739,6 +2765,38 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
             <ChevronLeft className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Subtle Swipe-Wave Indicator Segments Below Circular Dial */}
+        {dialWaveCount > 1 && (
+          <div className="flex items-center px-1.5 pb-1 -mt-0.5 gap-1">
+            <div className="w-[20%] min-w-[64px] max-w-[82px] shrink-0" aria-hidden="true" />
+            <div className="w-px shrink-0" aria-hidden="true" />
+            <div className="flex-1 flex items-center justify-center gap-1">
+              {Array.from({ length: dialWaveCount }, (_, waveIdx) => {
+                const isActive = waveIdx === activeDialWave;
+                return (
+                  <button
+                    key={waveIdx}
+                    type="button"
+                    onClick={() => jumpDialToWave(waveIdx)}
+                    aria-label={`مجموعة أدوات ${toArabicIndic(waveIdx + 1)} من ${toArabicIndic(dialWaveCount)}`}
+                    className="px-1.5 py-0.5 flex items-center justify-center cursor-pointer"
+                  >
+                    <span
+                      className={`block h-[2.5px] rounded-full transition-all duration-200 ${
+                        isActive
+                          ? isLightPaper
+                            ? 'w-5 bg-[#1F3A6E]'
+                            : 'w-5 bg-[#D9B45A]'
+                          : 'w-2.5 bg-current opacity-25 hover:opacity-50'
+                      }`}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </nav>
 
       {/* ===================== DOCK FLOATING SHEETS ===================== */}
