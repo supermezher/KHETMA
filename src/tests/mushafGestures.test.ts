@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   appendUniquePageItem,
+  clampCircularMomentumSlots,
   clampMushafFontSize,
+  computeCircularDialSlots,
   computePinchFontSize,
   computeRuledLineMetrics,
   computeShortPageDwellMs,
@@ -12,6 +14,7 @@ import {
   resolveRtlPageSwipeDelta,
   resolveVisiblePageFromOffsets,
   shouldToggleImmersiveTap,
+  wrapCircularIndex,
 } from '../utils/mushafGestures';
 
 describe('mushafGestures helpers', () => {
@@ -248,5 +251,44 @@ describe('mushafGestures helpers', () => {
     // Keeps user's preferred shade when global theme matches brightness polarity
     expect(resolvePairedPaperTheme('sepia', 'light')).toBe('sepia');
     expect(resolvePairedPaperTheme('emerald', 'dark')).toBe('emerald');
+  });
+
+  it('wraps positive and negative circular dock indices seamlessly without gaps', () => {
+    expect(wrapCircularIndex(0, 9)).toBe(0);
+    expect(wrapCircularIndex(9, 9)).toBe(0);
+    expect(wrapCircularIndex(11, 9)).toBe(2);
+    expect(wrapCircularIndex(-1, 9)).toBe(8);
+    expect(wrapCircularIndex(-10, 9)).toBe(8);
+    expect(wrapCircularIndex(3, 0)).toBe(0);
+
+    expect(clampCircularMomentumSlots(50)).toBe(2.5);
+    expect(clampCircularMomentumSlots(-50)).toBe(-2.5);
+    expect(clampCircularMomentumSlots(5)).toBeCloseTo(0.8);
+  });
+
+  it('computes RTL circular dial visible slots with smooth right-exit and left-entry edge taper', () => {
+    // At rest (offset 0), 4 center slots (0..3) are crisp and interactive while edge buffers are hidden
+    const restSlots = computeCircularDialSlots(0, 9, 4);
+    expect(restSlots).toHaveLength(6);
+    const interactiveRest = restSlots.filter((s) => s.slotPosition >= 0 && s.slotPosition <= 3);
+    expect(interactiveRest.map((s) => s.itemIndex)).toEqual([0, 1, 2, 3]);
+    expect(interactiveRest.every((s) => s.opacity === 1 && s.scale === 1 && s.isInteractive)).toBe(true);
+
+    // Dragging rightward (virtualOffset = 0.5): slot 0 shifts right behind divider (opacity < 1),
+    // while item 4 enters from the left edge with balanced taper
+    const midDragSlots = computeCircularDialSlots(0.5, 9, 4);
+    const exitingSlot = midDragSlots.find((s) => s.virtualSlot === 0);
+    const enteringSlot = midDragSlots.find((s) => s.virtualSlot === 4);
+    expect(exitingSlot?.slotPosition).toBe(-0.5);
+    expect(exitingSlot?.opacity).toBeLessThan(1);
+    expect(exitingSlot?.scale).toBeLessThan(1);
+    expect(enteringSlot?.itemIndex).toBe(4);
+    expect(enteringSlot?.slotPosition).toBe(3.5);
+    expect(enteringSlot?.opacity).toBeLessThan(1);
+
+    // Negative offset wraps end items cleanly from right divider
+    const reverseSlots = computeCircularDialSlots(-1, 9, 4);
+    const activeReverse = reverseSlots.filter((s) => s.slotPosition >= 0 && s.slotPosition <= 3);
+    expect(activeReverse.map((s) => s.itemIndex)).toEqual([8, 0, 1, 2]);
   });
 });

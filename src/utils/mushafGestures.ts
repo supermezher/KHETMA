@@ -228,3 +228,72 @@ export function resolvePairedPaperTheme(
   }
   return currentPaper;
 }
+
+export function wrapCircularIndex(index: number, count: number): number {
+  if (!Number.isFinite(count) || count <= 0) return 0;
+  const rounded = Math.round(index);
+  return ((rounded % count) + count) % count;
+}
+
+export function clampCircularMomentumSlots(velocitySlotsPerSec: number, maxExtraSlots = 2.5): number {
+  if (!Number.isFinite(velocitySlotsPerSec)) return 0;
+  // Convert release velocity into an intuitive throw distance (~160ms glide)
+  const projected = velocitySlotsPerSec * 0.16;
+  return Math.max(-maxExtraSlots, Math.min(maxExtraSlots, projected));
+}
+
+export interface CircularDialSlot {
+  virtualSlot: number;
+  itemIndex: number;
+  slotPosition: number;
+  opacity: number;
+  scale: number;
+  isInteractive: boolean;
+}
+
+/**
+ * Computes rendered slots for an infinite RTL circular dock.
+ * - `slotPosition = 0` sits at the rightmost visible slot next to the anchored CTA,
+ *   and `visibleSlots - 1` sits at the leftmost visible edge.
+ * - Increasing `virtualOffset` shifts items rightward (`slotPosition` decreases),
+ *   so slot `0` fades off behind the right divider while new wrapped items enter from the left.
+ */
+export function computeCircularDialSlots(
+  virtualOffset: number,
+  itemCount: number,
+  visibleSlots = 4
+): CircularDialSlot[] {
+  if (!Number.isFinite(itemCount) || itemCount <= 0 || visibleSlots <= 0) {
+    return [];
+  }
+  const safeOffset = Number.isFinite(virtualOffset) ? virtualOffset : 0;
+  const baseIndex = Math.floor(safeOffset);
+  const fraction = safeOffset - baseIndex;
+  const slots: CircularDialSlot[] = [];
+
+  for (let s = -1; s <= visibleSlots; s += 1) {
+    const virtualSlot = baseIndex + s;
+    const slotPosition = s - fraction;
+    let overshoot = 0;
+    if (slotPosition < 0) {
+      overshoot = -slotPosition;
+    } else if (slotPosition > visibleSlots - 1) {
+      overshoot = slotPosition - (visibleSlots - 1);
+    }
+
+    const opacity = overshoot <= 0 ? 1 : Math.max(0, Number((1 - overshoot * 1.18).toFixed(3)));
+    const scale = overshoot <= 0 ? 1 : Math.max(0.84, Number((1 - overshoot * 0.16).toFixed(3)));
+
+    slots.push({
+      virtualSlot,
+      itemIndex: wrapCircularIndex(virtualSlot, itemCount),
+      slotPosition: Number(slotPosition.toFixed(4)),
+      opacity,
+      scale,
+      isInteractive: opacity > 0.35,
+    });
+  }
+
+  return slots;
+}
+

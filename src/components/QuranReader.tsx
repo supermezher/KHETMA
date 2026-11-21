@@ -42,7 +42,9 @@ import {
 } from '../utils/bookmarksStore';
 import {
   appendUniquePageItem,
+  clampCircularMomentumSlots,
   clampMushafFontSize,
+  computeCircularDialSlots,
   computePinchFontSize,
   computeRuledLineMetrics,
   computeShortPageDwellMs,
@@ -462,6 +464,25 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
   const streamSessionIdRef = useRef<number>(0);
   const inFlightPreloadRef = useRef<Set<number>>(new Set());
   const pendingTopTrimCompensationRef = useRef<number>(0);
+
+  // Circular bottom dock dial state & smooth momentum snap refs
+  const [dialOffset, setDialOffset] = useState<number>(0);
+  const [isDialDragging, setIsDialDragging] = useState<boolean>(false);
+  const dialOffsetRef = useRef<number>(0);
+  const dialTrackRef = useRef<HTMLDivElement | null>(null);
+  const dialAnimFrameRef = useRef<number | null>(null);
+  const suppressDialClickUntilRef = useRef<number>(0);
+  const lastDialWheelRef = useRef<number>(0);
+  const dialDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    lastX: number;
+    lastTime: number;
+    startOffset: number;
+    slotWidth: number;
+    velocitySlotsPerSec: number;
+    didDrag: boolean;
+  } | null>(null);
 
   // Keep latest audio timing & active ayah in refs for 60fps auto-scroll
   const currentTimeRef = useRef(currentTime);
@@ -1556,6 +1577,323 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
     ? 'bg-[#FBF7EE]/95 border-[#8A6418]/30 text-[#1B1A17] shadow-[0_18px_50px_rgba(31,58,110,0.18)]'
     : 'bg-[#10161F]/95 border-[#D9B45A]/30 text-[#E9E3D3] shadow-[0_20px_54px_rgba(0,0,0,0.65)]';
 
+  const dialItems = useMemo(() => {
+    const items: Array<{
+      id: string;
+      label: string;
+      title: string;
+      isActive: boolean;
+      icon: React.ReactNode;
+      onClick: () => void;
+      onContextMenu?: (e: React.MouseEvent<HTMLButtonElement>) => void;
+    }> = [
+      {
+        id: 'autoscroll',
+        label: isAutoScrolling ? `${autoScrollSpeed}x` : 'آلي',
+        title: 'التمرير التلقائي المريح للعين (ضغطة مطولة للإعدادات)',
+        isActive: isAutoScrolling || activeDockSheet === 'autoscroll',
+        icon: isAutoScrolling ? (
+          <Pause className="w-4 h-4" />
+        ) : (
+          <ChevronsDown className={`w-4 h-4 ${isLightPaper ? 'text-[#1F3A6E]' : 'text-[#D9B45A]'}`} />
+        ),
+        onClick: () => {
+          if (isAutoScrolling) {
+            setIsAutoScrolling(false);
+            setIsAutoScrollPaused(false);
+          } else {
+            setScrollMode(isPlayingAudio ? 'reciter-sync' : 'manual-speed');
+            setIsAutoScrolling(true);
+            setIsAutoScrollPaused(false);
+          }
+        },
+        onContextMenu: (e) => {
+          e.preventDefault();
+          setActiveDockSheet((s) => (s === 'autoscroll' ? 'none' : 'autoscroll'));
+        },
+      },
+      {
+        id: 'bookmarks',
+        label: 'المراجع',
+        title: 'علامات الوقف والمواضع المحفوظة',
+        isActive: activeDockSheet === 'bookmarks',
+        icon: (
+          <Bookmark
+            className={`w-4 h-4 ${
+              currentBookmarkOnActive ? 'fill-current' : ''
+            } ${activeDockSheet === 'bookmarks' ? '' : isLightPaper ? 'text-[#1F3A6E]' : 'text-[#D9B45A]'}`}
+          />
+        ),
+        onClick: () => setActiveDockSheet((s) => (s === 'bookmarks' ? 'none' : 'bookmarks')),
+      },
+      {
+        id: 'memorization',
+        label: 'الحفظ',
+        title: 'بدء الحفظ والتسميع من هذا الموضع',
+        isActive: false,
+        icon: <Award className={`w-4 h-4 ${isLightPaper ? 'text-[#1F3A6E]' : 'text-[#D9B45A]'}`} />,
+        onClick: () => {
+          setActiveDockSheet('none');
+          if (onOpenMemorization) {
+            onOpenMemorization({
+              surahNumber: headerSurahNumber,
+              pageNumber: mushafPageNumber,
+              ayahNumber: activeAyahContext.ayah?.numberInSurah || activeAyahNumber,
+              readerMode,
+            });
+          } else {
+            onNavigateView?.('memorization');
+          }
+        },
+      },
+      {
+        id: 'more',
+        label: 'المزيد',
+        title: 'إعدادات المصحف وأقسام بيان',
+        isActive: activeDockSheet === 'more',
+        icon: (
+          <MoreHorizontal
+            className={`w-4 h-4 ${activeDockSheet === 'more' ? '' : isLightPaper ? 'text-[#1F3A6E]' : 'text-[#D9B45A]'}`}
+          />
+        ),
+        onClick: () => setActiveDockSheet((s) => (s === 'more' ? 'none' : 'more')),
+      },
+    ];
+
+    if (activeAyahContext.ayah) {
+      const targetAyah = activeAyahContext.ayah;
+      const targetSurahNum = activeAyahContext.surahNumber;
+      const targetSurahName = activeAyahContext.surahName;
+      items.push({
+        id: 'tafsir',
+        label: 'التفسير',
+        title: 'التفسير والتدبر للآية النشطة',
+        isActive: false,
+        icon: <BookOpen className={`w-4 h-4 ${isLightPaper ? 'text-[#1F3A6E]' : 'text-[#D9B45A]'}`} />,
+        onClick: () => {
+          setActiveDockSheet('none');
+          onOpenTadabburModal(targetAyah, targetSurahNum, targetSurahName);
+        },
+      });
+    }
+
+    items.push({
+      id: 'tajweed',
+      label: 'التجويد',
+      title: onNavigateView ? 'موسوعة التجويد' : 'دليل ألوان التجويد',
+      isActive: false,
+      icon: <Sparkles className={`w-4 h-4 ${isLightPaper ? 'text-[#1F3A6E]' : 'text-[#D9B45A]'}`} />,
+      onClick: () => {
+        setActiveDockSheet('none');
+        if (onNavigateView) {
+          onNavigateView('tajweed');
+        } else {
+          onOpenTajweedLegend();
+        }
+      },
+    });
+
+    if (onNavigateView) {
+      items.push(
+        {
+          id: 'ruqyah',
+          label: 'الرقية',
+          title: 'الرقية الشرعية والأذكار',
+          isActive: false,
+          icon: <ShieldCheck className={`w-4 h-4 ${isLightPaper ? 'text-[#1F3A6E]' : 'text-[#D9B45A]'}`} />,
+          onClick: () => {
+            setActiveDockSheet('none');
+            onNavigateView('ruqyah');
+          },
+        },
+        {
+          id: 'khatma',
+          label: 'الختمات',
+          title: 'الختمات والورد اليومي',
+          isActive: false,
+          icon: <Compass className={`w-4 h-4 ${isLightPaper ? 'text-[#1F3A6E]' : 'text-[#D9B45A]'}`} />,
+          onClick: () => {
+            setActiveDockSheet('none');
+            onNavigateView('khatma');
+          },
+        },
+        {
+          id: 'journal',
+          label: 'مفكرتي',
+          title: 'مفكرتي وعلامات التدبر',
+          isActive: false,
+          icon: <PenLine className={`w-4 h-4 ${isLightPaper ? 'text-[#1F3A6E]' : 'text-[#D9B45A]'}`} />,
+          onClick: () => {
+            setActiveDockSheet('none');
+            onNavigateView('journal');
+          },
+        }
+      );
+    }
+
+    return items;
+  }, [
+    isAutoScrolling,
+    autoScrollSpeed,
+    activeDockSheet,
+    isLightPaper,
+    isPlayingAudio,
+    currentBookmarkOnActive,
+    onOpenMemorization,
+    headerSurahNumber,
+    mushafPageNumber,
+    activeAyahContext,
+    activeAyahNumber,
+    readerMode,
+    onNavigateView,
+    onOpenTadabburModal,
+    onOpenTajweedLegend,
+  ]);
+
+  const stopDialAnimation = useCallback(() => {
+    if (dialAnimFrameRef.current !== null) {
+      cancelAnimationFrame(dialAnimFrameRef.current);
+      dialAnimFrameRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => stopDialAnimation(), [stopDialAnimation]);
+
+  const animateDialTo = useCallback(
+    (rawTarget: number) => {
+      stopDialAnimation();
+      const target = Math.round(rawTarget);
+      const prefersReducedMotion =
+        typeof window !== 'undefined' &&
+        window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+      if (prefersReducedMotion) {
+        dialOffsetRef.current = target;
+        setDialOffset(target);
+        return;
+      }
+
+      const startValue = dialOffsetRef.current;
+      const distance = target - startValue;
+      if (Math.abs(distance) < 0.002) {
+        dialOffsetRef.current = target;
+        setDialOffset(target);
+        return;
+      }
+
+      const durationMs = Math.min(300, Math.max(160, Math.abs(distance) * 140));
+      const startTime = performance.now();
+
+      const tick = (now: number) => {
+        const progress = Math.min(1, (now - startTime) / durationMs);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        const current = startValue + distance * eased;
+        dialOffsetRef.current = current;
+        setDialOffset(current);
+
+        if (progress < 1) {
+          dialAnimFrameRef.current = requestAnimationFrame(tick);
+        } else {
+          dialAnimFrameRef.current = null;
+          dialOffsetRef.current = target;
+          setDialOffset(target);
+        }
+      };
+
+      dialAnimFrameRef.current = requestAnimationFrame(tick);
+    },
+    [stopDialAnimation]
+  );
+
+  const stepCircularDial = useCallback(
+    (deltaSteps: number) => {
+      const target = Math.round(dialOffsetRef.current) + deltaSteps;
+      animateDialTo(target);
+    },
+    [animateDialTo]
+  );
+
+  const handleDialPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      stopDialAnimation();
+      const trackWidth = dialTrackRef.current?.clientWidth || 260;
+      const slotWidth = Math.max(48, trackWidth / 4);
+      dialDragRef.current = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        lastX: e.clientX,
+        lastTime: performance.now(),
+        startOffset: dialOffsetRef.current,
+        slotWidth,
+        velocitySlotsPerSec: 0,
+        didDrag: false,
+      };
+    },
+    [stopDialAnimation]
+  );
+
+  const handleDialPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dialDragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+
+    const dxFromStart = e.clientX - drag.startX;
+    if (!drag.didDrag && Math.abs(dxFromStart) >= 6) {
+      drag.didDrag = true;
+      setIsDialDragging(true);
+      try {
+        dialTrackRef.current?.setPointerCapture(e.pointerId);
+      } catch {
+        // Ignore if pointer capture is unavailable on detached elements
+      }
+    }
+
+    if (!drag.didDrag) return;
+
+    const now = performance.now();
+    const dt = Math.max(8, now - drag.lastTime);
+    const stepDx = e.clientX - drag.lastX;
+    const instantVelocity = (stepDx / drag.slotWidth) / (dt / 1000);
+    drag.velocitySlotsPerSec = drag.velocitySlotsPerSec * 0.55 + instantVelocity * 0.45;
+    drag.lastX = e.clientX;
+    drag.lastTime = now;
+
+    // Swiping rightward (+dx) rotates dial items cleanly into the right edge while new ones enter from the left
+    const nextOffset = drag.startOffset + dxFromStart / drag.slotWidth;
+    dialOffsetRef.current = nextOffset;
+    setDialOffset(nextOffset);
+  }, []);
+
+  const finishDialPointerDrag = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const drag = dialDragRef.current;
+      if (!drag || drag.pointerId !== e.pointerId) return;
+      dialDragRef.current = null;
+      setIsDialDragging(false);
+
+      try {
+        if (dialTrackRef.current?.hasPointerCapture(e.pointerId)) {
+          dialTrackRef.current.releasePointerCapture(e.pointerId);
+        }
+      } catch {
+        // Ignore
+      }
+
+      if (!drag.didDrag) return;
+      suppressDialClickUntilRef.current = performance.now() + 260;
+
+      const extraSlots = clampCircularMomentumSlots(drag.velocitySlotsPerSec, 2.5);
+      const snappedTarget = Math.round(dialOffsetRef.current + extraSlots);
+      animateDialTo(snappedTarget);
+    },
+    [animateDialTo]
+  );
+
+  const circularDialSlots = useMemo(
+    () => computeCircularDialSlots(dialOffset, dialItems.length, 4),
+    [dialOffset, dialItems.length]
+  );
+
   return (
     <div
       className={`flex flex-col transition-colors duration-200 ${
@@ -2226,9 +2564,12 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
         </div>
       )}
 
-      {/* ===================== UNIFIED 5-BUTTON TRANSLUCENT FLOATING GLASS DOCK ===================== */}
+      {/* ===================== ANCHORED CIRCULAR GLASS DOCK (تلاوة ثابتة + شريط دائري متحرك) ===================== */}
       <nav
         aria-label="أدوات المصحف السريعة"
+        onTouchStart={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
+        onTouchEnd={(e) => e.stopPropagation()}
         className={`fixed bottom-3 inset-x-3 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:w-[min(94vw,540px)] z-40 rounded-3xl border backdrop-blur-xl transition-[opacity,transform] duration-200 will-change-transform pb-[env(safe-area-inset-bottom)] overflow-hidden ${glassDockClasses} ${
           isChromeHidden
             ? 'translate-y-24 opacity-0 pointer-events-none'
@@ -2245,8 +2586,8 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
           </div>
         )}
 
-        <div className="grid grid-cols-5 items-center px-1.5 py-1.5 gap-0.5">
-          {/* 1. تلاوة */}
+        <div className="flex items-center px-1.5 py-1.5 gap-1">
+          {/* Anchored Primary CTA: تلاوة */}
           <button
             type="button"
             onClick={() => {
@@ -2261,7 +2602,7 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
               e.preventDefault();
               onOpenAudioSheet?.();
             }}
-            className={`min-h-[50px] rounded-2xl flex flex-col items-center justify-center gap-0.5 transition-colors cursor-pointer ${
+            className={`w-[20%] min-w-[64px] max-w-[82px] shrink-0 min-h-[50px] rounded-2xl flex flex-col items-center justify-center gap-0.5 transition-colors cursor-pointer ${
               isPlayingAudio || isAudioSheetOpen
                 ? isLightPaper
                   ? 'bg-[#1F3A6E] text-[#F6EFDD]'
@@ -2275,104 +2616,113 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
             ) : (
               <Play className={`w-4 h-4 ${isLightPaper ? 'text-[#1F3A6E]' : 'text-[#D9B45A]'}`} />
             )}
-            <span className="text-[11px] font-bold">تلاوة</span>
+            <span className="text-[11px] font-bold whitespace-nowrap">تلاوة</span>
           </button>
 
-          {/* 2. آلي */}
+          {/* Subtle Hairline Divider */}
+          <div
+            aria-hidden="true"
+            className={`h-8 w-px shrink-0 ${isLightPaper ? 'bg-[#8A6418]/22' : 'bg-[#D9B45A]/22'}`}
+          />
+
+          {/* Desktop prev step button */}
           <button
             type="button"
-            onClick={() => {
-              if (isAutoScrolling) {
-                setIsAutoScrolling(false);
-                setIsAutoScrollPaused(false);
-              } else {
-                setScrollMode(isPlayingAudio ? 'reciter-sync' : 'manual-speed');
-                setIsAutoScrolling(true);
-                setIsAutoScrollPaused(false);
+            onClick={() => stepCircularDial(-1)}
+            aria-label="تدوير الشريط لليسار"
+            title="الأدوات السابقة"
+            className="hidden sm:flex shrink-0 w-7 min-h-[44px] items-center justify-center rounded-xl opacity-65 hover:opacity-100 hover:bg-current/5 transition-opacity cursor-pointer"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+
+          {/* Infinite Circular Dial Track (4 visible items smoothly rotating on swipe/wheel) */}
+          <div
+            ref={dialTrackRef}
+            role="region"
+            aria-roledescription="شريط أدوات دائري متحرك"
+            aria-label="أقسام وأدوات القراءة المتحركة — اسحب يميناً أو يساراً للتدوير"
+            tabIndex={0}
+            onPointerDown={handleDialPointerDown}
+            onPointerMove={handleDialPointerMove}
+            onPointerUp={finishDialPointerDrag}
+            onPointerCancel={finishDialPointerDrag}
+            onWheel={(e) => {
+              const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+              if (Math.abs(delta) < 6) return;
+              const now = performance.now();
+              if (now - lastDialWheelRef.current < 160) return;
+              lastDialWheelRef.current = now;
+              stepCircularDial(delta > 0 ? 1 : -1);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                stepCircularDial(1);
+              } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                stepCircularDial(-1);
               }
             }}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              setActiveDockSheet((s) => (s === 'autoscroll' ? 'none' : 'autoscroll'));
+            style={{
+              touchAction: 'pan-y',
+              overscrollBehaviorX: 'contain',
+              maskImage: 'linear-gradient(to left, transparent 0%, black 7%, black 93%, transparent 100%)',
+              WebkitMaskImage: 'linear-gradient(to left, transparent 0%, black 7%, black 93%, transparent 100%)',
             }}
-            className={`min-h-[50px] rounded-2xl flex flex-col items-center justify-center gap-0.5 transition-colors cursor-pointer ${
-              isAutoScrolling || activeDockSheet === 'autoscroll'
-                ? isLightPaper
-                  ? 'bg-[#1F3A6E] text-[#F6EFDD]'
-                  : 'bg-[#1F3A6E]/80 text-[#D9B45A] border border-[#D9B45A]/35'
-                : 'hover:bg-current/5'
+            className={`relative flex-1 min-w-0 h-[50px] overflow-hidden select-none outline-none focus-visible:ring-2 focus-visible:ring-[#D9B45A]/60 rounded-2xl ${
+              isDialDragging ? 'cursor-grabbing' : 'cursor-grab sm:cursor-pointer'
             }`}
-            title="التمرير التلقائي المريح للعين"
           >
-            {isAutoScrolling ? (
-              <Pause className="w-4 h-4" />
-            ) : (
-              <ChevronsDown className={`w-4 h-4 ${isLightPaper ? 'text-[#1F3A6E]' : 'text-[#D9B45A]'}`} />
-            )}
-            <span className="text-[11px] font-bold">
-              {isAutoScrolling ? `${autoScrollSpeed}x` : 'آلي'}
-            </span>
-          </button>
+            {circularDialSlots.map((slot) => {
+              const item = dialItems[slot.itemIndex];
+              if (!item) return null;
+              return (
+                <button
+                  key={`dial-slot-${slot.virtualSlot}`}
+                  type="button"
+                  disabled={!slot.isInteractive}
+                  aria-hidden={!slot.isInteractive}
+                  tabIndex={slot.isInteractive ? 0 : -1}
+                  onClick={(e) => {
+                    if (performance.now() < suppressDialClickUntilRef.current || !slot.isInteractive) {
+                      e.preventDefault();
+                      return;
+                    }
+                    item.onClick();
+                  }}
+                  onContextMenu={item.onContextMenu}
+                  title={item.title}
+                  style={{
+                    transform: `translate3d(${-slot.slotPosition * 100}%, 0, 0) scale(${slot.scale})`,
+                    opacity: slot.opacity,
+                  }}
+                  className={`absolute top-0 bottom-0 right-0 w-1/4 px-0.5 rounded-2xl flex flex-col items-center justify-center gap-0.5 transition-colors will-change-transform ${
+                    slot.isInteractive ? 'cursor-pointer' : 'pointer-events-none'
+                  } ${
+                    item.isActive
+                      ? isLightPaper
+                        ? 'bg-[#1F3A6E] text-[#F6EFDD]'
+                        : 'bg-[#1F3A6E]/80 text-[#D9B45A] border border-[#D9B45A]/35'
+                      : 'hover:bg-current/5'
+                  }`}
+                >
+                  {item.icon}
+                  <span className="text-[11px] font-bold whitespace-nowrap">{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
 
-          {/* 3. المراجع */}
+          {/* Desktop next step button */}
           <button
             type="button"
-            onClick={() => setActiveDockSheet((s) => (s === 'bookmarks' ? 'none' : 'bookmarks'))}
-            className={`min-h-[50px] rounded-2xl flex flex-col items-center justify-center gap-0.5 transition-colors cursor-pointer ${
-              activeDockSheet === 'bookmarks'
-                ? isLightPaper
-                  ? 'bg-[#1F3A6E] text-[#F6EFDD]'
-                  : 'bg-[#1F3A6E]/80 text-[#D9B45A] border border-[#D9B45A]/35'
-                : 'hover:bg-current/5'
-            }`}
-            title="علامات الوقف والمواضع المحفوظة"
+            onClick={() => stepCircularDial(1)}
+            aria-label="تدوير الشريط لليمين"
+            title="المزيد من الأدوات"
+            className="hidden sm:flex shrink-0 w-7 min-h-[44px] items-center justify-center rounded-xl opacity-65 hover:opacity-100 hover:bg-current/5 transition-opacity cursor-pointer"
           >
-            <Bookmark
-              className={`w-4 h-4 ${
-                currentBookmarkOnActive ? 'fill-current' : ''
-              } ${activeDockSheet === 'bookmarks' ? '' : isLightPaper ? 'text-[#1F3A6E]' : 'text-[#D9B45A]'}`}
-            />
-            <span className="text-[11px] font-bold">المراجع</span>
-          </button>
-
-          {/* 4. الحفظ */}
-          <button
-            type="button"
-            onClick={() => {
-              setActiveDockSheet('none');
-              if (onOpenMemorization) {
-                onOpenMemorization({
-                  surahNumber: headerSurahNumber,
-                  pageNumber: mushafPageNumber,
-                  ayahNumber: activeAyahContext.ayah?.numberInSurah || activeAyahNumber,
-                  readerMode,
-                });
-              } else {
-                onNavigateView?.('memorization');
-              }
-            }}
-            className="min-h-[50px] rounded-2xl flex flex-col items-center justify-center gap-0.5 hover:bg-current/5 transition-colors cursor-pointer"
-            title="بدء الحفظ والتسميع من هذا الموضع"
-          >
-            <Award className={`w-4 h-4 ${isLightPaper ? 'text-[#1F3A6E]' : 'text-[#D9B45A]'}`} />
-            <span className="text-[11px] font-bold">الحفظ</span>
-          </button>
-
-          {/* 5. المزيد */}
-          <button
-            type="button"
-            onClick={() => setActiveDockSheet((s) => (s === 'more' ? 'none' : 'more'))}
-            className={`min-h-[50px] rounded-2xl flex flex-col items-center justify-center gap-0.5 transition-colors cursor-pointer ${
-              activeDockSheet === 'more'
-                ? isLightPaper
-                  ? 'bg-[#1F3A6E] text-[#F6EFDD]'
-                  : 'bg-[#1F3A6E]/80 text-[#D9B45A] border border-[#D9B45A]/35'
-                : 'hover:bg-current/5'
-            }`}
-            title="إعدادات المصحف وأقسام بيان"
-          >
-            <MoreHorizontal className={`w-4 h-4 ${activeDockSheet === 'more' ? '' : isLightPaper ? 'text-[#1F3A6E]' : 'text-[#D9B45A]'}`} />
-            <span className="text-[11px] font-bold">المزيد</span>
+            <ChevronLeft className="w-4 h-4" />
           </button>
         </div>
       </nav>
