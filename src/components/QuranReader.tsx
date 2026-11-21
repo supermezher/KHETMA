@@ -1677,6 +1677,20 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
       });
     }
 
+    if (onNavigateView) {
+      items.push({
+        id: 'kids',
+        label: 'تحفيظ الصغار',
+        title: 'قسم تحفيظ الصغار والتلقين والنجوم',
+        isActive: false,
+        icon: <Sprout className={`w-4 h-4 ${isLightPaper ? 'text-[#1F3A6E]' : 'text-[#D9B45A]'}`} />,
+        onClick: () => {
+          setActiveDockSheet('none');
+          onNavigateView('kids');
+        },
+      });
+    }
+
     items.push({
       id: 'tajweed',
       label: 'التجويد',
@@ -2708,7 +2722,7 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
                   }`}
                 >
                   {item.icon}
-                  <span className="text-[11px] font-bold whitespace-nowrap">{item.label}</span>
+                  <span className="text-[10px] min-[375px]:text-[11px] font-bold whitespace-nowrap">{item.label}</span>
                 </button>
               );
             })}
