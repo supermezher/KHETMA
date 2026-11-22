@@ -20,7 +20,7 @@ import {
   ChevronDown, SlidersHorizontal, Volume2,
   ChevronRight, ChevronLeft, RefreshCw, AlertCircle, Check, Share2, PenLine,
   Award, ChevronsDown, Sun, Moon, ShieldCheck, Calendar,
-  Heart, Sprout, Compass, AlignJustify, LayoutGrid
+  Heart, Sprout, Compass, AlignJustify, LayoutGrid, Plus, Minus
 } from 'lucide-react';
 import { APP_THEME_EVENT, AppTheme, LastReadingPosition, loadAppTheme, saveAppTheme } from '../utils/appTheme';
 import { Reciter } from '../data/reciters';
@@ -41,14 +41,21 @@ import {
   toggleSurahBookmark,
 } from '../utils/bookmarksStore';
 import {
+  AUTO_SCROLL_PRESETS,
+  DEFAULT_AUTO_SCROLL_SPEED,
+  MAX_AUTO_SCROLL_SPEED,
+  MIN_AUTO_SCROLL_SPEED,
   appendUniquePageItem,
+  clampAutoScrollSpeed,
   clampCircularMomentumSlots,
   clampMushafFontSize,
+  computeAutoScrollPxPerSec,
   computeCircularDialSlots,
   computePinchFontSize,
   computeRuledLineMetrics,
   computeShortPageDwellMs,
   computeTrimmedPageStream,
+  formatArabicSpeedLabel,
   getArabicJuzLabel,
   isInteractiveTapTarget,
   resolveAutoScrollEndAction,
@@ -56,6 +63,7 @@ import {
   resolveRtlPageSwipeDelta,
   resolveVisiblePageFromOffsets,
   shouldToggleImmersiveTap,
+  stepAutoScrollSpeed,
   wrapCircularIndex,
 } from '../utils/mushafGestures';
 
@@ -71,6 +79,8 @@ interface StoredReaderPrefs {
   readerMode?: ReaderMode;
   isRuledLines?: boolean;
   autoAdvancePage?: boolean;
+  autoScrollSpeed?: number;
+  adaptiveScrollPace?: boolean;
 }
 
 function getDefaultTheme(): ReaderTheme {
@@ -110,6 +120,22 @@ function getDefaultAutoAdvancePage(): boolean {
   const saved = safeLocalStorage.getJSON<StoredReaderPrefs | null>(READER_PREFS_KEY, null);
   if (typeof saved?.autoAdvancePage === 'boolean') {
     return saved.autoAdvancePage;
+  }
+  return true;
+}
+
+function getDefaultAutoScrollSpeed(): number {
+  const saved = safeLocalStorage.getJSON<StoredReaderPrefs | null>(READER_PREFS_KEY, null);
+  if (typeof saved?.autoScrollSpeed === 'number') {
+    return clampAutoScrollSpeed(saved.autoScrollSpeed);
+  }
+  return DEFAULT_AUTO_SCROLL_SPEED;
+}
+
+function getDefaultAdaptiveScrollPace(): boolean {
+  const saved = safeLocalStorage.getJSON<StoredReaderPrefs | null>(READER_PREFS_KEY, null);
+  if (typeof saved?.adaptiveScrollPace === 'boolean') {
+    return saved.adaptiveScrollPace;
   }
   return true;
 }
@@ -714,11 +740,96 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
   const [isAutoScrolling, setIsAutoScrolling] = useState<boolean>(false);
   const [isAutoScrollPaused, setIsAutoScrollPaused] = useState<boolean>(false);
   const [scrollMode, setScrollMode] = useState<'reciter-sync' | 'manual-speed'>('reciter-sync');
-  const [autoScrollSpeed, setAutoScrollSpeed] = useState<number>(2);
+  const [autoScrollSpeed, setAutoScrollSpeed] = useState<number>(() => getDefaultAutoScrollSpeed());
+  const [adaptiveScrollPace, setAdaptiveScrollPace] = useState<boolean>(() => getDefaultAdaptiveScrollPace());
   const [pauseAtAyahEnds, setPauseAtAyahEnds] = useState<boolean>(false);
   const [isPausedAtAyah, setIsPausedAtAyah] = useState<boolean>(false);
   const [isAdvancingPageUi, setIsAdvancingPageUi] = useState<boolean>(false);
   const pausedAyahsHistory = useRef<Set<string>>(new Set());
+
+  const autoScrollSpeedRef = useRef<number>(autoScrollSpeed);
+  autoScrollSpeedRef.current = autoScrollSpeed;
+  const fontSizeRef = useRef<number>(fontSize);
+  fontSizeRef.current = fontSize;
+  const adaptiveScrollPaceRef = useRef<boolean>(adaptiveScrollPace);
+  adaptiveScrollPaceRef.current = adaptiveScrollPace;
+
+  // Sync restored speed preferences when prefsReloadNonce updates
+  useEffect(() => {
+    if (prefsReloadNonce > 0) {
+      setAutoScrollSpeed(getDefaultAutoScrollSpeed());
+      setAdaptiveScrollPace(getDefaultAdaptiveScrollPace());
+    }
+  }, [prefsReloadNonce]);
+
+  // Persist autoScrollSpeed & adaptiveScrollPace cleanly
+  useEffect(() => {
+    const prev = safeLocalStorage.getJSON<StoredReaderPrefs>(READER_PREFS_KEY, {});
+    safeLocalStorage.setJSON(READER_PREFS_KEY, {
+      ...prev,
+      autoScrollSpeed,
+      adaptiveScrollPace,
+    });
+  }, [autoScrollSpeed, adaptiveScrollPace]);
+
+  // Long-press hold handlers for + / - fine speed stepping
+  const speedHoldTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const speedHoldIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const speedHoldDidRepeatRef = useRef<boolean>(false);
+
+  const clearSpeedHoldTimers = useCallback(() => {
+    if (speedHoldTimeoutRef.current) {
+      clearTimeout(speedHoldTimeoutRef.current);
+      speedHoldTimeoutRef.current = null;
+    }
+    if (speedHoldIntervalRef.current) {
+      clearInterval(speedHoldIntervalRef.current);
+      speedHoldIntervalRef.current = null;
+    }
+  }, []);
+
+  const applyFineSpeedStep = useCallback(
+    (direction: 1 | -1) => {
+      const next = stepAutoScrollSpeed(autoScrollSpeedRef.current, direction);
+      autoScrollSpeedRef.current = next;
+      setAutoScrollSpeed(next);
+      setScrollMode('manual-speed');
+      if (
+        (direction === 1 && next >= MAX_AUTO_SCROLL_SPEED) ||
+        (direction === -1 && next <= MIN_AUTO_SCROLL_SPEED)
+      ) {
+        clearSpeedHoldTimers();
+      }
+    },
+    [clearSpeedHoldTimers]
+  );
+
+  const handleSpeedHoldStart = useCallback(
+    (direction: 1 | -1) => {
+      clearSpeedHoldTimers();
+      speedHoldDidRepeatRef.current = false;
+      speedHoldTimeoutRef.current = setTimeout(() => {
+        speedHoldDidRepeatRef.current = true;
+        applyFineSpeedStep(direction);
+        speedHoldIntervalRef.current = setInterval(() => {
+          applyFineSpeedStep(direction);
+        }, 95);
+      }, 360);
+    },
+    [clearSpeedHoldTimers, applyFineSpeedStep]
+  );
+
+  const handleSpeedStepClick = useCallback(
+    (direction: 1 | -1) => {
+      clearSpeedHoldTimers();
+      if (speedHoldDidRepeatRef.current) {
+        speedHoldDidRepeatRef.current = false;
+        return;
+      }
+      applyFineSpeedStep(direction);
+    },
+    [clearSpeedHoldTimers, applyFineSpeedStep]
+  );
 
   const preciseScrollTop = useRef<number>(0);
   const lastProgrammaticScrollTopRef = useRef<number>(0);
@@ -761,8 +872,9 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
       if (pauseAyahTimeoutRef.current) clearTimeout(pauseAyahTimeoutRef.current);
       if (pinchPreviewTimerRef.current) clearTimeout(pinchPreviewTimerRef.current);
       if (pageAdvanceTimeoutRef.current) clearTimeout(pageAdvanceTimeoutRef.current);
+      clearSpeedHoldTimers();
     };
-  }, []);
+  }, [clearSpeedHoldTimers]);
 
   useEffect(() => {
     if (!isEngineActive || isAutoScrollPaused || !autoAdvancePage) {
@@ -1140,8 +1252,6 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
 
     let animId: number;
     let lastTime = performance.now();
-    const speedTable = [15, 24, 40, 64, 95];
-    const pxPerSec = speedTable[autoScrollSpeed - 1] || 24;
 
     if (containerRef.current) {
       const top = containerRef.current.scrollTop;
@@ -1265,7 +1375,7 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
           if (shortPageStartTimeRef.current === null) {
             shortPageStartTimeRef.current = now;
           }
-          const dwellMs = computeShortPageDwellMs(autoScrollSpeed);
+          const dwellMs = computeShortPageDwellMs(autoScrollSpeedRef.current);
           if (now - shortPageStartTimeRef.current >= dwellMs) {
             const shouldContinue = triggerEndDecision(0);
             if (!shouldContinue) return;
@@ -1275,6 +1385,11 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
         }
 
         shortPageStartTimeRef.current = null;
+        const pxPerSec = computeAutoScrollPxPerSec(
+          autoScrollSpeedRef.current,
+          fontSizeRef.current,
+          adaptiveScrollPaceRef.current
+        );
         preciseScrollTop.current += pxPerSec * elapsed;
         if (preciseScrollTop.current >= maxScroll - 4) {
           container.scrollTop = maxScroll;
@@ -1347,7 +1462,6 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
     scrollMode,
     isAutoScrollPaused,
     isPausedAtAyah,
-    autoScrollSpeed,
     pauseAtAyahEnds,
     readerMode,
     surahData.meta.number,
@@ -1591,7 +1705,7 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
       // Wave 1 (First 4 visible beside تلاوة): Active reading & immediate actions
       {
         id: 'autoscroll',
-        label: isAutoScrolling ? `${autoScrollSpeed}x` : 'آلي',
+        label: isAutoScrolling ? formatArabicSpeedLabel(autoScrollSpeed) : 'آلي',
         title: 'التمرير التلقائي المريح للعين (ضغطة مطولة للإعدادات)',
         isActive: isAutoScrolling || activeDockSheet === 'autoscroll',
         icon: isAutoScrolling ? (
@@ -2571,29 +2685,64 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
                       : 'تمرير آلي'}
                   </span>
                 </div>
-                <div className="flex items-center gap-1">
-                  {[1, 2, 3, 4, 5].map((lvl) => (
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <div
+                    dir="ltr"
+                    className={`flex items-center rounded-full border p-0.5 ${
+                      isLightPaper
+                        ? 'border-[#8A6418]/25 bg-[#EFE6D1]/70'
+                        : 'border-[#D9B45A]/25 bg-[#172235]/80'
+                    }`}
+                  >
                     <button
-                      key={lvl}
                       type="button"
-                      onClick={() => {
-                        setAutoScrollSpeed(lvl);
-                        setScrollMode('manual-speed');
-                      }}
-                      className={`min-w-[28px] min-h-[28px] rounded-full text-[11px] font-bold tabular-nums cursor-pointer ${
-                        autoScrollSpeed === lvl
-                          ? 'bg-[#1F3A6E] text-[#F6EFDD] border border-[#D9B45A]/60'
-                          : 'hover:bg-current/10'
+                      disabled={autoScrollSpeed <= MIN_AUTO_SCROLL_SPEED}
+                      onPointerDown={() => handleSpeedHoldStart(-1)}
+                      onPointerUp={clearSpeedHoldTimers}
+                      onPointerLeave={clearSpeedHoldTimers}
+                      onPointerCancel={clearSpeedHoldTimers}
+                      onClick={() => handleSpeedStepClick(-1)}
+                      aria-label="إبطاء سرعة التمرير"
+                      title="إبطاء التمرير (اضغط باستمرار للتدرج)"
+                      className="min-w-[32px] min-h-[30px] rounded-full flex items-center justify-center hover:bg-current/10 disabled:opacity-35 cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      <Minus className="w-3.5 h-3.5" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveDockSheet('autoscroll')}
+                      aria-label="السرعة الحالية وفتح الإعدادات"
+                      className={`min-w-[50px] min-h-[30px] px-1.5 rounded-full text-[11px] font-bold tabular-nums cursor-pointer ${
+                        isLightPaper
+                          ? 'text-[#1F3A6E] hover:bg-current/5'
+                          : 'text-[#D9B45A] hover:bg-current/5'
                       }`}
                     >
-                      {lvl}x
+                      {formatArabicSpeedLabel(autoScrollSpeed)}
                     </button>
-                  ))}
+
+                    <button
+                      type="button"
+                      disabled={autoScrollSpeed >= MAX_AUTO_SCROLL_SPEED}
+                      onPointerDown={() => handleSpeedHoldStart(1)}
+                      onPointerUp={clearSpeedHoldTimers}
+                      onPointerLeave={clearSpeedHoldTimers}
+                      onPointerCancel={clearSpeedHoldTimers}
+                      onClick={() => handleSpeedStepClick(1)}
+                      aria-label="زيادة سرعة التمرير"
+                      title="تسريع التمرير (اضغط باستمرار للتدرج)"
+                      className="min-w-[32px] min-h-[30px] rounded-full flex items-center justify-center hover:bg-current/10 disabled:opacity-35 cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
                   <button
                     type="button"
                     onClick={() => setActiveDockSheet('autoscroll')}
                     aria-label="إعدادات التمرير الآلي"
-                    className="min-w-[28px] min-h-[28px] rounded-full flex items-center justify-center hover:bg-current/10 cursor-pointer"
+                    className="min-w-[30px] min-h-[30px] rounded-full flex items-center justify-center hover:bg-current/10 cursor-pointer"
                   >
                     <SlidersHorizontal className="w-3.5 h-3.5" />
                   </button>
@@ -3075,31 +3224,102 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
                       scrollMode === 'manual-speed' ? 'bg-[#D9B45A] text-[#1B1A17]' : 'opacity-75'
                     }`}
                   >
-                    <span>سرعة حرة (1x-5x)</span>
+                    <span>سرعة حرة ({formatArabicSpeedLabel(MIN_AUTO_SCROLL_SPEED)}–{formatArabicSpeedLabel(MAX_AUTO_SCROLL_SPEED)})</span>
                   </button>
                 </div>
               )}
 
-              <div className="grid grid-cols-5 gap-1.5">
-                {[1, 2, 3, 4, 5].map((lvl) => (
+              {/* 3 Quranic Pace Presets */}
+              <div className="grid grid-cols-3 gap-1.5 text-xs">
+                {AUTO_SCROLL_PRESETS.map((preset) => {
+                  const isSelected = Math.abs(autoScrollSpeed - preset.speed) < 0.05;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => {
+                        setAutoScrollSpeed(preset.speed);
+                        setScrollMode('manual-speed');
+                        setIsAutoScrolling(true);
+                        setIsAutoScrollPaused(false);
+                      }}
+                      className={`min-h-[44px] px-2 py-1.5 rounded-xl border flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors ${
+                        isSelected
+                          ? 'bg-[#1F3A6E] text-[#F6EFDD] border-[#D9B45A]'
+                          : 'border-current/15 hover:bg-current/5'
+                      }`}
+                    >
+                      <span className="font-bold whitespace-nowrap">{preset.label}</span>
+                      <span className={`text-[10px] tabular-nums ${isSelected ? 'text-[#D9B45A]' : 'opacity-65'}`}>
+                        {formatArabicSpeedLabel(preset.speed)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Precision +/- & Continuous Slider */}
+              <div className="p-3 rounded-2xl border border-current/15 bg-current/[0.03] space-y-2.5">
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="font-bold opacity-80">السرعة الدقيقة</span>
+                  <div className="flex items-center gap-1.5 tabular-nums">
+                    <span
+                      className={`px-2 py-0.5 rounded-lg font-bold ${
+                        isLightPaper ? 'bg-[#1F3A6E] text-[#F6EFDD]' : 'bg-[#1F3A6E] text-[#D9B45A]'
+                      }`}
+                    >
+                      {formatArabicSpeedLabel(autoScrollSpeed)}
+                    </span>
+                    <span className="text-[11px] opacity-65">
+                      ({toArabicIndic(Math.round(computeAutoScrollPxPerSec(autoScrollSpeed, fontSize, adaptiveScrollPace)))} بكسل/ث)
+                    </span>
+                  </div>
+                </div>
+
+                <div dir="ltr" className="flex items-center gap-2">
                   <button
-                    key={lvl}
                     type="button"
-                    onClick={() => {
-                      setAutoScrollSpeed(lvl);
-                      setScrollMode('manual-speed');
-                      setIsAutoScrolling(true);
-                      setIsAutoScrollPaused(false);
-                    }}
-                    className={`min-h-[40px] rounded-xl font-bold text-xs tabular-nums border cursor-pointer ${
-                      autoScrollSpeed === lvl
-                        ? 'bg-[#1F3A6E] text-[#F6EFDD] border-[#D9B45A]'
-                        : 'border-current/15 hover:bg-current/5'
-                    }`}
+                    disabled={autoScrollSpeed <= MIN_AUTO_SCROLL_SPEED}
+                    onPointerDown={() => handleSpeedHoldStart(-1)}
+                    onPointerUp={clearSpeedHoldTimers}
+                    onPointerLeave={clearSpeedHoldTimers}
+                    onPointerCancel={clearSpeedHoldTimers}
+                    onClick={() => handleSpeedStepClick(-1)}
+                    aria-label="إبطاء سرعة التمرير"
+                    className="min-w-[40px] min-h-[40px] rounded-xl border border-current/20 hover:bg-current/5 flex items-center justify-center disabled:opacity-35 cursor-pointer disabled:cursor-not-allowed"
                   >
-                    {lvl}x
+                    <Minus className="w-4 h-4" />
                   </button>
-                ))}
+
+                  <input
+                    type="range"
+                    min={MIN_AUTO_SCROLL_SPEED}
+                    max={MAX_AUTO_SCROLL_SPEED}
+                    step={0.1}
+                    value={autoScrollSpeed}
+                    aria-label="شريط ضبط سرعة التمرير"
+                    onChange={(e) => {
+                      const next = clampAutoScrollSpeed(parseFloat(e.target.value));
+                      setAutoScrollSpeed(next);
+                      setScrollMode('manual-speed');
+                    }}
+                    className="flex-1 h-2 accent-[#1F3A6E] dark:accent-[#D9B45A] cursor-pointer"
+                  />
+
+                  <button
+                    type="button"
+                    disabled={autoScrollSpeed >= MAX_AUTO_SCROLL_SPEED}
+                    onPointerDown={() => handleSpeedHoldStart(1)}
+                    onPointerUp={clearSpeedHoldTimers}
+                    onPointerLeave={clearSpeedHoldTimers}
+                    onPointerCancel={clearSpeedHoldTimers}
+                    onClick={() => handleSpeedStepClick(1)}
+                    aria-label="زيادة سرعة التمرير"
+                    className="min-w-[40px] min-h-[40px] rounded-xl border border-current/20 hover:bg-current/5 flex items-center justify-center disabled:opacity-35 cursor-pointer disabled:cursor-not-allowed"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               <button
@@ -3109,6 +3329,15 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
               >
                 <span className="opacity-75">حركة النزول:</span>
                 <span className="font-bold">{pauseAtAyahEnds ? 'وقفة عند رأس الآية' : 'انسياب مستمر'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAdaptiveScrollPace((v) => !v)}
+                className="w-full min-h-[40px] px-3 rounded-xl border border-current/15 text-xs font-semibold flex items-center justify-between cursor-pointer"
+              >
+                <span className="opacity-75">موازنة السرعة مع حجم الخط:</span>
+                <span className="font-bold">{adaptiveScrollPace ? 'تلقائية (إيقاع ثابت)' : 'ثابتة بالبكسل'}</span>
               </button>
 
               <button
@@ -3132,6 +3361,29 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
                 >
                   {autoAdvancePage ? 'متصلة بانسياب مستمر' : 'تتوقف بنهاية الصفحة'}
                 </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (isAutoScrolling) {
+                    setIsAutoScrolling(false);
+                    setIsAutoScrollPaused(false);
+                  } else {
+                    setScrollMode(isPlayingAudio ? 'reciter-sync' : 'manual-speed');
+                    setIsAutoScrolling(true);
+                    setIsAutoScrollPaused(false);
+                  }
+                  setActiveDockSheet('none');
+                }}
+                className={`w-full min-h-[44px] rounded-2xl font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors ${
+                  isAutoScrolling
+                    ? 'border border-current/20 hover:bg-current/5'
+                    : 'bg-[#1F3A6E] hover:bg-[#2E5499] text-[#F6EFDD] border border-[#D9B45A]/50'
+                }`}
+              >
+                {isAutoScrolling ? <Pause className="w-4 h-4" /> : <ChevronsDown className="w-4 h-4 text-[#D9B45A]" />}
+                <span>{isAutoScrolling ? 'إيقاف التمرير الآلي' : 'تشغيل التمرير الآلي الآن'}</span>
               </button>
             </div>
           )}

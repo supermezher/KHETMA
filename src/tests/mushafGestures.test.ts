@@ -1,19 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import {
   appendUniquePageItem,
+  clampAutoScrollSpeed,
   clampCircularMomentumSlots,
   clampMushafFontSize,
+  computeAutoScrollPxPerSec,
   computeCircularDialSlots,
   computePinchFontSize,
   computeRuledLineMetrics,
   computeShortPageDwellMs,
   computeTrimmedPageStream,
+  formatArabicSpeedLabel,
   getArabicJuzLabel,
   resolveAutoScrollEndAction,
   resolvePairedPaperTheme,
   resolveRtlPageSwipeDelta,
   resolveVisiblePageFromOffsets,
   shouldToggleImmersiveTap,
+  stepAutoScrollSpeed,
   wrapCircularIndex,
 } from '../utils/mushafGestures';
 
@@ -290,5 +294,35 @@ describe('mushafGestures helpers', () => {
     const reverseSlots = computeCircularDialSlots(-1, 9, 4);
     const activeReverse = reverseSlots.filter((s) => s.slotPosition >= 0 && s.slotPosition <= 3);
     expect(activeReverse.map((s) => s.itemIndex)).toEqual([8, 0, 1, 2]);
+  });
+
+  it('supports fine fractional auto-scroll speeds (0.4x-5.0x), +/- stepping, and font-size calibration', () => {
+    expect(clampAutoScrollSpeed(0.1)).toBe(0.4);
+    expect(clampAutoScrollSpeed(7.5)).toBe(5.0);
+    expect(clampAutoScrollSpeed(Number.NaN)).toBe(1.6);
+
+    // Fine 0.1x precision below 1.0x and symmetric 0.2x steps above 1.0x
+    expect(stepAutoScrollSpeed(0.4, -1)).toBe(0.4);
+    expect(stepAutoScrollSpeed(0.4, 1)).toBe(0.5);
+    expect(stepAutoScrollSpeed(0.9, 1)).toBe(1.0);
+    expect(stepAutoScrollSpeed(1.0, -1)).toBe(0.9);
+    expect(stepAutoScrollSpeed(1.0, 1)).toBe(1.2);
+    expect(stepAutoScrollSpeed(1.2, -1)).toBe(1.0);
+    expect(stepAutoScrollSpeed(5.0, 1)).toBe(5.0);
+
+    // Monotonic velocity curve slower below 1x and faster with larger font when adaptive pace is enabled
+    const slowPx = computeAutoScrollPxPerSec(0.4, 28, true);
+    const basePx = computeAutoScrollPxPerSec(1.6, 28, true);
+    const fastPx = computeAutoScrollPxPerSec(5.0, 28, true);
+    expect(slowPx).toBeLessThan(10);
+    expect(basePx).toBeGreaterThan(20);
+    expect(fastPx).toBeGreaterThan(90);
+
+    expect(computeAutoScrollPxPerSec(1.6, 42, true)).toBeGreaterThan(basePx);
+    expect(computeAutoScrollPxPerSec(1.6, 42, false)).toBe(basePx);
+    expect(computeShortPageDwellMs(0.4)).toBe(24000);
+    expect(formatArabicSpeedLabel(0.4)).toBe('٠.٤×');
+    expect(formatArabicSpeedLabel(1.6)).toBe('١.٦×');
+    expect(formatArabicSpeedLabel(5.0)).toBe('٥.٠×');
   });
 });

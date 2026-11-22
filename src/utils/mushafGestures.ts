@@ -131,9 +131,58 @@ export type AutoScrollEndDecision =
   | { action: 'advance-surah'; nextSurah: number }
   | { action: 'stop' };
 
+export const MIN_AUTO_SCROLL_SPEED = 0.4;
+export const MAX_AUTO_SCROLL_SPEED = 5.0;
+export const DEFAULT_AUTO_SCROLL_SPEED = 1.6;
+
+export const AUTO_SCROLL_PRESETS = [
+  { id: 'tahqiq', label: 'تحقيق وتدبّر', speed: 0.6 },
+  { id: 'tadwir', label: 'تدوير معتدل', speed: 1.6 },
+  { id: 'hadr', label: 'حدر ومراجعة', speed: 3.2 },
+] as const;
+
+export function clampAutoScrollSpeed(speed: number): number {
+  if (!Number.isFinite(speed)) return DEFAULT_AUTO_SCROLL_SPEED;
+  const clamped = Math.min(MAX_AUTO_SCROLL_SPEED, Math.max(MIN_AUTO_SCROLL_SPEED, speed));
+  return Math.round(clamped * 10) / 10;
+}
+
+export function stepAutoScrollSpeed(currentSpeed: number, direction: 1 | -1): number {
+  const safe = clampAutoScrollSpeed(currentSpeed);
+  // Fine 0.1x precision below 1.0x for calm reading, crisp 0.2x steps from 1.0x to 5.0x
+  const useFineStep = direction > 0 ? safe < 1.0 : safe <= 1.0;
+  const delta = useFineStep ? 0.1 : 0.2;
+  return clampAutoScrollSpeed(safe + direction * delta);
+}
+
+export function computeAutoScrollPxPerSec(
+  speed: number,
+  fontSize = 28,
+  adaptiveFontPace = true
+): number {
+  const s = clampAutoScrollSpeed(speed);
+  const basePxPerSec = 3.2 + 10.5 * s + 1.58 * s * s;
+  if (!adaptiveFontPace) {
+    return Math.round(basePxPerSec * 10) / 10;
+  }
+  const safeFont = clampMushafFontSize(fontSize);
+  const scaleFactor = Math.min(1.55, Math.max(0.75, safeFont / 28));
+  return Math.round(basePxPerSec * scaleFactor * 10) / 10;
+}
+
 export function computeShortPageDwellMs(speed: number): number {
-  const safeSpeed = Number.isFinite(speed) ? Math.min(5, Math.max(1, speed)) : 2;
-  return Math.max(2500, Math.round(12000 / safeSpeed));
+  const safeSpeed = Number.isFinite(speed)
+    ? Math.min(MAX_AUTO_SCROLL_SPEED, Math.max(MIN_AUTO_SCROLL_SPEED, speed))
+    : DEFAULT_AUTO_SCROLL_SPEED;
+  return Math.max(2500, Math.min(24000, Math.round(12000 / safeSpeed)));
+}
+
+const ARABIC_INDIC_DIGITS = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'] as const;
+
+export function formatArabicSpeedLabel(speed: number): string {
+  const safe = clampAutoScrollSpeed(speed);
+  const localized = safe.toFixed(1).replace(/[0-9]/g, (digit) => ARABIC_INDIC_DIGITS[Number(digit)]);
+  return `${localized}×`;
 }
 
 export function resolveAutoScrollEndAction(input: AutoScrollEndInput): AutoScrollEndDecision {
