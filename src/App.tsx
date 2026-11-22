@@ -4,7 +4,7 @@ import {
   PenLine, Search, ChevronDown,
   ShieldCheck, Flame, Maximize2,
   Menu, X, AlertCircle, RefreshCw, AlertTriangle, Sprout,
-  Sun, Moon
+  Sun, Moon, Globe
 } from 'lucide-react';
 import { SURAHS_LIST } from './data/quranMetadata';
 import {
@@ -62,6 +62,7 @@ const QuranJournal = lazy(() => import('./components/QuranJournal').then((m) => 
 const FlutterArchitectureDoc = lazy(() => import('./components/FlutterArchitectureDoc').then((m) => ({ default: m.FlutterArchitectureDoc })));
 const RuqyahSection = lazy(() => import('./components/RuqyahSection').then((m) => ({ default: m.RuqyahSection })));
 const KidsHifzSection = lazy(() => import('./components/KidsHifzSection').then((m) => ({ default: m.KidsHifzSection })));
+const TranslationsSection = lazy(() => import('./components/TranslationsSection').then((m) => ({ default: m.TranslationsSection })));
 
 const SectionLoadingFallback: React.FC = () => (
   <div className="p-16 text-center rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f]/60 border border-[#D9B45A]/25 dark:border-slate-800 flex flex-col items-center justify-center space-y-3">
@@ -162,6 +163,7 @@ type ActiveView =
   | 'mushaf'
   | 'memorization'
   | 'kids'
+  | 'translations'
   | 'ruqyah'
   | 'mood'
   | 'analytics'
@@ -175,7 +177,7 @@ export default function App() {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get('tab') as ActiveView;
-      if (tab && ['mushaf', 'memorization', 'kids', 'ruqyah', 'mood', 'analytics', 'khatma', 'tajweed', 'journal', 'flutter-arch'].includes(tab)) {
+      if (tab && ['mushaf', 'memorization', 'kids', 'translations', 'ruqyah', 'mood', 'analytics', 'khatma', 'tajweed', 'journal', 'flutter-arch'].includes(tab)) {
         return tab;
       }
     }
@@ -238,6 +240,11 @@ export default function App() {
   const [shareAyah, setShareAyah] = useState<Ayah | null>(null);
   const [shareSurahName, setShareSurahName] = useState<string | null>(null);
   const [shareSurahNumber, setShareSurahNumber] = useState<number | null>(null);
+  const [shareReflectionContext, setShareReflectionContext] = useState<{
+    text: string;
+    dir: 'rtl' | 'ltr';
+    label: string;
+  } | null>(null);
   const [isTajweedLegendOpen, setIsTajweedLegendOpen] = useState<boolean>(false);
   const [isKhatmaPlannerOpen, setIsKhatmaPlannerOpen] = useState<boolean>(false);
   const [personalKhatmaPlan, setPersonalKhatmaPlan] = useState<KhatmaPlan | null>(() => loadPersonalKhatmaPlan());
@@ -646,6 +653,7 @@ export default function App() {
               <div ref={desktopMoreRef} className="relative h-full flex items-center">
                 {(() => {
                   const learningTabs: { id: ActiveView; label: string; sub: string; icon: typeof Heart }[] = [
+                    { id: 'translations', label: 'ترجمات المعاني', sub: 'السويدية والإنجليزية ولغات أخرى', icon: Globe },
                     { id: 'tajweed', label: 'موسوعة التجويد', sub: 'أحكام التلاوة والأمثلة والتطبيق', icon: HelpCircle },
                     { id: 'kids', label: 'تحفيظ الصغار', sub: 'تلقين صوتي ونجوم للأطفال', icon: Sprout },
                     { id: 'mood', label: 'القرآن حياتي', sub: 'آيات بحسب المشاعر والحال', icon: Heart },
@@ -1020,6 +1028,36 @@ export default function App() {
                 <KidsHifzSection />
               )}
 
+              {activeView === 'translations' && (
+                <TranslationsSection
+                  initialSurahNumber={currentSurahNumber}
+                  activeAudioSurahNumber={currentSurahNumber}
+                  activeAudioAyahNumber={activeAyahNumber}
+                  isPlayingAudio={isPlayingAudio}
+                  onPlayAyah={(surahNum, ayahNum) => handlePlayAyahAudio(ayahNum, surahNum)}
+                  onPauseAudio={() => setIsPlayingAudio(false)}
+                  onNavigateToAyah={handleNavigateToAyah}
+                  onShareVerse={({ surahNumber, surahName, verse, edition }) => {
+                    setShareSurahNumber(surahNumber);
+                    setShareSurahName(surahName);
+                    setShareReflectionContext({
+                      text: verse.translationText,
+                      dir: edition.dir,
+                      label: `ترجمة المعاني (${edition.nativeTitle})`,
+                    });
+                    setShareAyah({
+                      numberInSurah: verse.ayahNumber,
+                      overallNumber: verse.overallNumber || verse.ayahNumber,
+                      text: verse.arabicText,
+                      tafsir: verse.translationText,
+                      juz: verse.juz || 1,
+                      page: verse.page || 1,
+                      hizbQuarter: 1,
+                    });
+                  }}
+                />
+              )}
+
               {activeView === 'ruqyah' && (
                 <RuqyahSection
                   onNavigateToAyah={handleNavigateToAyah}
@@ -1169,13 +1207,13 @@ export default function App() {
             onClick={() => setIsMobileMoreOpen(!isMobileMoreOpen)}
             aria-expanded={isMobileMoreOpen}
             className={`min-h-[44px] flex flex-col items-center justify-center flex-1 py-1 rounded-xl transition-all cursor-pointer ${
-              isMobileMoreOpen || ['kids', 'mood', 'analytics', 'tajweed', 'journal'].includes(activeView)
+              isMobileMoreOpen || ['kids', 'translations', 'mood', 'analytics', 'tajweed', 'journal'].includes(activeView)
                 ? 'text-[#8A6418] dark:text-[#D9B45A] font-bold'
                 : 'text-[#4A4338] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white'
             }`}
           >
             <div className={`p-1 rounded-lg transition-colors ${
-              isMobileMoreOpen || ['kids', 'mood', 'analytics', 'tajweed', 'journal'].includes(activeView)
+              isMobileMoreOpen || ['kids', 'translations', 'mood', 'analytics', 'tajweed', 'journal'].includes(activeView)
                 ? 'bg-[#1F3A6E] dark:bg-[#1F3A6E]/60 text-[#D9B45A]'
                 : ''
             }`}>
@@ -1218,6 +1256,13 @@ export default function App() {
                 <div className="text-[11px] font-bold text-[#8A6418] dark:text-[#D9B45A] px-1">التعلّم والتدبّر</div>
                 <div className="grid grid-cols-2 gap-2.5">
                   {[
+                    {
+                      id: 'translations',
+                      label: 'ترجمات المعاني',
+                      sub: 'السويدية والإنجليزية ولغات أخرى',
+                      icon: Globe,
+                      color: 'text-[#1F3A6E] dark:text-[#648CD4] bg-[#1F3A6E]/10 dark:bg-[#1F3A6E]/40 border-[#648CD4]/35'
+                    },
                     {
                       id: 'tajweed',
                       label: 'موسوعة التجويد',
@@ -1567,11 +1612,15 @@ export default function App() {
               setShareAyah(null);
               setShareSurahName(null);
               setShareSurahNumber(null);
+              setShareReflectionContext(null);
             }}
             ayah={shareAyah}
             surahName={shareSurahName || surahData?.meta.name || ''}
             surahNumber={shareSurahNumber || surahData?.meta.number || currentSurahNumber}
             selectedReciter={selectedReciter}
+            initialReflectionText={shareReflectionContext?.text}
+            initialReflectionDir={shareReflectionContext?.dir}
+            initialReflectionLabel={shareReflectionContext?.label}
           />
         </Suspense>
       )}

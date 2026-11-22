@@ -32,6 +32,9 @@ export interface SocialShareModalProps {
   surahName: string;
   surahNumber?: number;
   selectedReciter?: Reciter;
+  initialReflectionText?: string;
+  initialReflectionDir?: 'rtl' | 'ltr';
+  initialReflectionLabel?: string;
 }
 
 type CardBackdropTheme =
@@ -149,6 +152,9 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
   surahName,
   surahNumber = 1,
   selectedReciter,
+  initialReflectionText,
+  initialReflectionDir = 'rtl',
+  initialReflectionLabel,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -202,12 +208,12 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
     }
   }, [isOpen, selectedReciter?.id]);
 
-  // Sync reflection text whenever ayah switches
+  // Sync reflection text whenever ayah or custom translation reflection changes
   useEffect(() => {
     if (ayah) {
-      setCustomReflection(ayah.tafsir || '');
+      setCustomReflection(initialReflectionText !== undefined ? initialReflectionText : ayah.tafsir || '');
     }
-  }, [ayah?.overallNumber]);
+  }, [ayah?.overallNumber, ayah?.numberInSurah, initialReflectionText]);
 
   // Preload nature image assets once cleanly
   useEffect(() => {
@@ -489,7 +495,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
       if (hasReflection) {
         ctx.save();
         ctx.font = `500 ${reflectionFontPx}px "Cairo", sans-serif`;
-        ctx.direction = 'rtl';
+        ctx.direction = initialReflectionDir;
         const wrapped = wrapArabicLines(customReflection.trim(), maxTextWidth - Math.round(40 * scale), (s) => ctx.measureText(s).width);
         const maxRefLines = aspectRatio === 'story' ? 4 : 3;
         if (wrapped.length > maxRefLines) {
@@ -619,7 +625,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
 
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.direction = 'rtl';
+        ctx.direction = initialReflectionDir;
         ctx.fillStyle = secondaryTextColor;
         ctx.font = `500 ${reflectionFontPx}px "Cairo", sans-serif`;
 
@@ -724,6 +730,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
       surahName,
       includeTafsir,
       customReflection,
+      initialReflectionDir,
       autoFitFont,
       manualFontSize,
       highlightAllah,
@@ -1252,10 +1259,12 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
             )}
           </div>
 
-          {/* 4. Tadabbur Reflection & QR Deep Link */}
+          {/* 4. Tadabbur Reflection / Translation & QR Deep Link */}
           <div className="space-y-2 pt-1 border-t border-[#E3D9C3] dark:border-slate-800/80">
             <div className="flex items-center justify-between">
-              <label className="text-[11px] font-semibold text-[#1B1A17] dark:text-slate-300">ومضة تدبرية / تفسير</label>
+              <label className="text-[11px] font-semibold text-[#1B1A17] dark:text-slate-300">
+                {initialReflectionLabel || 'ومضة تدبرية / تفسير'}
+              </label>
               <input
                 type="checkbox"
                 checked={includeTafsir}
@@ -1267,10 +1276,13 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
             {includeTafsir && (
               <textarea
                 rows={2}
+                dir={initialReflectionDir}
                 value={customReflection}
                 onChange={(e) => setCustomReflection(e.target.value)}
                 placeholder="اكتب ومضة تدبرية قصيرة أو اترك التفسير الميسر..."
-                className="w-full rounded-xl bg-[#F6EFDD] dark:bg-slate-900 border border-[#D4C7AE] dark:border-slate-800 focus:border-[#8A6418] dark:focus:border-[#D9B45A] outline-none p-2 text-xs text-[#1B1A17] dark:text-slate-200 leading-relaxed resize-none"
+                className={`w-full rounded-xl bg-[#F6EFDD] dark:bg-slate-900 border border-[#D4C7AE] dark:border-slate-800 focus:border-[#8A6418] dark:focus:border-[#D9B45A] outline-none p-2 text-xs text-[#1B1A17] dark:text-slate-200 leading-relaxed resize-none ${
+                  initialReflectionDir === 'ltr' ? 'text-left' : 'text-right'
+                }`}
               />
             )}
 

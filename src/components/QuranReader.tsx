@@ -20,7 +20,7 @@ import {
   ChevronDown, SlidersHorizontal, Volume2,
   ChevronRight, ChevronLeft, RefreshCw, AlertCircle, Check, Share2, PenLine,
   Award, ChevronsDown, Sun, Moon, ShieldCheck, Calendar,
-  Heart, Sprout, Compass, AlignJustify, LayoutGrid, Plus, Minus
+  Heart, Sprout, Compass, AlignJustify, LayoutGrid, Plus, Minus, Globe
 } from 'lucide-react';
 import { APP_THEME_EVENT, AppTheme, LastReadingPosition, loadAppTheme, saveAppTheme } from '../utils/appTheme';
 import { Reciter } from '../data/reciters';
@@ -174,7 +174,7 @@ interface QuranReaderProps {
     readerMode: ReaderMode;
   }) => void;
   onNavigateView?: (
-    view: 'mushaf' | 'memorization' | 'kids' | 'ruqyah' | 'mood' | 'analytics' | 'khatma' | 'tajweed' | 'journal'
+    view: 'mushaf' | 'memorization' | 'kids' | 'translations' | 'ruqyah' | 'mood' | 'analytics' | 'khatma' | 'tajweed' | 'journal'
   ) => void;
   onNavigateToAyah?: (surahNumber: number, ayahNumber: number) => void;
   onNavigateToJuz?: (juzNumber: number) => void;
@@ -1784,19 +1784,32 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
       }
     );
 
-    // Wave 2: Family Hifz, Tajweed & Devotional sections
+    // Wave 2: Family Hifz, Translations, Tajweed & Devotional sections
     if (onNavigateView) {
-      items.push({
-        id: 'kids',
-        label: 'تحفيظ الصغار',
-        title: 'قسم تحفيظ الصغار والتلقين والنجوم',
-        isActive: false,
-        icon: <Sprout className={`w-4 h-4 ${isLightPaper ? 'text-[#1F3A6E]' : 'text-[#D9B45A]'}`} />,
-        onClick: () => {
-          setActiveDockSheet('none');
-          onNavigateView('kids');
+      items.push(
+        {
+          id: 'kids',
+          label: 'تحفيظ الصغار',
+          title: 'قسم تحفيظ الصغار والتلقين والنجوم',
+          isActive: false,
+          icon: <Sprout className={`w-4 h-4 ${isLightPaper ? 'text-[#1F3A6E]' : 'text-[#D9B45A]'}`} />,
+          onClick: () => {
+            setActiveDockSheet('none');
+            onNavigateView('kids');
+          },
         },
-      });
+        {
+          id: 'translations',
+          label: 'الترجمات',
+          title: 'ترجمات معاني القرآن (السويدية والإنجليزية)',
+          isActive: false,
+          icon: <Globe className={`w-4 h-4 ${isLightPaper ? 'text-[#1F3A6E]' : 'text-[#D9B45A]'}`} />,
+          onClick: () => {
+            setActiveDockSheet('none');
+            onNavigateView('translations');
+          },
+        }
+      );
     }
 
     items.push({
@@ -3623,6 +3636,7 @@ export const QuranReader: React.FC<QuranReaderProps> = ({
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {[
+                      { id: 'translations' as const, label: 'ترجمات المعاني', icon: Globe },
                       { id: 'ruqyah' as const, label: 'الرقية الشرعية', icon: ShieldCheck },
                       { id: 'khatma' as const, label: 'الختمات', icon: Sparkles },
                       { id: 'tajweed' as const, label: 'موسوعة التجويد', icon: HelpCircle },
