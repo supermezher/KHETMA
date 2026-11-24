@@ -77,4 +77,13 @@ describe('wordSync synchronization pipeline', () => {
     expect(spokenIndices[spokenIdx6]).toBe(7);
     expect(tokens[spokenIndices[spokenIdx6]]).toBe('هُدًى');
   });
+
+  it('keeps fallback word highlight synced with speech envelope and word lengths when segments are missing', () => {
+    // Words of unequal lengths: short particle (2), long word (8), medium (4)
+    const weights = [2, 8, 4];
+    // Near 91% of audio duration (just before trailing 8% silence), highlight reaches final word instead of lagging
+    expect(resolveActiveWordIndex(undefined, 2730, 3000, 3, weights)).toBe(2);
+    // Midpoint falls inside the long middle word (weight 8 + 1.5 = 9.5 out of 18.5 total)
+    expect(resolveActiveWordIndex(undefined, 1300, 3000, 3, weights)).toBe(1);
+  });
 });

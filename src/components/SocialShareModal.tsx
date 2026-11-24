@@ -6,7 +6,14 @@ import {
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { Ayah } from '../data/quranService';
-import { Reciter, RECITERS_LIST, getAyahAudioUrl } from '../data/reciters';
+import {
+  Reciter,
+  RECITERS_LIST,
+  getAyahAudioUrl,
+  getReciterDisplayName,
+} from '../data/reciters';
+import { SURAHS_LIST, getSurahDisplayName, getSurahFullTitle } from '../data/quranMetadata';
+import { formatLocalizedDigits, useLanguage } from '../utils/i18n';
 import {
   CardAspectRatio,
   getCanvasDimensions,
@@ -51,6 +58,7 @@ type CardBackdropTheme =
 interface ThemePreset {
   id: CardBackdropTheme;
   label: string;
+  labelEn: string;
   category: 'nature' | 'studio';
   previewBg: string;
   previewImage?: string;
@@ -58,14 +66,14 @@ interface ThemePreset {
 }
 
 const THEME_PRESETS: ThemePreset[] = [
-  { id: 'dawn', label: 'الفجر الهادئ', category: 'nature', previewBg: 'bg-amber-950', previewImage: dawnSkyImg },
-  { id: 'night', label: 'ليل الصحراء', category: 'nature', previewBg: 'bg-slate-950', previewImage: nightStarsImg },
-  { id: 'ocean', label: 'البحر الساكن', category: 'nature', previewBg: 'bg-cyan-950', previewImage: calmOceanImg },
-  { id: 'forest', label: 'ضباب الغابة', category: 'nature', previewBg: 'bg-emerald-950', previewImage: mistyForestImg },
-  { id: 'emerald', label: 'زمردي ملكي', category: 'studio', previewBg: 'bg-[#06281e]' },
-  { id: 'midnight', label: 'كحلي ليلي', category: 'studio', previewBg: 'bg-[#0f172a]' },
-  { id: 'parchment', label: 'مخطوطة', category: 'studio', previewBg: 'bg-[#fbf6ea] text-stone-900', isLight: true },
-  { id: 'ivory-day', label: 'صباحي ناصع', category: 'studio', previewBg: 'bg-[#f8fafc] text-slate-900', isLight: true },
+  { id: 'dawn', label: 'الفجر الهادئ', labelEn: 'Peaceful Dawn', category: 'nature', previewBg: 'bg-amber-950', previewImage: dawnSkyImg },
+  { id: 'night', label: 'ليل الصحراء', labelEn: 'Desert Night', category: 'nature', previewBg: 'bg-slate-950', previewImage: nightStarsImg },
+  { id: 'ocean', label: 'البحر الساكن', labelEn: 'Calm Ocean', category: 'nature', previewBg: 'bg-cyan-950', previewImage: calmOceanImg },
+  { id: 'forest', label: 'ضباب الغابة', labelEn: 'Misty Forest', category: 'nature', previewBg: 'bg-emerald-950', previewImage: mistyForestImg },
+  { id: 'emerald', label: 'زمردي ملكي', labelEn: 'Royal Emerald', category: 'studio', previewBg: 'bg-[#06281e]' },
+  { id: 'midnight', label: 'كحلي ليلي', labelEn: 'Midnight Navy', category: 'studio', previewBg: 'bg-[#0f172a]' },
+  { id: 'parchment', label: 'مخطوطة', labelEn: 'Parchment', category: 'studio', previewBg: 'bg-[#fbf6ea] text-stone-900', isLight: true },
+  { id: 'ivory-day', label: 'صباحي ناصع', labelEn: 'Ivory Day', category: 'studio', previewBg: 'bg-[#f8fafc] text-slate-900', isLight: true },
 ];
 
 const NATURE_IMAGE_SOURCES: Record<string, string> = {
@@ -195,11 +203,20 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
   const [isLoadingPreview, setIsLoadingPreview] = useState<boolean>(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
+  const { lang, isEnglish } = useLanguage();
   const [isExportingVideo, setIsExportingVideo] = useState<boolean>(false);
   const [videoProgress, setVideoProgress] = useState<number>(0);
   const [videoError, setVideoError] = useState<string | null>(null);
 
   const activeReciter = RECITERS_LIST.find((r) => r.id === reciterId) || selectedReciter || RECITERS_LIST[0];
+  const resolvedSurahMeta = SURAHS_LIST.find((s) => s.number === surahNumber);
+  const displaySurahName = resolvedSurahMeta ? getSurahDisplayName(resolvedSurahMeta, lang) : surahName;
+  const displaySurahFull = resolvedSurahMeta
+    ? getSurahFullTitle(resolvedSurahMeta, lang)
+    : isEnglish
+    ? `Surah ${surahName}`
+    : `سورة ${surahName}`;
+  const displayReciterName = getReciterDisplayName(activeReciter, lang);
 
   // Keep reciter synced with main reader selection when modal opens
   useEffect(() => {
@@ -460,7 +477,11 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
       ctx.font = `bold ${Math.round(30 * scale)}px "Amiri", serif`;
       ctx.fillText('بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ', width / 2, topAnchorY);
 
-      const pillText = `سورة ${surahName}  •  الآية ${ayah.numberInSurah}`;
+      const formattedAyahNum = formatLocalizedDigits(ayah.numberInSurah, lang);
+      const pillText = isEnglish
+        ? `${displaySurahFull}  •  Ayah ${formattedAyahNum}`
+        : `سورة ${displaySurahName}  •  الآية ${formattedAyahNum}`;
+      ctx.direction = isEnglish ? 'ltr' : 'rtl';
       ctx.font = `600 ${Math.round(22 * scale)}px "Cairo", sans-serif`;
       const pillMetrics = ctx.measureText(pillText);
       const pillW = Math.max(Math.round(270 * scale), pillMetrics.width + Math.round(64 * scale));
@@ -640,6 +661,16 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
       ctx.save();
       const footerAnchorY = height - innerPad - Math.round(40 * scale);
       const hasQrReady = Boolean(showQr && qrCanvasRef.current);
+      const qrCtaText = isEnglish ? 'Scan to listen & read' : 'امسح للاستماع والقراءة';
+      const qrRefText = isEnglish
+        ? `${displaySurahFull} (${formattedAyahNum})`
+        : `سورة ${displaySurahName} (${formattedAyahNum})`;
+      const reciterCreditText = isEnglish
+        ? `Recited by: ${displayReciterName}`
+        : `بصوت القارئ: ${displayReciterName}`;
+      const brandSealText = isEnglish
+        ? 'Bayan App | Complete Digital Mushaf'
+        : 'تطبيق بيان | مصحف رقمي متكامل';
 
       if (hasQrReady && qrCanvasRef.current) {
         const qrX = innerPad + Math.round(28 * scale);
@@ -664,13 +695,13 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
 
         // Micro caption next to QR on left side
         ctx.textAlign = 'left';
-        ctx.direction = 'rtl';
+        ctx.direction = isEnglish ? 'ltr' : 'rtl';
         ctx.fillStyle = goldColor;
         ctx.font = `600 ${Math.round(18 * scale)}px "Cairo", sans-serif`;
-        ctx.fillText('امسح للاستماع والقراءة', qrX + qrBoxSize + Math.round(16 * scale), qrY + qrBoxSize * 0.42);
+        ctx.fillText(qrCtaText, qrX + qrBoxSize + Math.round(16 * scale), qrY + qrBoxSize * 0.42);
         ctx.fillStyle = mutedFooterColor;
         ctx.font = `500 ${Math.round(16 * scale)}px "Cairo", sans-serif`;
-        ctx.fillText(`سورة ${surahName} (${ayah.numberInSurah})`, qrX + qrBoxSize + Math.round(16 * scale), qrY + qrBoxSize * 0.72);
+        ctx.fillText(qrRefText, qrX + qrBoxSize + Math.round(16 * scale), qrY + qrBoxSize * 0.72);
 
         // Right-aligned Reciter & Brand Signature
         const rightEdgeX = width - innerPad - Math.round(30 * scale);
@@ -678,26 +709,26 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
         if (showReciterCredit) {
           ctx.fillStyle = primaryTextColor;
           ctx.font = `600 ${Math.round(20 * scale)}px "Cairo", sans-serif`;
-          ctx.fillText(`بصوت القارئ: ${activeReciter.name}`, rightEdgeX, qrY + qrBoxSize * 0.4);
+          ctx.fillText(reciterCreditText, rightEdgeX, qrY + qrBoxSize * 0.4);
         }
         ctx.fillStyle = mutedFooterColor;
         ctx.font = `500 ${Math.round(18 * scale)}px "Cairo", sans-serif`;
         ctx.fillText(
-          'تطبيق بيان | مصحف رقمي متكامل',
+          brandSealText,
           rightEdgeX,
           showReciterCredit ? qrY + qrBoxSize * 0.72 : qrY + qrBoxSize * 0.54
         );
       } else {
         ctx.textAlign = 'center';
-        ctx.direction = 'rtl';
+        ctx.direction = isEnglish ? 'ltr' : 'rtl';
         if (showReciterCredit) {
           ctx.fillStyle = primaryTextColor;
           ctx.font = `600 ${Math.round(21 * scale)}px "Cairo", sans-serif`;
-          ctx.fillText(`بصوت القارئ: ${activeReciter.name}`, width / 2, footerAnchorY - Math.round(26 * scale));
+          ctx.fillText(reciterCreditText, width / 2, footerAnchorY - Math.round(26 * scale));
         }
         ctx.fillStyle = mutedFooterColor;
         ctx.font = `500 ${Math.round(19 * scale)}px "Cairo", sans-serif`;
-        ctx.fillText('تطبيق بيان | مصحف رقمي متكامل', width / 2, footerAnchorY + Math.round(4 * scale));
+        ctx.fillText(brandSealText, width / 2, footerAnchorY + Math.round(4 * scale));
       }
       ctx.restore();
 
@@ -727,7 +758,11 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
       overlayOpacity,
       showGlassPanel,
       showOrnament,
-      surahName,
+      lang,
+      isEnglish,
+      displaySurahFull,
+      displaySurahName,
+      displayReciterName,
       includeTafsir,
       customReflection,
       initialReflectionDir,
@@ -736,7 +771,6 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
       highlightAllah,
       showQr,
       showReciterCredit,
-      activeReciter.name,
     ]
   );
 
@@ -833,7 +867,11 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
     audio.onerror = () => {
       setIsLoadingPreview(false);
       setIsPreviewPlaying(false);
-      setPreviewError('تعذر تشغيل التلاوة الآن، تحقق من الاتصال بالإنترنت.');
+      setPreviewError(
+        isEnglish
+          ? 'Unable to play recitation right now; please check your internet connection.'
+          : 'تعذر تشغيل التلاوة الآن، تحقق من الاتصال بالإنترنت.'
+      );
     };
 
     try {
@@ -841,7 +879,11 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
     } catch {
       setIsLoadingPreview(false);
       setIsPreviewPlaying(false);
-      setPreviewError('تعذر بدء الصوت، يرجى المحاولة مرة أخرى.');
+      setPreviewError(
+        isEnglish
+          ? 'Unable to start audio playback. Please try again.'
+          : 'تعذر بدء الصوت، يرجى المحاولة مرة أخرى.'
+      );
     }
   };
 
@@ -850,7 +892,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
     if (!canvas) return;
     setIsDownloadingPng(true);
     const link = document.createElement('a');
-    link.download = `Bayan_Ayah_${surahName}_${ayah.numberInSurah}.png`;
+    link.download = `Bayan_Ayah_${displaySurahName}_${ayah.numberInSurah}.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
     setIsDownloadingPng(false);
@@ -877,11 +919,13 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
     if (navigator.share) {
       canvas.toBlob(async (blob) => {
         if (!blob) return;
-        const file = new File([blob], `Ayah_${surahName}_${ayah.numberInSurah}.png`, { type: 'image/png' });
+        const file = new File([blob], `Ayah_${displaySurahName}_${ayah.numberInSurah}.png`, { type: 'image/png' });
         try {
           await navigator.share({
-            title: `آية من سورة ${surahName}`,
-            text: `﴿ ${ayah.text} ﴾ [سورة ${surahName}: ${ayah.numberInSurah}]`,
+            title: isEnglish ? `Ayah from ${displaySurahFull}` : `آية من سورة ${displaySurahName}`,
+            text: isEnglish
+              ? `﴿ ${ayah.text} ﴾ [${displaySurahFull}: ${ayah.numberInSurah}]`
+              : `﴿ ${ayah.text} ﴾ [سورة ${displaySurahName}: ${ayah.numberInSurah}]`,
             files: [file],
           });
         } catch {
@@ -899,7 +943,11 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
 
     const format = detectSupportedVideoFormat();
     if (!format) {
-      setVideoError('متصفحك الحالي لا يدعم تصدير الفيديو المباشر؛ يمكنك تحميل البطاقة كصورة عالية الدقة.');
+      setVideoError(
+        isEnglish
+          ? 'Your current browser does not support direct video export; you can download the card as a high-resolution PNG.'
+          : 'متصفحك الحالي لا يدعم تصدير الفيديو المباشر؛ يمكنك تحميل البطاقة كصورة عالية الدقة.'
+      );
       return;
     }
 
@@ -1025,7 +1073,9 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
       console.error('Spoken video export error:', err);
       cancelVideoExport();
       setVideoError(
-        'تعذر سحب صوت القارئ لتوليد الفيديو (قد يتطلب اتصالاً مباشراً بخادم التلاوات). يمكنك تحميل البطاقة كصورة فائقة الدقة الآن.'
+        isEnglish
+          ? 'Unable to fetch the recitation audio for video export (a direct connection to the recitation server may be needed). You can download the high-resolution image instead.'
+          : 'تعذر سحب صوت القارئ لتوليد الفيديو (قد يتطلب اتصالاً مباشراً بخادم التلاوات). يمكنك تحميل البطاقة كصورة فائقة الدقة الآن.'
       );
     }
   };
@@ -1039,17 +1089,17 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
     >
       <div className="relative w-full max-w-6xl max-h-[94vh] bg-[#FBF7EE] dark:bg-[#10161f] border border-[#8A6418]/30 dark:border-slate-800 rounded-2xl shadow-2xl flex flex-col md:flex-row overflow-hidden">
         {/* Controls Studio Sidebar */}
-        <div className="w-full md:w-[370px] shrink-0 p-4 sm:p-5 border-b md:border-b-0 md:border-l border-[#E3D9C3] dark:border-slate-800 bg-[#FBF7EE] dark:bg-[#10161f] flex flex-col gap-4 overflow-y-auto max-h-[52vh] md:max-h-[94vh]">
+        <div className="w-full md:w-[370px] shrink-0 p-4 sm:p-5 border-b md:border-b-0 md:border-e border-[#E3D9C3] dark:border-slate-800 bg-[#FBF7EE] dark:bg-[#10161f] flex flex-col gap-4 overflow-y-auto max-h-[52vh] md:max-h-[94vh]">
           {/* Header */}
           <div className="flex items-center justify-between pb-2 border-b border-[#E3D9C3] dark:border-slate-800/80">
             <div id="social-share-title" className="flex items-center gap-2 text-[#1F3A6E] dark:text-[#D9B45A] font-bold text-sm">
               <Sparkles className="w-4 h-4 shrink-0 text-[#8A6418] dark:text-[#D9B45A]" />
-              <span>استوديو بطاقات الآيات</span>
+              <span>{isEnglish ? 'Ayah Card Studio' : 'استوديو بطاقات الآيات'}</span>
             </div>
             <button
               type="button"
               onClick={onClose}
-              aria-label="إغلاق استوديو البطاقات"
+              aria-label={isEnglish ? 'Close card studio' : 'إغلاق استوديو البطاقات'}
               className="p-1.5 rounded-lg text-[#5E584E] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white hover:bg-[#EFE6D1] dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
@@ -1060,13 +1110,13 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
           <div className="space-y-1.5">
             <label className="text-[11px] font-semibold text-[#5E584E] dark:text-slate-400 flex items-center gap-1.5">
               <ImageIcon className="w-3.5 h-3.5 text-[#1F3A6E] dark:text-[#648CD4]" />
-              <span>أبعاد المنصة</span>
+              <span>{isEnglish ? 'Format & Aspect Ratio' : 'أبعاد المنصة'}</span>
             </label>
             <div className="grid grid-cols-3 gap-1.5">
               {[
-                { id: 'post', label: 'منشور 1:1' },
-                { id: 'story', label: 'ستوري 9:16' },
-                { id: 'landscape', label: 'عريض 16:9' },
+                { id: 'post', label: isEnglish ? 'Post 1:1' : 'منشور 1:1' },
+                { id: 'story', label: isEnglish ? 'Story 9:16' : 'ستوري 9:16' },
+                { id: 'landscape', label: isEnglish ? 'Wide 16:9' : 'عريض 16:9' },
               ].map((ratio) => (
                 <button
                   key={ratio.id}
@@ -1089,7 +1139,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
             <div className="flex items-center justify-between">
               <label className="text-[11px] font-semibold text-[#5E584E] dark:text-slate-400 flex items-center gap-1.5">
                 <Palette className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
-                <span>الخلفيات الطبيعية والطابع</span>
+                <span>{isEnglish ? 'Nature & Studio Themes' : 'الخلفيات الطبيعية والطابع'}</span>
               </label>
               <button
                 type="button"
@@ -1097,7 +1147,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                 className="text-[11px] text-[#1F3A6E] dark:text-[#D9B45A] hover:underline font-semibold flex items-center gap-1 cursor-pointer whitespace-nowrap"
               >
                 <Upload className="w-3 h-3" />
-                <span>صورة مخصصة</span>
+                <span>{isEnglish ? 'Custom Photo' : 'صورة مخصصة'}</span>
               </button>
               <input
                 ref={fileInputRef}
@@ -1109,34 +1159,35 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
             </div>
 
             <div className="grid grid-cols-4 gap-1.5">
-              {THEME_PRESETS.map((t) => {
-                const isSelected = theme === t.id;
+              {THEME_PRESETS.map((preset) => {
+                const isSelected = theme === preset.id;
+                const presetLabel = isEnglish ? preset.labelEn : preset.label;
                 return (
                   <button
-                    key={t.id}
+                    key={preset.id}
                     type="button"
-                    onClick={() => setTheme(t.id)}
+                    onClick={() => setTheme(preset.id)}
                     className={`relative h-14 rounded-xl border overflow-hidden transition-all cursor-pointer group ${
                       isSelected
                         ? 'ring-2 ring-[#8A6418] dark:ring-[#D9B45A] border-[#1F3A6E] dark:border-white/60'
                         : 'border-[#D4C7AE] dark:border-slate-800 hover:border-[#8A6418]/60 dark:hover:border-slate-600'
                     }`}
                   >
-                    {t.previewImage ? (
+                    {preset.previewImage ? (
                       <img
-                        src={t.previewImage}
-                        alt={t.label}
+                        src={preset.previewImage}
+                        alt={presetLabel}
                         className="absolute inset-0 w-full h-full object-cover"
                       />
                     ) : (
-                      <div className={`absolute inset-0 ${t.previewBg}`} />
+                      <div className={`absolute inset-0 ${preset.previewBg}`} />
                     )}
                     <div
                       className={`absolute inset-x-0 bottom-0 py-0.5 px-1 text-[10px] font-semibold truncate text-center ${
-                        t.isLight ? 'bg-white/85 text-stone-900' : 'bg-black/65 text-white'
+                        preset.isLight ? 'bg-white/85 text-stone-900' : 'bg-black/65 text-white'
                       }`}
                     >
-                      {t.label}
+                      {presetLabel}
                     </div>
                   </button>
                 );
@@ -1150,12 +1201,18 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                   onClick={() => setTheme('custom')}
                   className="text-[#1F3A6E] dark:text-[#D9B45A] font-semibold hover:underline cursor-pointer"
                 >
-                  {theme === 'custom' ? '✓ الخلفية المرفوعة مفعلة' : 'تفعيل الصورة المرفوعة'}
+                  {theme === 'custom'
+                    ? isEnglish
+                      ? '✓ Custom backdrop active'
+                      : '✓ الخلفية المرفوعة مفعلة'
+                    : isEnglish
+                    ? 'Use uploaded photo'
+                    : 'تفعيل الصورة المرفوعة'}
                 </button>
                 <button
                   type="button"
                   onClick={handleClearCustomImage}
-                  aria-label="إزالة الصورة المخصصة"
+                  aria-label={isEnglish ? 'Remove custom photo' : 'إزالة الصورة المخصصة'}
                   className="text-rose-600 dark:text-rose-400 hover:text-rose-500 p-1 cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -1166,8 +1223,10 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
             {/* Contrast Scrim Slider */}
             <div className="pt-1">
               <div className="flex justify-between text-[11px] text-[#5E584E] dark:text-slate-400 mb-1">
-                <span>تعتيم الخلفية لوضوح الخط</span>
-                <span className="tabular-nums text-[#1B1A17] dark:text-slate-300">{overlayOpacity}%</span>
+                <span>{isEnglish ? 'Backdrop Dimming Scrim' : 'تعتيم الخلفية لوضوح الخط'}</span>
+                <span className="tabular-nums text-[#1B1A17] dark:text-slate-300">
+                  {formatLocalizedDigits(overlayOpacity, lang)}%
+                </span>
               </div>
               <input
                 type="range"
@@ -1184,68 +1243,70 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
           <div className="space-y-2 pt-1 border-t border-[#E3D9C3] dark:border-slate-800/80">
             <label className="text-[11px] font-semibold text-[#5E584E] dark:text-slate-400 flex items-center gap-1.5">
               <Type className="w-3.5 h-3.5 text-[#1F3A6E] dark:text-[#648CD4]" />
-              <span>التصميم والخط القرآني</span>
+              <span>{isEnglish ? 'Calligraphy & Layout' : 'التصميم والخط القرآني'}</span>
             </label>
 
             <div className="grid grid-cols-2 gap-1.5 text-[11px]">
               <button
                 type="button"
                 onClick={() => setAutoFitFont((v) => !v)}
-                className={`py-2 px-2.5 rounded-xl border font-medium text-right flex items-center justify-between cursor-pointer transition-colors ${
+                className={`py-2 px-2.5 rounded-xl border font-medium text-start flex items-center justify-between cursor-pointer transition-colors ${
                   autoFitFont
                     ? 'bg-[#1F3A6E] border-[#1F3A6E] dark:bg-[#1F3A6E]/55 dark:border-[#648CD4]/55 text-[#FBF7EE] dark:text-[#F6EFDD]'
                     : 'bg-[#F6EFDD] dark:bg-slate-900 border-[#D4C7AE] dark:border-slate-800 text-[#5E584E] dark:text-slate-400'
                 }`}
               >
-                <span>ملاءمة تلقائية</span>
-                <span className={`w-2 h-2 rounded-full ${autoFitFont ? 'bg-[#D9B45A]' : 'bg-[#C4B59A] dark:bg-slate-700'}`} />
+                <span>{isEnglish ? 'Auto-fit text' : 'ملاءمة تلقائية'}</span>
+                <span className={`w-2 h-2 rounded-full shrink-0 ${autoFitFont ? 'bg-[#D9B45A]' : 'bg-[#C4B59A] dark:bg-slate-700'}`} />
               </button>
 
               <button
                 type="button"
                 onClick={() => setHighlightAllah((v) => !v)}
-                className={`py-2 px-2.5 rounded-xl border font-medium text-right flex items-center justify-between cursor-pointer transition-colors ${
+                className={`py-2 px-2.5 rounded-xl border font-medium text-start flex items-center justify-between cursor-pointer transition-colors ${
                   highlightAllah
                     ? 'bg-[#8A6418]/15 border-[#8A6418]/60 dark:bg-[#D9B45A]/15 dark:border-[#D9B45A]/50 text-[#6F4E0E] dark:text-[#F6EFDD]'
                     : 'bg-[#F6EFDD] dark:bg-slate-900 border-[#D4C7AE] dark:border-slate-800 text-[#5E584E] dark:text-slate-400'
                 }`}
               >
-                <span>تذهيب لفظ الجلالة</span>
-                <span className={`w-2 h-2 rounded-full ${highlightAllah ? 'bg-[#8A6418] dark:bg-[#D9B45A]' : 'bg-[#C4B59A] dark:bg-slate-700'}`} />
+                <span>{isEnglish ? 'Gold Allah highlight' : 'تذهيب لفظ الجلالة'}</span>
+                <span className={`w-2 h-2 rounded-full shrink-0 ${highlightAllah ? 'bg-[#8A6418] dark:bg-[#D9B45A]' : 'bg-[#C4B59A] dark:bg-slate-700'}`} />
               </button>
 
               <button
                 type="button"
                 onClick={() => setShowGlassPanel((v) => !v)}
-                className={`py-2 px-2.5 rounded-xl border font-medium text-right flex items-center justify-between cursor-pointer transition-colors ${
+                className={`py-2 px-2.5 rounded-xl border font-medium text-start flex items-center justify-between cursor-pointer transition-colors ${
                   showGlassPanel
                     ? 'bg-[#1F3A6E] border-[#1F3A6E] dark:bg-[#1F3A6E]/55 dark:border-[#648CD4]/55 text-[#FBF7EE] dark:text-[#F6EFDD]'
                     : 'bg-[#F6EFDD] dark:bg-slate-900 border-[#D4C7AE] dark:border-slate-800 text-[#5E584E] dark:text-slate-400'
                 }`}
               >
-                <span>إطار زجاجي ناعم</span>
-                <span className={`w-2 h-2 rounded-full ${showGlassPanel ? 'bg-[#D9B45A]' : 'bg-[#C4B59A] dark:bg-slate-700'}`} />
+                <span>{isEnglish ? 'Frosted glass panel' : 'إطار زجاجي ناعم'}</span>
+                <span className={`w-2 h-2 rounded-full shrink-0 ${showGlassPanel ? 'bg-[#D9B45A]' : 'bg-[#C4B59A] dark:bg-slate-700'}`} />
               </button>
 
               <button
                 type="button"
                 onClick={() => setShowOrnament((v) => !v)}
-                className={`py-2 px-2.5 rounded-xl border font-medium text-right flex items-center justify-between cursor-pointer transition-colors ${
+                className={`py-2 px-2.5 rounded-xl border font-medium text-start flex items-center justify-between cursor-pointer transition-colors ${
                   showOrnament
                     ? 'bg-[#1F3A6E] border-[#1F3A6E] dark:bg-[#1F3A6E]/55 dark:border-[#648CD4]/55 text-[#FBF7EE] dark:text-[#F6EFDD]'
                     : 'bg-[#F6EFDD] dark:bg-slate-900 border-[#D4C7AE] dark:border-slate-800 text-[#5E584E] dark:text-slate-400'
                 }`}
               >
-                <span>زخرفة أندلسية</span>
-                <span className={`w-2 h-2 rounded-full ${showOrnament ? 'bg-[#D9B45A]' : 'bg-[#C4B59A] dark:bg-slate-700'}`} />
+                <span>{isEnglish ? 'Andalusian frame' : 'زخرفة أندلسية'}</span>
+                <span className={`w-2 h-2 rounded-full shrink-0 ${showOrnament ? 'bg-[#D9B45A]' : 'bg-[#C4B59A] dark:bg-slate-700'}`} />
               </button>
             </div>
 
             {!autoFitFont && (
               <div className="pt-1">
                 <div className="flex justify-between text-[11px] text-[#5E584E] dark:text-slate-400 mb-1">
-                  <span>حجم الخط اليدوي</span>
-                  <span className="tabular-nums text-[#1B1A17] dark:text-slate-300">{manualFontSize}px</span>
+                  <span>{isEnglish ? 'Manual Font Size' : 'حجم الخط اليدوي'}</span>
+                  <span className="tabular-nums text-[#1B1A17] dark:text-slate-300">
+                    {formatLocalizedDigits(manualFontSize, lang)}px
+                  </span>
                 </div>
                 <input
                   type="range"
@@ -1263,7 +1324,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
           <div className="space-y-2 pt-1 border-t border-[#E3D9C3] dark:border-slate-800/80">
             <div className="flex items-center justify-between">
               <label className="text-[11px] font-semibold text-[#1B1A17] dark:text-slate-300">
-                {initialReflectionLabel || 'ومضة تدبرية / تفسير'}
+                {initialReflectionLabel || (isEnglish ? 'Reflection / Tafsir Note' : 'ومضة تدبرية / تفسير')}
               </label>
               <input
                 type="checkbox"
@@ -1279,7 +1340,11 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                 dir={initialReflectionDir}
                 value={customReflection}
                 onChange={(e) => setCustomReflection(e.target.value)}
-                placeholder="اكتب ومضة تدبرية قصيرة أو اترك التفسير الميسر..."
+                placeholder={
+                  isEnglish
+                    ? 'Write a brief reflection or keep the Tafsir note...'
+                    : 'اكتب ومضة تدبرية قصيرة أو اترك التفسير الميسر...'
+                }
                 className={`w-full rounded-xl bg-[#F6EFDD] dark:bg-slate-900 border border-[#D4C7AE] dark:border-slate-800 focus:border-[#8A6418] dark:focus:border-[#D9B45A] outline-none p-2 text-xs text-[#1B1A17] dark:text-slate-200 leading-relaxed resize-none ${
                   initialReflectionDir === 'ltr' ? 'text-left' : 'text-right'
                 }`}
@@ -1290,7 +1355,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
               <button
                 type="button"
                 onClick={() => setShowQr((v) => !v)}
-                className={`py-2 px-2.5 rounded-xl border font-medium flex items-center justify-between cursor-pointer transition-colors ${
+                className={`py-2 px-2.5 rounded-xl border font-medium text-start flex items-center justify-between cursor-pointer transition-colors ${
                   showQr
                     ? 'bg-[#1F3A6E] border-[#1F3A6E] dark:bg-[#1F3A6E]/55 dark:border-[#648CD4]/55 text-[#FBF7EE] dark:text-[#F6EFDD]'
                     : 'bg-[#F6EFDD] dark:bg-slate-900 border-[#D4C7AE] dark:border-slate-800 text-[#5E584E] dark:text-slate-400'
@@ -1298,22 +1363,22 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
               >
                 <span className="flex items-center gap-1.5">
                   <QrCode className="w-3.5 h-3.5" />
-                  <span>رمز QR</span>
+                  <span>{isEnglish ? 'QR Code' : 'رمز QR'}</span>
                 </span>
-                <span className={`w-2 h-2 rounded-full ${showQr ? 'bg-[#D9B45A]' : 'bg-[#C4B59A] dark:bg-slate-700'}`} />
+                <span className={`w-2 h-2 rounded-full shrink-0 ${showQr ? 'bg-[#D9B45A]' : 'bg-[#C4B59A] dark:bg-slate-700'}`} />
               </button>
 
               <button
                 type="button"
                 onClick={() => setShowReciterCredit((v) => !v)}
-                className={`py-2 px-2.5 rounded-xl border font-medium flex items-center justify-between cursor-pointer transition-colors ${
+                className={`py-2 px-2.5 rounded-xl border font-medium text-start flex items-center justify-between cursor-pointer transition-colors ${
                   showReciterCredit
                     ? 'bg-[#1F3A6E] border-[#1F3A6E] dark:bg-[#1F3A6E]/55 dark:border-[#648CD4]/55 text-[#FBF7EE] dark:text-[#F6EFDD]'
                     : 'bg-[#F6EFDD] dark:bg-slate-900 border-[#D4C7AE] dark:border-slate-800 text-[#5E584E] dark:text-slate-400'
                 }`}
               >
-                <span>توقيع القارئ</span>
-                <span className={`w-2 h-2 rounded-full ${showReciterCredit ? 'bg-[#D9B45A]' : 'bg-[#C4B59A] dark:bg-slate-700'}`} />
+                <span>{isEnglish ? 'Reciter Credit' : 'توقيع القارئ'}</span>
+                <span className={`w-2 h-2 rounded-full shrink-0 ${showReciterCredit ? 'bg-[#D9B45A]' : 'bg-[#C4B59A] dark:bg-slate-700'}`} />
               </button>
             </div>
           </div>
@@ -1322,7 +1387,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
           <div className="space-y-2 pt-2 border-t border-[#E3D9C3] dark:border-slate-800/80">
             <label className="text-[11px] font-semibold text-[#5E584E] dark:text-slate-400 flex items-center gap-1.5">
               <Volume2 className="w-3.5 h-3.5 text-[#1F3A6E] dark:text-[#D9B45A]" />
-              <span>صوت التلاوة والبطاقة الناطقة</span>
+              <span>{isEnglish ? 'Recitation Audio & Spoken Video' : 'صوت التلاوة والبطاقة الناطقة'}</span>
             </label>
 
             <div className="flex items-center gap-2">
@@ -1334,7 +1399,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
               >
                 {RECITERS_LIST.map((r) => (
                   <option key={r.id} value={r.id}>
-                    {r.name}
+                    {getReciterDisplayName(r, lang)}
                   </option>
                 ))}
               </select>
@@ -1356,7 +1421,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                 ) : (
                   <Volume2 className="w-3.5 h-3.5 text-[#1F3A6E] dark:text-[#D9B45A]" />
                 )}
-                <span>{isPreviewPlaying ? 'إيقاف' : 'استماع'}</span>
+                <span>{isPreviewPlaying ? (isEnglish ? 'Pause' : 'إيقاف') : isEnglish ? 'Listen' : 'استماع'}</span>
               </button>
             </div>
 
@@ -1376,14 +1441,18 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-[#6F4E0E] dark:text-[#D9B45A] font-semibold flex items-center gap-1.5">
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>جارٍ دمج الصوت والصورة ({videoProgress}%)</span>
+                    <span>
+                      {isEnglish
+                        ? `Rendering video (${videoProgress}%)`
+                        : `جارٍ دمج الصوت والصورة (${formatLocalizedDigits(videoProgress, lang)}%)`}
+                    </span>
                   </span>
                   <button
                     type="button"
                     onClick={cancelVideoExport}
                     className="text-rose-700 dark:text-rose-400 hover:underline font-bold text-[11px] cursor-pointer"
                   >
-                    إلغاء
+                    {isEnglish ? 'Cancel' : 'إلغاء'}
                   </button>
                 </div>
                 <div className="w-full h-1.5 rounded-full bg-[#D4C7AE] dark:bg-slate-900 overflow-hidden">
@@ -1400,7 +1469,9 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                 className="w-full py-2.5 px-4 bg-[#D9B45A] hover:bg-[#e4c370] text-[#10161f] rounded-xl font-bold flex items-center justify-center gap-2 shadow-md transition-all text-xs cursor-pointer whitespace-nowrap"
               >
                 <Video className="w-4 h-4 shrink-0" />
-                <span>تصدير بطاقة فيديو ناطقة بصوت القارئ</span>
+                <span>
+                  {isEnglish ? 'Export Spoken Video Card' : 'تصدير بطاقة فيديو ناطقة بصوت القارئ'}
+                </span>
               </button>
             )}
 
@@ -1419,7 +1490,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
               className="w-full py-2.5 px-4 bg-[#1F3A6E] hover:bg-[#2E5499] disabled:opacity-50 text-[#FBF7EE] rounded-xl font-bold flex items-center justify-center gap-2 shadow-md transition-all text-xs cursor-pointer whitespace-nowrap"
             >
               <Download className="w-4 h-4 shrink-0" />
-              <span>حفظ صورة عالية الدقة (PNG)</span>
+              <span>{isEnglish ? 'Save High-Res Image (PNG)' : 'حفظ صورة عالية الدقة (PNG)'}</span>
             </button>
 
             <div className="grid grid-cols-2 gap-2">
@@ -1430,7 +1501,15 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                 className="py-2 px-3 bg-[#F6EFDD] hover:bg-[#EFE6D1] dark:bg-slate-900 dark:hover:bg-slate-800 text-[#1B1A17] dark:text-slate-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border border-[#D4C7AE] dark:border-slate-800 transition-colors cursor-pointer whitespace-nowrap"
               >
                 {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{isCopied ? 'تم النسخ' : 'نسخ للحافظة'}</span>
+                <span>
+                  {isCopied
+                    ? isEnglish
+                      ? 'Copied'
+                      : 'تم النسخ'
+                    : isEnglish
+                    ? 'Copy Image'
+                    : 'نسخ للحافظة'}
+                </span>
               </button>
 
               <button
@@ -1440,7 +1519,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                 className="py-2 px-3 bg-[#F6EFDD] hover:bg-[#EFE6D1] dark:bg-slate-900 dark:hover:bg-slate-800 text-[#1B1A17] dark:text-slate-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border border-[#D4C7AE] dark:border-slate-800 transition-colors cursor-pointer whitespace-nowrap"
               >
                 <Share2 className="w-3.5 h-3.5" />
-                <span>مشاركة فورية</span>
+                <span>{isEnglish ? 'Quick Share' : 'مشاركة فورية'}</span>
               </button>
             </div>
           </div>
@@ -1452,7 +1531,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
             <span className="px-2 py-0.5 rounded-md bg-[#FBF7EE] dark:bg-slate-900 border border-[#D4C7AE] dark:border-slate-800 text-[#1B1A17] dark:text-slate-300 font-medium tabular-nums">
               {aspectRatio === 'post' ? '1080 × 1080' : aspectRatio === 'story' ? '1080 × 1920' : '1920 × 1080'}
             </span>
-            <span>معاينة حية بدقة الاستوديو</span>
+            <span>{isEnglish ? 'Live Studio HD Preview' : 'معاينة حية بدقة الاستوديو'}</span>
           </div>
 
           <div className="relative max-w-full max-h-full flex items-center justify-center rounded-xl overflow-hidden shadow-2xl border border-[#D4C7AE] dark:border-slate-800/80">

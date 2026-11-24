@@ -6,7 +6,7 @@ import {
   KhatmaGoalMode,
   KhatmaPlan,
 } from '../utils/personalKhatma';
-import { toArabicIndic } from './khatma/KhatmaRing';
+import { formatLocalizedDigits, useLanguage } from '../utils/i18n';
 
 export type { KhatmaPlan };
 
@@ -20,7 +20,9 @@ interface KhatmaPlannerModalProps {
 const QUICK_TEMPLATES: Array<{
   id: string;
   label: string;
+  labelEn: string;
   sub: string;
+  subEn: string;
   goalMode: KhatmaGoalMode;
   targetKhatmas: number;
   targetDays: number;
@@ -29,7 +31,9 @@ const QUICK_TEMPLATES: Array<{
   {
     id: 'one-month',
     label: 'ختمة في شهر',
+    labelEn: '1 Khatma in 1 Month',
     sub: 'جزء يومياً · ٣٠ يوماً',
+    subEn: '1 Juz/day · 30 days',
     goalMode: 'khatmas',
     targetKhatmas: 1,
     targetDays: 30,
@@ -38,7 +42,9 @@ const QUICK_TEMPLATES: Array<{
   {
     id: 'two-month',
     label: 'ختمتان في شهر',
+    labelEn: '2 Khatmas in 1 Month',
     sub: 'جزآن يومياً · ٣٠ يوماً',
+    subEn: '2 Juz/day · 30 days',
     goalMode: 'khatmas',
     targetKhatmas: 2,
     targetDays: 30,
@@ -47,7 +53,9 @@ const QUICK_TEMPLATES: Array<{
   {
     id: 'ramadan-3',
     label: '٣ ختمات في رمضان',
+    labelEn: '3 Khatmas in Ramadan',
     sub: '٣ أجزاء يومياً · ٣٠ يوماً',
+    subEn: '3 Juz/day · 30 days',
     goalMode: 'khatmas',
     targetKhatmas: 3,
     targetDays: 30,
@@ -56,7 +64,9 @@ const QUICK_TEMPLATES: Array<{
   {
     id: 'ramadan-3-29',
     label: '٣ ختمات (احتياط ٢٩ يوماً)',
+    labelEn: '3 Khatmas (29-Day Buffer)',
     sub: '٦٣ صفحة/يوم · ٢٩ يوماً',
+    subEn: '63 pages/day · 29 days',
     goalMode: 'khatmas',
     targetKhatmas: 3,
     targetDays: 29,
@@ -70,6 +80,7 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
   onApplyPlan,
   initialPlan,
 }) => {
+  const { lang, isEnglish, t } = useLanguage();
   const [goalMode, setGoalMode] = useState<KhatmaGoalMode>(initialPlan?.goalMode || 'khatmas');
   const [targetKhatmas, setTargetKhatmas] = useState<number>(initialPlan?.targetKhatmas || 1);
   const [targetJuzCount, setTargetJuzCount] = useState<number>(initialPlan?.targetJuzCount || 10);
@@ -154,13 +165,13 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
           <div className="flex items-center gap-2.5">
             <Sparkles className="w-5 h-5 text-[#8A6418] dark:text-[#D9B45A] shrink-0" />
             <h3 id="khatma-planner-title" className="text-base sm:text-lg font-bold text-[#1B1A17] dark:text-[#F6EFDD]">
-              مخطط الورد والختمة الفردية الذكية
+              {t('مخطط الورد والختمة الفردية الذكية', 'Smart Personal Khatma & Wird Planner')}
             </h3>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="إغلاق مخطط الورد"
+            aria-label={t('إغلاق مخطط الورد', 'Close Wird planner')}
             className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-[#5E584E] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white hover:bg-[#EFE6D1] dark:hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -170,7 +181,7 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
         {/* Ready Templates */}
         <div>
           <span className="text-xs font-bold text-[#5E584E] dark:text-slate-300 block mb-2">
-            قوالب جاهزة بضغطة واحدة (مثل ختمات رمضان):
+            {t('قوالب جاهزة بضغطة واحدة (مثل ختمات رمضان):', 'One-Tap Presets (such as Ramadan Khatmas):')}
           </span>
           <div className="grid grid-cols-2 gap-2">
             {QUICK_TEMPLATES.map((tpl) => {
@@ -183,14 +194,16 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
                   key={tpl.id}
                   type="button"
                   onClick={() => handleApplyTemplate(tpl)}
-                  className={`min-h-[48px] p-2.5 rounded-xl border text-right transition-colors cursor-pointer ${
+                  className={`min-h-[48px] p-2.5 rounded-xl border ${isEnglish ? 'text-left' : 'text-right'} transition-colors cursor-pointer ${
                     isSelected
                       ? 'bg-[#1F3A6E] border-[#8A6418] dark:bg-[#1f3a6e]/60 dark:border-[#D9B45A]/70 text-[#FBF7EE] dark:text-[#F6EFDD]'
                       : 'bg-[#F6EFDD] dark:bg-slate-950/80 border-[#D4C7AE] dark:border-slate-800 text-[#1B1A17] dark:text-slate-300 hover:border-[#8A6418]/50 dark:hover:border-slate-700'
                   }`}
                 >
-                  <span className="text-xs font-bold block">{tpl.label}</span>
-                  <span className={`text-[11px] block mt-0.5 tabular-nums ${isSelected ? 'text-[#F6EFDD]/85 dark:text-slate-300' : 'text-[#5E584E] dark:text-slate-400'}`}>{tpl.sub}</span>
+                  <span className="text-xs font-bold block">{isEnglish ? tpl.labelEn : tpl.label}</span>
+                  <span className={`text-[11px] block mt-0.5 tabular-nums ${isSelected ? 'text-[#F6EFDD]/85 dark:text-slate-300' : 'text-[#5E584E] dark:text-slate-400'}`}>
+                    {isEnglish ? tpl.subEn : tpl.sub}
+                  </span>
                 </button>
               );
             })}
@@ -201,7 +214,7 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
         <div className="space-y-2.5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <label className="text-xs font-bold text-[#5E584E] dark:text-slate-300">
-              ١. حدد هدفك من القراءة:
+              {t('١. حدد هدفك من القراءة:', '1. Set your reading goal:')}
             </label>
             <div className="inline-flex items-center p-1 rounded-xl bg-[#EFE6D1] dark:bg-slate-950 border border-[#D4C7AE] dark:border-slate-800">
               <button
@@ -213,7 +226,7 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
                     : 'text-[#5E584E] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-slate-200'
                 }`}
               >
-                عدد ختمات كاملة
+                {t('عدد ختمات كاملة', 'Full Khatmas')}
               </button>
               <button
                 type="button"
@@ -224,7 +237,7 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
                     : 'text-[#5E584E] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-slate-200'
                 }`}
               >
-                عدد أجزاء محدد
+                {t('عدد أجزاء محدد', 'Specific Juz Count')}
               </button>
             </div>
           </div>
@@ -242,12 +255,18 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
                       : 'bg-[#F6EFDD] dark:bg-slate-950 border-[#D4C7AE] dark:border-slate-800 text-[#1B1A17] dark:text-slate-300 hover:border-[#8A6418]/50'
                   }`}
                 >
-                  {count === 1 ? 'ختمة ١' : count === 2 ? 'ختمتان' : `${toArabicIndic(count)} ختمات`}
+                  {isEnglish
+                    ? `${count} ${count === 1 ? 'Khatma' : 'Khatmas'}`
+                    : count === 1
+                    ? 'ختمة ١'
+                    : count === 2
+                    ? 'ختمتان'
+                    : `${formatLocalizedDigits(count, lang)} ختمات`}
                 </button>
               ))}
               <div className="flex items-center gap-1.5 bg-[#F6EFDD] dark:bg-slate-950 border border-[#D4C7AE] dark:border-slate-800 rounded-xl px-2.5 min-h-[40px]">
                 <label htmlFor="custom-khatmas-input" className="text-[11px] text-[#5E584E] dark:text-slate-400 whitespace-nowrap">
-                  مخصص:
+                  {t('مخصص:', 'Custom:')}
                 </label>
                 <input
                   id="custom-khatmas-input"
@@ -276,12 +295,12 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
                       : 'bg-[#F6EFDD] dark:bg-slate-950 border-[#D4C7AE] dark:border-slate-800 text-[#1B1A17] dark:text-slate-300 hover:border-[#8A6418]/50'
                   }`}
                 >
-                  {toArabicIndic(juz)} أجزاء
+                  {formatLocalizedDigits(juz, lang)} {t('أجزاء', 'Juz')}
                 </button>
               ))}
               <div className="flex items-center gap-1.5 bg-[#F6EFDD] dark:bg-slate-950 border border-[#D4C7AE] dark:border-slate-800 rounded-xl px-2.5 min-h-[40px]">
                 <label htmlFor="custom-juz-input" className="text-[11px] text-[#5E584E] dark:text-slate-400 whitespace-nowrap">
-                  أجزاء:
+                  {t('أجزاء:', 'Juz:')}
                 </label>
                 <input
                   id="custom-juz-input"
@@ -303,15 +322,15 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
         {/* Step 2: Target Duration */}
         <div>
           <label className="text-xs font-bold text-[#5E584E] dark:text-slate-300 block mb-2">
-            ٢. المدة الزمنية بالأيام (مثلاً ٢٩ أو ٣٠ يوماً لرمضان):
+            {t('٢. المدة الزمنية بالأيام (مثلاً ٢٩ أو ٣٠ يوماً لرمضان):', '2. Duration in days (e.g., 29 or 30 days for Ramadan):')}
           </label>
           <div className="flex flex-wrap items-center gap-2">
             {[
-              { days: 10, label: '١٠ أيام' },
-              { days: 29, label: '٢٩ يوماً' },
-              { days: 30, label: 'شهر (٣٠)' },
-              { days: 60, label: 'شهران (٦٠)' },
-              { days: 90, label: '٣ أشهر (٩٠)' },
+              { days: 10, label: '١٠ أيام', labelEn: '10 Days' },
+              { days: 29, label: '٢٩ يوماً', labelEn: '29 Days' },
+              { days: 30, label: 'شهر (٣٠)', labelEn: '1 Month (30)' },
+              { days: 60, label: 'شهران (٦٠)', labelEn: '2 Months (60)' },
+              { days: 90, label: '٣ أشهر (٩٠)', labelEn: '3 Months (90)' },
             ].map((d) => (
               <button
                 key={d.days}
@@ -323,12 +342,12 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
                     : 'bg-[#F6EFDD] dark:bg-slate-950 border-[#D4C7AE] dark:border-slate-800 text-[#1B1A17] dark:text-slate-300 hover:border-[#8A6418]/50'
                 }`}
               >
-                {d.label}
+                {isEnglish ? d.labelEn : d.label}
               </button>
             ))}
             <div className="flex items-center gap-1.5 bg-[#F6EFDD] dark:bg-slate-950 border border-[#D4C7AE] dark:border-slate-800 rounded-xl px-2.5 min-h-[40px]">
               <label htmlFor="custom-days-input" className="text-[11px] text-[#5E584E] dark:text-slate-400 whitespace-nowrap">
-                يوم:
+                {t('يوم:', 'Days:')}
               </label>
               <input
                 id="custom-days-input"
@@ -349,7 +368,7 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
         {/* Step 3: Available Daily Time */}
         <div>
           <label className="text-xs font-bold text-[#5E584E] dark:text-slate-300 block mb-2">
-            ٣. الوقت المتاح يومياً للقراءة والتدبر:
+            {t('٣. الوقت المتاح يومياً للقراءة والتدبر:', '3. Daily time available for reading & reflection:')}
           </label>
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
             {[15, 20, 30, 45, 60, 90].map((mins) => (
@@ -363,7 +382,7 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
                     : 'bg-[#F6EFDD] dark:bg-slate-950 border-[#D4C7AE] dark:border-slate-800 text-[#1B1A17] dark:text-slate-300 hover:border-[#8A6418]/50'
                 }`}
               >
-                {toArabicIndic(mins)} د
+                {formatLocalizedDigits(mins, lang)} {t('د', 'm')}
               </button>
             ))}
           </div>
@@ -374,45 +393,48 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-xs text-[#8A6418] dark:text-[#D9B45A] font-bold flex items-center gap-1.5">
               <BookOpen className="w-4 h-4 shrink-0" />
-              <span>ملخص وِردك اليومي المحسوب</span>
+              <span>{t('ملخص وِردك اليومي المحسوب', 'Calculated Daily Wird Summary')}</span>
             </span>
             <span className="text-xs font-bold text-[#1B1A17] dark:text-[#F6EFDD] tabular-nums">
-              {toArabicIndic(preview.pagesPerDay)} صفحة يومياً · {preview.juzPerDay.toLocaleString('ar-EG')} جزء/يوم
+              {t(
+                `${formatLocalizedDigits(preview.pagesPerDay, lang)} صفحة يومياً · ${preview.juzPerDay.toLocaleString('ar-EG')} جزء/يوم`,
+                `${preview.pagesPerDay} pages/day · ${preview.juzPerDay.toLocaleString('en-US')} Juz/day`
+              )}
             </span>
           </div>
 
           <div className="grid grid-cols-3 gap-2.5 pt-1">
             <div className="p-2.5 rounded-lg bg-[#FBF7EE] dark:bg-[#10161f] border border-[#E3D9C3] dark:border-slate-800 text-center">
-              <span className="text-[11px] text-[#5E584E] dark:text-slate-400 block mb-0.5">الإجمالي المطلوب</span>
+              <span className="text-[11px] text-[#5E584E] dark:text-slate-400 block mb-0.5">{t('الإجمالي المطلوب', 'Total Target')}</span>
               <strong className="text-sm sm:text-base text-[#1B1A17] dark:text-[#F6EFDD] tabular-nums">
-                {toArabicIndic(preview.totalJuz)} جزءاً
+                {formatLocalizedDigits(preview.totalJuz, lang)} {t('جزءاً', 'Juz')}
               </strong>
               <span className="text-[10px] text-[#5E584E] dark:text-slate-400 block tabular-nums">
-                ({toArabicIndic(preview.totalPages)} صفحة)
+                ({formatLocalizedDigits(preview.totalPages, lang)} {t('صفحة', 'pages')})
               </span>
             </div>
 
             <div className="p-2.5 rounded-lg bg-[#FBF7EE] dark:bg-[#10161f] border border-[#E3D9C3] dark:border-slate-800 text-center">
-              <span className="text-[11px] text-[#5E584E] dark:text-slate-400 block mb-0.5">بعد كل فريضة</span>
+              <span className="text-[11px] text-[#5E584E] dark:text-slate-400 block mb-0.5">{t('بعد كل فريضة', 'Per Prayer')}</span>
               <strong className="text-sm sm:text-base text-[#8A6418] dark:text-[#D9B45A] tabular-nums">
-                ~{toArabicIndic(preview.pagesPerPrayer)} صفحة
+                ~{formatLocalizedDigits(preview.pagesPerPrayer, lang)} {t('صفحة', 'pages')}
               </strong>
-              <span className="text-[10px] text-[#5E584E] dark:text-slate-400 block">(٥ صلوات يومياً)</span>
+              <span className="text-[10px] text-[#5E584E] dark:text-slate-400 block">{t('(٥ صلوات يومياً)', '(5 daily prayers)')}</span>
             </div>
 
             <div className="p-2.5 rounded-lg bg-[#FBF7EE] dark:bg-[#10161f] border border-[#E3D9C3] dark:border-slate-800 text-center">
-              <span className="text-[11px] text-[#5E584E] dark:text-slate-400 block mb-0.5">الوقت التقديري</span>
+              <span className="text-[11px] text-[#5E584E] dark:text-slate-400 block mb-0.5">{t('الوقت التقديري', 'Est. Time')}</span>
               <strong className="text-sm sm:text-base text-[#1B1A17] dark:text-[#F6EFDD] tabular-nums flex items-center justify-center gap-1">
                 <Clock className="w-3.5 h-3.5 text-[#1F3A6E] dark:text-[#648cd4]" />
-                <span>~{toArabicIndic(preview.estimatedMinutesNeeded)} د</span>
+                <span>~{formatLocalizedDigits(preview.estimatedMinutesNeeded, lang)} {t('د', 'min')}</span>
               </strong>
               <span className="text-[10px] text-[#5E584E] dark:text-slate-400 block">
                 {isTimeAdequate ? (
-                  <span className="text-[#8A6418] dark:text-[#D9B45A]">مناسب لوقتك ✓</span>
+                  <span className="text-[#8A6418] dark:text-[#D9B45A]">{t('مناسب لوقتك ✓', 'Fits your time ✓')}</span>
                 ) : (
                   <span className="inline-flex items-center gap-0.5 text-amber-700 dark:text-amber-300">
                     <AlertCircle className="w-3 h-3" />
-                    يحتاج وقتاً أكثر
+                    {t('يحتاج وقتاً أكثر', 'Needs more time')}
                   </span>
                 )}
               </span>
@@ -420,7 +442,10 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
           </div>
 
           <p className="text-[11px] text-[#5E584E] dark:text-slate-400 leading-relaxed text-center pt-1">
-            قال النبي ﷺ: «قاربوا وسددوا، واعلموا أنه لن ينجو أحد منكم بعمله، وأن أحب الأعمال إلى الله أدومها وإن قل».
+            {t(
+              'قال النبي ﷺ: «قاربوا وسددوا، واعلموا أنه لن ينجو أحد منكم بعمله، وأن أحب الأعمال إلى الله أدومها وإن قل».',
+              'The Prophet ﷺ said: “Be moderate and steadfast; know that the most beloved deeds to Allah are those done consistently, even if small.”'
+            )}
           </p>
         </div>
 
@@ -431,7 +456,7 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
             onClick={onClose}
             className="min-h-[42px] py-2 px-4 rounded-xl text-xs font-medium text-[#5E584E] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white hover:bg-[#EFE6D1] dark:hover:bg-slate-800/70 transition-colors cursor-pointer"
           >
-            إلغاء
+            {t('إلغاء', 'Cancel')}
           </button>
           <button
             type="button"
@@ -439,7 +464,11 @@ export const KhatmaPlannerModal: React.FC<KhatmaPlannerModalProps> = ({
             className="min-h-[42px] py-2.5 px-6 rounded-xl bg-[#1F3A6E] hover:bg-[#2E5499] dark:bg-[#D9B45A] dark:hover:bg-[#e4c370] text-[#FBF7EE] dark:text-[#10161f] text-xs font-bold shadow-lg transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
           >
             <Check className="w-4 h-4" />
-            <span>{initialPlan ? 'حفظ وتحديث خطة الختمة' : 'اعتماد خطة الختمة الفردية'}</span>
+            <span>
+              {initialPlan
+                ? t('حفظ وتحديث خطة الختمة', 'Update Khatma Plan')
+                : t('اعتماد خطة الختمة الفردية', 'Activate Personal Khatma')}
+            </span>
           </button>
         </div>
       </div>

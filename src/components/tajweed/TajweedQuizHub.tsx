@@ -4,10 +4,16 @@ import {
   TAJWEED_QUIZ,
   TajweedQuizQuestion,
   TajweedQuizQuestionType,
+  getQuizQuestionDifficulty,
+  getQuizQuestionExplanation,
+  getQuizQuestionOptions,
+  getQuizQuestionText,
 } from '../../data/tajweedRules';
-import { RECITERS_LIST, Reciter, getAyahAudioUrl } from '../../data/reciters';
-import { alignUthmaniWithTajweed } from '../../utils/tajweedParser';
+import { RECITERS_LIST, Reciter, getAyahAudioUrl, getReciterDisplayName } from '../../data/reciters';
+import { SURAHS_LIST, getSurahDisplayName } from '../../data/quranMetadata';
+import { alignUthmaniWithTajweed, getTajweedTokenTooltip } from '../../utils/tajweedParser';
 import { safeLocalStorage } from '../../utils/safeStorage';
+import { formatLocalizedDigits, useLanguage } from '../../utils/i18n';
 import {
   evaluateRecitationAgainstAyah,
   getSpeechRecognitionConstructor,
@@ -46,17 +52,17 @@ const DEFAULT_STATS: QuizStatsMap = {
   makharij: { answered: 0, correct: 0 },
 };
 
-const CATEGORY_LABELS: Record<QuizCategoryId, string> = {
-  'noon-meem': 'النون والميم والغنة',
-  madd: 'المدود ومقاديرها',
-  articulation: 'القلقلة والتفخيم والصامت',
-  makharij: 'مخارج الحروف والصفات',
+const CATEGORY_LABELS: Record<QuizCategoryId, { ar: string; en: string }> = {
+  'noon-meem': { ar: 'النون والميم والغنة', en: 'Noon, Meem & Ghunnah' },
+  madd: { ar: 'المدود ومقاديرها', en: 'Madd & Counts' },
+  articulation: { ar: 'القلقلة والتفخيم والصامت', en: 'Qalqalah, Tafkheem & Silent' },
+  makharij: { ar: 'مخارج الحروف والصفات', en: 'Makharij & Sifat' },
 };
 
-const TYPE_LABELS: Record<TajweedQuizQuestionType, string> = {
-  mcq: 'اختيار من متعدد',
-  'spot-word': 'تحديد من الآية',
-  audio: 'اختبار سماعي',
+const TYPE_LABELS: Record<TajweedQuizQuestionType, { ar: string; en: string }> = {
+  mcq: { ar: 'اختيار من متعدد', en: 'Multiple Choice' },
+  'spot-word': { ar: 'تحديد من الآية', en: 'Spot in Ayah' },
+  audio: { ar: 'اختبار سماعي', en: 'Audio Recognition' },
 };
 
 function loadSavedQuizStats(): QuizStatsMap {
@@ -80,6 +86,9 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
   onStatsChange,
   onPauseAudio,
 }) => {
+  const { lang, isEnglish } = useLanguage();
+  const isEnglishRef = useRef<boolean>(isEnglish);
+  isEnglishRef.current = isEnglish;
   const [selectedCategory, setSelectedCategory] = useState<QuizCategoryId | 'all'>('all');
   const [selectedType, setSelectedType] = useState<TajweedQuizQuestionType | 'all'>('all');
   const [currentIdx, setCurrentIdx] = useState<number>(0);
@@ -271,7 +280,11 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
 
     const SpeechCtor = getSpeechRecognitionConstructor();
     if (!SpeechCtor) {
-      setVoiceFeedback('المتصفح الحالي لا يدعم التسميع المباشر؛ يمكنك استخدام زر «سجّل وقارن».');
+      setVoiceFeedback(
+        isEnglish
+          ? 'Your browser does not support live recitation check; use "Record & Compare" instead.'
+          : 'المتصفح الحالي لا يدعم التسميع المباشر؛ يمكنك استخدام زر «سجّل وقارن».'
+      );
       return;
     }
 
@@ -312,7 +325,11 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
         const targetIndices = question.spotAyah?.targetWordIndices || [];
         const hitTarget = targetIndices.some((idx) => res.matchedRawIndices.includes(idx));
         if (res.isComplete || (hitTarget && res.accuracyPercent >= 75)) {
-          setVoiceFeedback('ممتاز! نُطقت الآية والكلمة موضع الحكم بوضوح.');
+          setVoiceFeedback(
+            isEnglishRef.current
+              ? 'Excellent! Both the Ayah and target Tajweed word were articulated clearly.'
+              : 'ممتاز! نُطقت الآية والكلمة موضع الحكم بوضوح.'
+          );
           voiceIntentStopRef.current = true;
           try {
             recognition.stop();
@@ -329,19 +346,44 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
           setIsVoiceActive(false);
           return;
         }
+        const en = isEnglishRef.current;
         const code = ev?.error || '';
         if (code === 'not-allowed' || code === 'service-not-allowed') {
-          setVoiceFeedback('يرجى السماح بصلاحية الميكروفون من إعدادات المتصفح.');
+          setVoiceFeedback(
+            en
+              ? 'Please allow microphone access in your browser settings.'
+              : 'يرجى السماح بصلاحية الميكروفون من إعدادات المتصفح.'
+          );
         } else if (code === 'no-speech') {
-          setVoiceFeedback('لم يُلتقط صوت واضح؛ اقترب من الميكروفون وابدأ القراءة.');
+          setVoiceFeedback(
+            en
+              ? 'No clear voice detected; move closer to the microphone and recite.'
+              : 'لم يُلتقط صوت واضح؛ اقترب من الميكروفون وابدأ القراءة.'
+          );
         } else if (code === 'network') {
-          setVoiceFeedback('تتعذر خدمة التعرف الصوتي دون إنترنت؛ استخدم «سجّل وقارن» لسماع نطقك.');
+          setVoiceFeedback(
+            en
+              ? 'Voice recognition requires internet access; use "Record & Compare" locally.'
+              : 'تتعذر خدمة التعرف الصوتي دون إنترنت؛ استخدم «سجّل وقارن» لسماع نطقك.'
+          );
         } else if (code === 'audio-capture') {
-          setVoiceFeedback('تعذر العثور على ميكروفون متاح في هذا الجهاز.');
+          setVoiceFeedback(
+            en
+              ? 'No active microphone was detected on this device.'
+              : 'تعذر العثور على ميكروفون متاح في هذا الجهاز.'
+          );
         } else if (code === 'aborted') {
-          setVoiceFeedback('توقفت جلسة الميكروفون؛ اضغط «اقرأ الآية بصوتك» لإعادة المحاولة.');
+          setVoiceFeedback(
+            en
+              ? 'Microphone session stopped; tap "Read Ayah Aloud" to try again.'
+              : 'توقفت جلسة الميكروفون؛ اضغط «اقرأ الآية بصوتك» لإعادة المحاولة.'
+          );
         } else {
-          setVoiceFeedback('تعذر متابعة التقاط الصوت؛ حاول مرة أخرى أو استخدم «سجّل وقارن».');
+          setVoiceFeedback(
+            en
+              ? 'Unable to continue voice recognition; try again or use "Record & Compare".'
+              : 'تعذر متابعة التقاط الصوت؛ حاول مرة أخرى أو استخدم «سجّل وقارن».'
+          );
         }
         voiceRef.current = null;
         setIsVoiceActive(false);
@@ -361,7 +403,11 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
     } catch {
       voiceRef.current = null;
       setIsVoiceActive(false);
-      setVoiceFeedback('تعذر بدء الميكروفون المباشر حالياً؛ يمكنك استخدام زر «سجّل وقارن».');
+      setVoiceFeedback(
+        isEnglish
+          ? 'Could not start live microphone check; use "Record & Compare" instead.'
+          : 'تعذر بدء الميكروفون المباشر حالياً؛ يمكنك استخدام زر «سجّل وقارن».'
+      );
     }
   };
 
@@ -374,7 +420,11 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
     }
 
     if (!isMicSupported) {
-      setVoiceFeedback('المتصفح الحالي لا يدعم التسجيل الصوتي المحلي.');
+      setVoiceFeedback(
+        isEnglish
+          ? 'This browser does not support local voice recording.'
+          : 'المتصفح الحالي لا يدعم التسجيل الصوتي المحلي.'
+      );
       return;
     }
 
@@ -424,7 +474,11 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
       setIsRecordingSelf(true);
     } catch {
       cleanupSelfRecording(false);
-      setVoiceFeedback('تعذر الوصول للميكروفون؛ يرجى السماح بصلاحية الصوت في المتصفح.');
+      setVoiceFeedback(
+        isEnglish
+          ? 'Microphone access denied; please enable audio permissions in browser settings.'
+          : 'تعذر الوصول للميكروفون؛ يرجى السماح بصلاحية الصوت في المتصفح.'
+      );
     }
   };
 
@@ -474,7 +528,7 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
       };
       audioRef.current.onerror = () => {
         setIsPlayingAudio(false);
-        setAudioError('تعذر تشغيل التلاوة الصوتية حالياً.');
+        setAudioError(isEnglishRef.current ? 'Unable to play recitation right now.' : 'تعذر تشغيل التلاوة الصوتية حالياً.');
       };
     }
 
@@ -494,7 +548,7 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
       .then(() => setIsPlayingAudio(true))
       .catch(() => {
         setIsPlayingAudio(false);
-        setAudioError('تعذر بدء الصوت في المتصفح.');
+        setAudioError(isEnglish ? 'Unable to start audio in this browser.' : 'تعذر بدء الصوت في المتصفح.');
       });
   };
 
@@ -554,9 +608,13 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
       <div className="p-5 rounded-2xl bg-[#FBF7EE] dark:bg-slate-900 border border-[#D9B45A]/25 dark:border-slate-800 space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-[#D9B45A]/20 dark:border-slate-800">
           <div>
-            <h3 className="text-base sm:text-lg font-bold text-[#1B1A17] dark:text-white">منظومة التدريب والاختبارات المتدرجة</h3>
+            <h3 className="text-base sm:text-lg font-bold text-[#1B1A17] dark:text-white">
+              {isEnglish ? 'Graded Practice & Quiz System' : 'منظومة التدريب والاختبارات المتدرجة'}
+            </h3>
             <p className="text-xs text-[#5C5549] dark:text-slate-400">
-              تدرب على الاستخراج البصري من الآيات، والتمييز السمعي، وضبط الأحكام بتصحيح فوري
+              {isEnglish
+                ? 'Practice visual rule spotting in verses, audio recognition, and rule mastery with instant feedback'
+                : 'تدرب على الاستخراج البصري من الآيات، والتمييز السمعي، وضبط الأحكام بتصحيح فوري'}
             </p>
           </div>
 
@@ -564,7 +622,9 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
             <span className="font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
               <Award className="w-4 h-4" />
               <span>
-                الجولة: {sessionScore.correct} / {sessionScore.answered} صحيح
+                {isEnglish
+                  ? `Session: ${formatLocalizedDigits(sessionScore.correct, lang)} / ${formatLocalizedDigits(sessionScore.answered, lang)} correct`
+                  : `الجولة: ${sessionScore.correct} / ${sessionScore.answered} صحيح`}
               </span>
             </span>
             <button
@@ -573,7 +633,7 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
               className="min-h-[36px] py-1.5 px-3 rounded-lg bg-white dark:bg-slate-950 hover:bg-[#EFE6D1] dark:hover:bg-slate-800 border border-[#D9B45A]/25 dark:border-slate-800 text-[#3F3A32] dark:text-slate-300 font-semibold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>إعادة الجولة</span>
+              <span>{isEnglish ? 'Reset Session' : 'إعادة الجولة'}</span>
             </button>
           </div>
         </div>
@@ -591,7 +651,9 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
                   : 'bg-white dark:bg-slate-950 border-[#D9B45A]/25 dark:border-slate-800 text-[#3F3A32] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white'
               }`}
             >
-              كل الأبواب ({TAJWEED_QUIZ.length})
+              {isEnglish
+                ? `All Chapters (${formatLocalizedDigits(TAJWEED_QUIZ.length, lang)})`
+                : `كل الأبواب (${TAJWEED_QUIZ.length})`}
             </button>
             {(Object.keys(CATEGORY_LABELS) as QuizCategoryId[]).map((catId) => {
               const isSelected = selectedCategory === catId;
@@ -606,7 +668,7 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
                       : 'bg-white dark:bg-slate-950 border-[#D9B45A]/25 dark:border-slate-800 text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white'
                   }`}
                 >
-                  {CATEGORY_LABELS[catId]}
+                  {CATEGORY_LABELS[catId][lang]}
                 </button>
               );
             })}
@@ -623,7 +685,7 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
                   : 'text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white'
               }`}
             >
-              كل الأنماط
+              {isEnglish ? 'All Modes' : 'كل الأنماط'}
             </button>
             {(Object.keys(TYPE_LABELS) as TajweedQuizQuestionType[]).map((t) => (
               <button
@@ -636,7 +698,7 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
                     : 'text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white'
                 }`}
               >
-                {TYPE_LABELS[t]}
+                {TYPE_LABELS[t][lang]}
               </button>
             ))}
           </div>
@@ -646,7 +708,11 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
       {/* Active Question Card */}
       {filteredQuestions.length === 0 || !currentQuestion ? (
         <div className="p-8 rounded-2xl bg-[#FBF7EE] dark:bg-slate-900 border border-[#D9B45A]/25 dark:border-slate-800 text-center space-y-3">
-          <p className="text-sm text-[#5C5549] dark:text-slate-300">لا توجد أسئلة مطابقة لهذا التصنيف والنمط معاً.</p>
+          <p className="text-sm text-[#5C5549] dark:text-slate-300">
+            {isEnglish
+              ? 'No questions match both this chapter and mode.'
+              : 'لا توجد أسئلة مطابقة لهذا التصنيف والنمط معاً.'}
+          </p>
           <button
             type="button"
             onClick={() => {
@@ -655,7 +721,7 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
             }}
             className="py-2 px-4 rounded-xl bg-[#1F3A6E] hover:bg-[#2E5499] text-[#F6EFDD] text-xs font-bold cursor-pointer"
           >
-            عرض جميع الأسئلة
+            {isEnglish ? 'Show All Questions' : 'عرض جميع الأسئلة'}
           </button>
         </div>
       ) : (
@@ -663,16 +729,20 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
           {/* Question Header & Progress */}
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-              <div className="flex items-center gap-2 text-[#5C5549] dark:text-slate-400 tabular-nums">
+              <div className="flex flex-wrap items-center gap-2 text-[#5C5549] dark:text-slate-400 tabular-nums">
                 <span className="font-bold text-[#1B1A17] dark:text-white">
-                  السؤال {currentIdx + 1} من {filteredQuestions.length}
+                  {isEnglish
+                    ? `Question ${formatLocalizedDigits(currentIdx + 1, lang)} of ${formatLocalizedDigits(filteredQuestions.length, lang)}`
+                    : `السؤال ${currentIdx + 1} من ${filteredQuestions.length}`}
                 </span>
                 <span aria-hidden="true">·</span>
-                <span>{CATEGORY_LABELS[currentQuestion.category]}</span>
+                <span>{CATEGORY_LABELS[currentQuestion.category][lang]}</span>
                 <span aria-hidden="true">·</span>
-                <span>{TYPE_LABELS[currentQuestion.type]}</span>
+                <span>{TYPE_LABELS[currentQuestion.type][lang]}</span>
                 <span aria-hidden="true">·</span>
-                <span className="text-[#8A6418] dark:text-[#D9B45A] font-semibold">{currentQuestion.difficulty}</span>
+                <span className="text-[#8A6418] dark:text-[#D9B45A] font-semibold">
+                  {getQuizQuestionDifficulty(currentQuestion, lang)}
+                </span>
               </div>
 
               {currentAnswer && (
@@ -684,12 +754,12 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
                   {currentAnswer.isCorrect ? (
                     <>
                       <Check className="w-4 h-4" />
-                      <span>إجابة صحيحة</span>
+                      <span>{isEnglish ? 'Correct Answer' : 'إجابة صحيحة'}</span>
                     </>
                   ) : (
                     <>
                       <X className="w-4 h-4" />
-                      <span>إجابة غير صحيحة</span>
+                      <span>{isEnglish ? 'Incorrect Answer' : 'إجابة غير صحيحة'}</span>
                     </>
                   )}
                 </span>
@@ -699,7 +769,9 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
             {/* Linear Progress Bar */}
             <div className="h-1.5 w-full rounded-full bg-[#EFE6D1] dark:bg-slate-950 overflow-hidden">
               <div
-                className="h-full bg-gradient-to-l from-[#1F3A6E] to-[#D9B45A] transition-all duration-300"
+                className={`h-full ${
+                  isEnglish ? 'bg-gradient-to-r' : 'bg-gradient-to-l'
+                } from-[#1F3A6E] to-[#D9B45A] transition-all duration-300`}
                 style={{ width: `${((currentIdx + 1) / filteredQuestions.length) * 100}%` }}
               />
             </div>
@@ -707,14 +779,18 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
 
           {/* Question Prompt */}
           <h4 className="text-base sm:text-lg font-bold text-[#1B1A17] dark:text-white leading-relaxed">
-            {currentQuestion.question}
+            {getQuizQuestionText(currentQuestion, lang)}
           </h4>
 
           {/* MODE A: Spot-Word Interactive Ayah Click */}
           {currentQuestion.type === 'spot-word' && currentQuestion.spotAyah ? (
             <div className="space-y-3">
               <div className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-[#0b1117] border border-[#D9B45A]/25 dark:border-slate-800 text-center space-y-3">
-                <p className="font-quran text-2xl sm:text-3xl leading-[2.6] text-[#1B1A17] dark:text-slate-100">
+                <p
+                  dir="rtl"
+                  lang="ar"
+                  className="font-quran text-2xl sm:text-3xl leading-[2.6] text-[#1B1A17] dark:text-slate-100"
+                >
                   {spotWords.map((wordTokens, wIdx) => {
                     const isTarget =
                       currentQuestion.spotAyah!.targetWordIndices.includes(wIdx);
@@ -768,7 +844,11 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
                                   ? 'tajweed-madd-badal'
                                   : 'tajweed-tafkheem';
                               return (
-                                <span key={tIdx} className={cls}>
+                                <span
+                                  key={tIdx}
+                                  className={cls}
+                                  title={getTajweedTokenTooltip(tok, lang)}
+                                >
                                   {tok.text}
                                 </span>
                               );
@@ -786,7 +866,11 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
                   {!currentAnswer && (
                     <p className="text-xs text-[#8A6418] dark:text-[#D9B45A] flex items-center gap-1.5 font-semibold">
                       <MousePointerClick className="w-3.5 h-3.5" />
-                      <span>اضغط مباشرة على الكلمة المطلوبة في الآية</span>
+                      <span>
+                        {isEnglish
+                          ? 'Click directly on the target word in the Ayah'
+                          : 'اضغط مباشرة على الكلمة المطلوبة في الآية'}
+                      </span>
                     </p>
                   )}
 
@@ -803,12 +887,12 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
                       {isVoiceActive ? (
                         <>
                           <Square className="w-3 h-3 fill-current" />
-                          <span>إيقاف التلاوة</span>
+                          <span>{isEnglish ? 'Stop Recitation' : 'إيقاف التلاوة'}</span>
                         </>
                       ) : (
                         <>
                           <Mic className="w-3.5 h-3.5" />
-                          <span>اقرأ الآية بصوتك للتطبيق</span>
+                          <span>{isEnglish ? 'Recite Ayah to Practice' : 'اقرأ الآية بصوتك للتطبيق'}</span>
                         </>
                       )}
                     </button>
@@ -827,12 +911,12 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
                       {isRecordingSelf ? (
                         <>
                           <Square className="w-3 h-3 fill-rose-500 text-rose-500" />
-                          <span>إيقاف التسجيل</span>
+                          <span>{isEnglish ? 'Stop Recording' : 'إيقاف التسجيل'}</span>
                         </>
                       ) : (
                         <>
                           <Mic className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
-                          <span>سجّل وقارن</span>
+                          <span>{isEnglish ? 'Record & Compare' : 'سجّل وقارن'}</span>
                         </>
                       )}
                     </button>
@@ -847,12 +931,12 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
                       {isPlayingSelfRec ? (
                         <>
                           <Pause className="w-3 h-3" />
-                          <span>إيقاف تسجيلي</span>
+                          <span>{isEnglish ? 'Pause Recording' : 'إيقاف تسجيلي'}</span>
                         </>
                       ) : (
                         <>
                           <Play className="w-3 h-3 fill-current" />
-                          <span>سماع تسجيلي</span>
+                          <span>{isEnglish ? 'Play Recording' : 'سماع تسجيلي'}</span>
                         </>
                       )}
                     </button>
@@ -872,15 +956,17 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
                         {voiceFeedback
                           ? voiceFeedback
                           : isRecordingSelf
-                          ? 'جارٍ تسجيل تلاوتك…'
+                          ? (isEnglish ? 'Recording your recitation…' : 'جارٍ تسجيل تلاوتك…')
                           : voiceTranscript
-                          ? `ما سُمع: «${voiceTranscript}»`
-                          : 'أصغي لتلاوتك… تفضل بقراءة الآية الآن'}
+                          ? (isEnglish ? `Heard: “${voiceTranscript}”` : `ما سُمع: «${voiceTranscript}»`)
+                          : (isEnglish ? 'Listening… please recite the Ayah now' : 'أصغي لتلاوتك… تفضل بقراءة الآية الآن')}
                       </span>
                     </div>
                     {voiceEval && !isRecordingSelf && (
                       <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                        دقة المطابقة: {voiceEval.accuracyPercent}%
+                        {isEnglish
+                          ? `Match Accuracy: ${formatLocalizedDigits(voiceEval.accuracyPercent, lang)}%`
+                          : `دقة المطابقة: ${voiceEval.accuracyPercent}%`}
                       </span>
                     )}
                   </div>
@@ -891,36 +977,54 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
             /* MODE B & C: Quranic Snippet + Optional Real Audio Player + Options Grid */
             <div className="space-y-4">
               <div className="p-5 rounded-2xl bg-white dark:bg-[#0b1117] border border-[#D9B45A]/25 dark:border-slate-800 text-center space-y-3">
-                <p className="font-quran text-2xl sm:text-3xl leading-[2.4] text-[#1F3A6E] dark:text-[#D9B45A]">
+                <p
+                  dir="rtl"
+                  lang="ar"
+                  className="font-quran text-2xl sm:text-3xl leading-[2.4] text-[#1F3A6E] dark:text-[#D9B45A]"
+                >
                   {currentQuestion.ayahSnippet}
                 </p>
 
                 {currentQuestion.type === 'audio' && currentQuestion.audioRef && (
                   <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
-                    <button
-                      type="button"
-                      onClick={handlePlayQuestionAudio}
-                      className={`min-h-[40px] py-2 px-4 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap ${
-                        isPlayingAudio
-                          ? 'bg-[#D9B45A] text-[#1B1A17]'
-                          : 'bg-[#1F3A6E] hover:bg-[#2E5499] text-[#F6EFDD]'
-                      }`}
-                    >
-                      {isPlayingAudio ? (
-                        <>
-                          <Pause className="w-3.5 h-3.5 fill-current" />
-                          <span>إيقاف التلاوة</span>
-                        </>
-                      ) : (
-                        <>
-                          <Headphones className="w-3.5 h-3.5 text-[#D9B45A]" />
-                          <span>
-                            استمع لتلاوة {activeReciter.name.split(' ')[0]} (
-                            {currentQuestion.audioRef.surahName}: {currentQuestion.audioRef.ayahNumber})
-                          </span>
-                        </>
-                      )}
-                    </button>
+                    {(() => {
+                      const audioSurah = SURAHS_LIST.find(
+                        (s) => s.number === currentQuestion.audioRef!.surahNumber
+                      );
+                      const surahLabel = audioSurah
+                        ? getSurahDisplayName(audioSurah, lang)
+                        : currentQuestion.audioRef!.surahName;
+                      const reciterLabel = isEnglish
+                        ? getReciterDisplayName(activeReciter, lang)
+                        : activeReciter.name.split(' ')[0];
+                      return (
+                        <button
+                          type="button"
+                          onClick={handlePlayQuestionAudio}
+                          className={`min-h-[40px] py-2 px-4 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap ${
+                            isPlayingAudio
+                              ? 'bg-[#D9B45A] text-[#1B1A17]'
+                              : 'bg-[#1F3A6E] hover:bg-[#2E5499] text-[#F6EFDD]'
+                          }`}
+                        >
+                          {isPlayingAudio ? (
+                            <>
+                              <Pause className="w-3.5 h-3.5 fill-current" />
+                              <span>{isEnglish ? 'Stop Audio' : 'إيقاف التلاوة'}</span>
+                            </>
+                          ) : (
+                            <>
+                              <Headphones className="w-3.5 h-3.5 text-[#D9B45A]" />
+                              <span>
+                                {isEnglish
+                                  ? `Listen to ${reciterLabel} (${surahLabel}: ${formatLocalizedDigits(currentQuestion.audioRef.ayahNumber, lang)})`
+                                  : `استمع لتلاوة ${reciterLabel} (${surahLabel}: ${currentQuestion.audioRef.ayahNumber})`}
+                              </span>
+                            </>
+                          )}
+                        </button>
+                      );
+                    })()}
 
                     <button
                       type="button"
@@ -931,7 +1035,9 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
                           : 'bg-[#FBF7EE] dark:bg-slate-950 border-[#D9B45A]/25 dark:border-slate-700 text-[#3F3A32] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white'
                       }`}
                     >
-                      السرعة: {playbackRate}x
+                      {isEnglish
+                        ? `Speed: ${formatLocalizedDigits(playbackRate, lang)}x`
+                        : `السرعة: ${playbackRate}x`}
                     </button>
 
                     {audioError && <span className="text-xs text-rose-600 dark:text-rose-400">{audioError}</span>}
@@ -940,7 +1046,7 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {currentQuestion.options.map((opt, oIdx) => {
+                {getQuizQuestionOptions(currentQuestion, lang).map((opt, oIdx) => {
                   const isChosen = currentAnswer?.chosenOption === oIdx;
                   const isCorrectOpt = oIdx === currentQuestion.correctIndex;
 
@@ -963,7 +1069,7 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
                       type="button"
                       disabled={Boolean(currentAnswer)}
                       onClick={() => handleChooseOption(currentQuestion, oIdx)}
-                      className={`min-h-[48px] p-3.5 rounded-xl border text-right text-xs sm:text-sm transition-all flex items-center justify-between gap-2 cursor-pointer disabled:cursor-default ${style}`}
+                      className={`min-h-[48px] p-3.5 rounded-xl border text-start text-xs sm:text-sm transition-all flex items-center justify-between gap-2 cursor-pointer disabled:cursor-default ${style}`}
                     >
                       <span>{opt}</span>
                       {currentAnswer && isCorrectOpt && (
@@ -982,9 +1088,11 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
           {/* Immediate Pedagogical Explanation */}
           {currentAnswer && (
             <div className="p-4 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/25 dark:border-slate-800 space-y-1 animate-in fade-in duration-150">
-              <span className="text-xs font-bold text-[#8A6418] dark:text-[#D9B45A] block">الشرح والتوجيه العلمي:</span>
+              <span className="text-xs font-bold text-[#8A6418] dark:text-[#D9B45A] block">
+                {isEnglish ? 'Explanation & Tajweed Note:' : 'الشرح والتوجيه العلمي:'}
+              </span>
               <p className="text-xs sm:text-sm text-[#1B1A17] dark:text-slate-200 leading-relaxed">
-                {currentQuestion.explanation}
+                {getQuizQuestionExplanation(currentQuestion, lang)}
               </p>
             </div>
           )}
@@ -997,8 +1105,8 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
               disabled={currentIdx <= 0}
               className="min-h-[40px] py-2 px-4 rounded-xl bg-white dark:bg-slate-950 hover:bg-[#EFE6D1] dark:hover:bg-slate-800 disabled:opacity-40 border border-[#D9B45A]/25 dark:border-slate-800 text-xs font-bold text-[#1B1A17] dark:text-slate-200 flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed whitespace-nowrap"
             >
-              <ChevronRight className="w-4 h-4" />
-              <span>السؤال السابق</span>
+              {isEnglish ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              <span>{isEnglish ? 'Previous' : 'السؤال السابق'}</span>
             </button>
 
             <div className="flex items-center gap-1.5 overflow-x-auto max-w-[200px] sm:max-w-md py-1">
@@ -1010,7 +1118,9 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
                     key={q.id}
                     type="button"
                     onClick={() => setCurrentIdx(idx)}
-                    aria-label={`الانتقال للسؤال ${idx + 1}`}
+                    aria-label={
+                      isEnglish ? `Go to question ${idx + 1}` : `الانتقال للسؤال ${idx + 1}`
+                    }
                     className={`w-7 h-7 rounded-lg text-[11px] font-bold tabular-nums shrink-0 transition-colors cursor-pointer ${
                       isCur
                         ? 'bg-[#1F3A6E] text-[#F6EFDD] ring-2 ring-[#D9B45A]'
@@ -1021,7 +1131,7 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
                         : 'bg-white dark:bg-slate-950 text-[#5C5549] dark:text-slate-400 border border-[#D9B45A]/20 dark:border-slate-800 hover:text-[#1B1A17] dark:hover:text-white'
                     }`}
                   >
-                    {idx + 1}
+                    {formatLocalizedDigits(idx + 1, lang)}
                   </button>
                 );
               })}
@@ -1033,8 +1143,8 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
               disabled={currentIdx >= filteredQuestions.length - 1}
               className="min-h-[40px] py-2 px-4 rounded-xl bg-[#1F3A6E] hover:bg-[#2E5499] disabled:opacity-40 text-xs font-bold text-[#F6EFDD] flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed whitespace-nowrap"
             >
-              <span>السؤال التالي</span>
-              <ChevronLeft className="w-4 h-4" />
+              <span>{isEnglish ? 'Next' : 'السؤال التالي'}</span>
+              {isEnglish ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
             </button>
           </div>
         </div>
@@ -1044,8 +1154,14 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
       <div className="p-5 rounded-2xl bg-[#FBF7EE] dark:bg-slate-900 border border-[#D9B45A]/25 dark:border-slate-800 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[#D9B45A]/20 dark:border-slate-800">
           <div>
-            <h4 className="text-sm font-bold text-[#1B1A17] dark:text-white">سجل إتقان الأبواب التراكمي</h4>
-            <p className="text-xs text-[#5C5549] dark:text-slate-400">يُحفظ مستواك محلياً لمساعدتك على مراجعة نقاط الضعف</p>
+            <h4 className="text-sm font-bold text-[#1B1A17] dark:text-white">
+              {isEnglish ? 'Cumulative Chapter Mastery' : 'سجل إتقان الأبواب التراكمي'}
+            </h4>
+            <p className="text-xs text-[#5C5549] dark:text-slate-400">
+              {isEnglish
+                ? 'Saved locally to help you focus on weaker chapters'
+                : 'يُحفظ مستواك محلياً لمساعدتك على مراجعة نقاط الضعف'}
+            </p>
           </div>
 
           <div className="flex items-center gap-2">
@@ -1058,7 +1174,9 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
                 }}
                 className="min-h-[36px] py-1.5 px-3 rounded-lg bg-[#D9B45A]/15 hover:bg-[#D9B45A]/25 border border-[#D9B45A]/40 text-xs font-bold text-[#8A6418] dark:text-[#D9B45A] cursor-pointer whitespace-nowrap"
               >
-                راجع الأضعف: {CATEGORY_LABELS[weakestCategory.id]}
+                {isEnglish
+                  ? `Review Weakest: ${CATEGORY_LABELS[weakestCategory.id][lang]}`
+                  : `راجع الأضعف: ${CATEGORY_LABELS[weakestCategory.id][lang]}`}
               </button>
             )}
             <button
@@ -1066,7 +1184,7 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
               onClick={handleResetAllStats}
               className="min-h-[36px] py-1.5 px-3 rounded-lg bg-white dark:bg-slate-950 hover:bg-[#EFE6D1] dark:hover:bg-slate-800 border border-[#D9B45A]/25 dark:border-slate-800 text-xs text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white cursor-pointer whitespace-nowrap"
             >
-              تصفير السجل
+              {isEnglish ? 'Reset Stats' : 'تصفير السجل'}
             </button>
           </div>
         </div>
@@ -1080,12 +1198,14 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
                 key={catId}
                 type="button"
                 onClick={() => setSelectedCategory(catId)}
-                className="p-3.5 rounded-xl bg-white dark:bg-slate-950 hover:bg-[#EFE6D1]/70 dark:hover:bg-slate-900 border border-[#D9B45A]/20 dark:border-slate-800 text-right space-y-2 transition-colors cursor-pointer"
+                className="p-3.5 rounded-xl bg-white dark:bg-slate-950 hover:bg-[#EFE6D1]/70 dark:hover:bg-slate-900 border border-[#D9B45A]/20 dark:border-slate-800 text-start space-y-2 transition-colors cursor-pointer"
               >
                 <div className="flex items-center justify-between gap-2 text-xs">
-                  <span className="font-bold text-[#1B1A17] dark:text-white truncate">{CATEGORY_LABELS[catId]}</span>
+                  <span className="font-bold text-[#1B1A17] dark:text-white truncate">
+                    {CATEGORY_LABELS[catId][lang]}
+                  </span>
                   <span className="font-bold tabular-nums text-emerald-700 dark:text-emerald-400 shrink-0">
-                    {st.answered > 0 ? `${pct}%` : '—'}
+                    {st.answered > 0 ? `${formatLocalizedDigits(pct, lang)}%` : '—'}
                   </span>
                 </div>
                 <div className="h-1.5 w-full rounded-full bg-[#EFE6D1] dark:bg-slate-900 overflow-hidden">
@@ -1095,7 +1215,13 @@ export const TajweedQuizHub: React.FC<TajweedQuizHubProps> = ({
                   />
                 </div>
                 <div className="text-[11px] text-[#5C5549] dark:text-slate-400 tabular-nums">
-                  {st.answered > 0 ? `${st.correct} صحيح من ${st.answered} محاولة` : 'لم تبدأ بعد'}
+                  {st.answered > 0
+                    ? isEnglish
+                      ? `${formatLocalizedDigits(st.correct, lang)} / ${formatLocalizedDigits(st.answered, lang)} correct`
+                      : `${st.correct} صحيح من ${st.answered} محاولة`
+                    : isEnglish
+                    ? 'Not started yet'
+                    : 'لم تبدأ بعد'}
                 </div>
               </button>
             );

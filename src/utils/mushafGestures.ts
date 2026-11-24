@@ -115,6 +115,303 @@ export function computeRuledLineMetrics(fontSize: number): {
   };
 }
 
+export interface ReciterFollowBehaviorInput {
+  isPlayingAudio: boolean;
+  scrollMode: 'reciter-sync' | 'manual-speed';
+  isManualHighlightMode: boolean;
+  hasManualHighlight: boolean;
+  isExplicitNavigation: boolean;
+}
+
+export interface ReciterFollowBehaviorResult {
+  shouldJumpMushafPage: boolean;
+  shouldSyncReciterScroll: boolean;
+}
+
+export function resolveReciterFollowBehavior(
+  input: ReciterFollowBehaviorInput
+): ReciterFollowBehaviorResult {
+  if (!input.isPlayingAudio) {
+    return {
+      shouldJumpMushafPage: true,
+      shouldSyncReciterScroll: false,
+    };
+  }
+
+  const isDecoupledForStudy =
+    input.isManualHighlightMode ||
+    input.hasManualHighlight ||
+    input.scrollMode === 'manual-speed';
+
+  if (isDecoupledForStudy) {
+    return {
+      shouldJumpMushafPage: input.isExplicitNavigation,
+      shouldSyncReciterScroll: false,
+    };
+  }
+
+  return {
+    shouldJumpMushafPage: true,
+    shouldSyncReciterScroll: true,
+  };
+}
+
+export function resolveAyahSelectionTarget(
+  isPlayingAudio: boolean,
+  isManualHighlightMode = false
+): 'manual-highlight' | 'active-ayah' {
+  return isPlayingAudio || isManualHighlightMode ? 'manual-highlight' : 'active-ayah';
+}
+
+export interface ManualHighlightAnchorInput {
+  elementTopOffset: number;
+  containerHeight: number;
+  currentScrollTop: number;
+  maxScrollTop: number;
+}
+
+export function computeManualHighlightAnchorScrollTop(
+  input: ManualHighlightAnchorInput
+): number | null {
+  if (
+    !Number.isFinite(input.elementTopOffset) ||
+    !Number.isFinite(input.containerHeight) ||
+    input.containerHeight <= 0
+  ) {
+    return null;
+  }
+  const relativeY = input.elementTopOffset - input.currentScrollTop;
+  const minComfort = input.containerHeight * 0.2;
+  const maxComfort = input.containerHeight * 0.68;
+  if (relativeY >= minComfort && relativeY <= maxComfort) {
+    return null;
+  }
+  const target = input.elementTopOffset - input.containerHeight * 0.34;
+  return Math.max(0, Math.min(Math.max(0, input.maxScrollTop), Math.round(target)));
+}
+
+export function resolveAutoScrollStateOnAudioChange(input: {
+  wasPlaying: boolean;
+  isPlaying: boolean;
+  isSmartScrollActive: boolean;
+  isManualHighlightActive: boolean;
+}): {
+  shouldUpdateAutoScroll: boolean;
+  nextIsAutoScrolling: boolean;
+  nextScrollMode?: 'reciter-sync' | 'manual-speed';
+} {
+  if (!input.wasPlaying && input.isPlaying) {
+    return {
+      shouldUpdateAutoScroll: input.isSmartScrollActive,
+      nextIsAutoScrolling: true,
+      nextScrollMode: input.isManualHighlightActive ? 'manual-speed' : 'reciter-sync',
+    };
+  }
+  if (input.wasPlaying && !input.isPlaying) {
+    return {
+      shouldUpdateAutoScroll: true,
+      nextIsAutoScrolling: false,
+    };
+  }
+  return {
+    shouldUpdateAutoScroll: false,
+    nextIsAutoScrolling: false,
+  };
+}
+
+export interface ReciterSyncTargetInput {
+  containerTop: number;
+  containerHeight: number;
+  currentScrollTop: number;
+  maxScrollTop: number;
+  ayahTop: number;
+  ayahHeight: number;
+  activeWordTop?: number | null;
+  activeWordHeight?: number | null;
+  progressRatio: number;
+  focalRatio?: number;
+}
+
+export function computeReciterSyncTargetScrollTop(input: ReciterSyncTargetInput): number {
+  const {
+    containerTop,
+    containerHeight,
+    currentScrollTop,
+    maxScrollTop,
+    ayahTop,
+    ayahHeight,
+    activeWordTop,
+    activeWordHeight,
+    progressRatio,
+    focalRatio = 0.34,
+  } = input;
+
+  if (!Number.isFinite(containerHeight) || containerHeight <= 0) {
+    return 0;
+  }
+
+  const safeMax = Math.max(0, Number.isFinite(maxScrollTop) ? maxScrollTop : 0);
+  const focalOffset = containerHeight * focalRatio;
+
+  let anchorY: number;
+  if (
+    typeof activeWordTop === 'number' &&
+    Number.isFinite(activeWordTop) &&
+    typeof activeWordHeight === 'number' &&
+    Number.isFinite(activeWordHeight) &&
+    activeWordHeight > 0
+  ) {
+    anchorY = activeWordTop - containerTop + currentScrollTop + activeWordHeight * 0.45;
+  } else {
+    const safeProgress = Number.isFinite(progressRatio) ? Math.max(0, Math.min(1, progressRatio)) : 0;
+    const intraOffset = safeProgress * Math.max(0, (Number.isFinite(ayahHeight) ? ayahHeight : 0) - 35);
+    anchorY = ayahTop - containerTop + currentScrollTop + intraOffset;
+  }
+
+  return Math.max(0, Math.min(safeMax, anchorY - focalOffset));
+}
+
+export function computeReciterSyncStepScrollTop(input: {
+  currentPreciseTop: number;
+  targetScrollTop: number;
+  deltaSeconds?: number;
+  playbackRate?: number;
+  smoothing?: number;
+  stopThresholdPx?: number;
+}): {
+  nextPreciseTop: number;
+  shouldScroll: boolean;
+} {
+  const {
+    currentPreciseTop,
+    targetScrollTop,
+    deltaSeconds,
+    playbackRate = 1,
+    smoothing,
+    stopThresholdPx = 0.4,
+  } = input;
+
+  if (!Number.isFinite(currentPreciseTop) || !Number.isFinite(targetScrollTop)) {
+    return { nextPreciseTop: 0, shouldScroll: false };
+  }
+
+  const diff = targetScrollTop - currentPreciseTop;
+  if (Math.abs(diff) <= stopThresholdPx) {
+    return { nextPreciseTop: currentPreciseTop, shouldScroll: false };
+  }
+
+  let step: number;
+  if (typeof smoothing === 'number' && Number.isFinite(smoothing)) {
+    step = diff * smoothing;
+  } else {
+    const safeDt =
+      typeof deltaSeconds === 'number' && Number.isFinite(deltaSeconds)
+        ? Math.min(0.1, Math.max(0.004, deltaSeconds))
+        : 1 / 60;
+    const safeRate = Number.isFinite(playbackRate) ? Math.min(3, Math.max(0.5, playbackRate)) : 1;
+
+    // Responsive, frame-rate independent follower that accelerates smoothly when the reciter moves ahead
+    const lagBoost = diff > 20 ? Math.min(10, (diff - 20) * 0.08) : 0;
+    const followRate = (diff > 0 ? 8.5 + lagBoost : 9.0) * safeRate;
+    const alpha = 1 - Math.exp(-followRate * safeDt);
+    step = diff * alpha;
+
+    // Guarantee minimum catch-up speed when lagging > 18px behind forward recitation so voice never outruns scroll
+    if (diff > 18) {
+      const minCatchUpStep = Math.min(diff, 140 * safeRate * safeDt);
+      if (step < minCatchUpStep) {
+        step = minCatchUpStep;
+      }
+    }
+  }
+
+  // Preserve fractional progress above integer rounding stall threshold without overshooting target
+  const minStep = Math.min(Math.abs(diff), 0.35) * Math.sign(diff);
+  const clampedStep =
+    Math.abs(step) >= Math.abs(minStep)
+      ? Math.min(Math.abs(diff), Math.abs(step)) * Math.sign(diff)
+      : minStep;
+
+  return {
+    nextPreciseTop: currentPreciseTop + clampedStep,
+    shouldScroll: true,
+  };
+}
+
+export interface ReciteStartTargetInput {
+  readerMode: 'page' | 'surah';
+  currentSurahNumber: number;
+  activeAyahNumber: number;
+  visiblePageAyahs: Array<{ surahNumber: number; numberInSurah: number }>;
+  manualHighlight: { surahNumber: number; ayahNumber: number } | null;
+}
+
+export interface ReciteStartTargetResult {
+  surahNumber: number;
+  ayahNumber: number;
+  needsSwitch: boolean;
+}
+
+export function resolveReciteStartTarget(
+  input: ReciteStartTargetInput
+): ReciteStartTargetResult {
+  if (input.readerMode !== 'page' || input.visiblePageAyahs.length === 0) {
+    return {
+      surahNumber: input.currentSurahNumber,
+      ayahNumber: input.activeAyahNumber,
+      needsSwitch: false,
+    };
+  }
+
+  const activeIsOnVisiblePage = input.visiblePageAyahs.some(
+    (a) =>
+      a.surahNumber === input.currentSurahNumber &&
+      a.numberInSurah === input.activeAyahNumber
+  );
+  if (activeIsOnVisiblePage) {
+    return {
+      surahNumber: input.currentSurahNumber,
+      ayahNumber: input.activeAyahNumber,
+      needsSwitch: false,
+    };
+  }
+
+  if (input.manualHighlight) {
+    const highlightOnVisiblePage = input.visiblePageAyahs.some(
+      (a) =>
+        a.surahNumber === input.manualHighlight!.surahNumber &&
+        a.numberInSurah === input.manualHighlight!.ayahNumber
+    );
+    if (highlightOnVisiblePage) {
+      return {
+        surahNumber: input.manualHighlight.surahNumber,
+        ayahNumber: input.manualHighlight.ayahNumber,
+        needsSwitch: true,
+      };
+    }
+  }
+
+  const firstVisible = input.visiblePageAyahs[0];
+  return {
+    surahNumber: firstVisible.surahNumber,
+    ayahNumber: firstVisible.numberInSurah,
+    needsSwitch:
+      firstVisible.surahNumber !== input.currentSurahNumber ||
+      firstVisible.numberInSurah !== input.activeAyahNumber,
+  };
+}
+
+export function shouldJumpMushafPageForAyah(input: {
+  readerMode: 'page' | 'surah';
+  targetPage: number;
+  loadedStreamPages: number[];
+  isReaderModeChanged: boolean;
+}): boolean {
+  if (input.readerMode !== 'page') return true;
+  if (input.isReaderModeChanged || input.loadedStreamPages.length === 0) return true;
+  return !input.loadedStreamPages.includes(input.targetPage);
+}
+
 export interface AutoScrollEndInput {
   readerMode: 'page' | 'surah';
   currentPage: number;

@@ -19,9 +19,10 @@ import {
   executeAdminActionApi
 } from '../data/khatmaApiService';
 import { safeLocalStorage } from '../utils/safeStorage';
-import { KhatmaRing, toArabicIndic } from './khatma/KhatmaRing';
+import { KhatmaRing } from './khatma/KhatmaRing';
 import { PersonalKhatmaTracker } from './khatma/PersonalKhatmaTracker';
 import { loadPersonalKhatmaPlan, PERSONAL_KHATMA_EVENT } from '../utils/personalKhatma';
+import { AppLanguage, formatLocalizedDigits, getJuzLabel, useLanguage } from '../utils/i18n';
 
 const DEFAULT_JUZ_SURAS: Record<number, string> = {
   1: 'من الفاتحة 1 إلى البقرة 141',
@@ -56,13 +57,54 @@ const DEFAULT_JUZ_SURAS: Record<number, string> = {
   30: 'من النبأ 1 إلى الناس 6 (جزء عم)',
 };
 
-function formatRelativeTime(dateStr?: string): string {
+const DEFAULT_JUZ_SURAS_EN: Record<number, string> = {
+  1: 'Al-Fatihah 1 – Al-Baqarah 141',
+  2: 'Al-Baqarah 142 – Al-Baqarah 252',
+  3: 'Al-Baqarah 253 – Aal-Imran 92',
+  4: 'Aal-Imran 93 – An-Nisa 23',
+  5: 'An-Nisa 24 – An-Nisa 147',
+  6: "An-Nisa 148 – Al-Ma'idah 81",
+  7: "Al-Ma'idah 82 – Al-An'am 110",
+  8: "Al-An'am 111 – Al-A'raf 87",
+  9: "Al-A'raf 88 – Al-Anfal 40",
+  10: 'Al-Anfal 41 – At-Tawbah 92',
+  11: 'At-Tawbah 93 – Hud 5',
+  12: 'Hud 6 – Yusuf 52',
+  13: 'Yusuf 53 – Ibrahim 52',
+  14: 'Al-Hijr 1 – An-Nahl 128',
+  15: 'Al-Isra 1 – Al-Kahf 74',
+  16: 'Al-Kahf 75 – Ta-Ha 135',
+  17: 'Al-Anbiya 1 – Al-Hajj 78',
+  18: "Al-Mu'minun 1 – Al-Furqan 20",
+  19: 'Al-Furqan 21 – An-Naml 55',
+  20: 'An-Naml 56 – Al-Ankabut 45',
+  21: 'Al-Ankabut 46 – Al-Ahzab 30',
+  22: 'Al-Ahzab 31 – Ya-Sin 27',
+  23: 'Ya-Sin 28 – Az-Zumar 31',
+  24: 'Az-Zumar 32 – Fussilat 46',
+  25: 'Fussilat 47 – Al-Jathiyah 37',
+  26: 'Al-Ahqaf 1 – Adh-Dhariyat 30',
+  27: 'Adh-Dhariyat 31 – Al-Hadid 29',
+  28: 'Al-Mujadila 1 – At-Tahrim 12',
+  29: 'Al-Mulk 1 – Al-Mursalat 50',
+  30: "An-Naba' 1 – An-Nas 6 (Juz 'Amma)",
+};
+
+function formatRelativeTime(dateStr?: string, lang: AppLanguage = 'ar'): string {
   if (!dateStr) return '';
   const date = new Date(dateStr);
   if (isNaN(date.getTime())) return dateStr;
   const diffMinutes = Math.floor((Date.now() - date.getTime()) / (1000 * 60));
   const diffHours = Math.floor(diffMinutes / 60);
   const diffDays = Math.floor(diffHours / 24);
+
+  if (lang === 'en') {
+    if (diffMinutes < 1) return 'Just now';
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays === 1) return 'Yesterday';
+    return `${diffDays}d ago`;
+  }
 
   if (diffMinutes < 1) return 'الآن';
   if (diffMinutes < 60) return `منذ ${diffMinutes} د`;
@@ -99,6 +141,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
   onNavigateToAyah,
   onOpenPersonalPlanner,
 }) => {
+  const { lang, isEnglish, t } = useLanguage();
   const [khatmaSubTab, setKhatmaSubTab] = useState<'personal' | 'collective'>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -274,7 +317,12 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
             if (!cancelled && res.success && res.verified) {
               setAdminSessionKey(cleanKey);
               setIsAdminMode(true);
-              showToast('تم تفعيل صلاحيات مشرف الغرفة عبر الرابط السري');
+              showToast(
+                t(
+                  'تم تفعيل صلاحيات مشرف الغرفة عبر الرابط السري',
+                  'Room admin permissions activated via secret link'
+                )
+              );
             }
           })
           .catch(() => {});
@@ -381,7 +429,11 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
       if (targetRoom !== activeRoomIdRef.current) return;
       setIsOnline(false);
       if (!silent) {
-        setRoomLoadError(err instanceof Error ? err.message : 'تعذر تحميل بيانات الغرفة');
+        setRoomLoadError(
+          err instanceof Error
+            ? err.message
+            : t('تعذر تحميل بيانات الغرفة', 'Unable to load room data')
+        );
       }
     } finally {
       if (targetRoom === activeRoomIdRef.current) {
@@ -447,7 +499,9 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
         deadlineDays: newRoomDays,
       });
       if (!res.success || !res.roomId || !res.adminKey) {
-        setCreateRoomError(res.error || 'تعذر إنشاء الختمة الخاصة');
+        setCreateRoomError(
+          res.error || t('تعذر إنشاء الختمة الخاصة', 'Unable to create private Khatma')
+        );
         return;
       }
 
@@ -466,7 +520,9 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
         title: res.dedicationTitle,
       });
     } catch {
-      setCreateRoomError('تعذر الاتصال بالخادم لإنشاء الختمة');
+      setCreateRoomError(
+        t('تعذر الاتصال بالخادم لإنشاء الختمة', 'Could not reach server to create the Khatma')
+      );
     } finally {
       setIsCreatingRoom(false);
     }
@@ -504,7 +560,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
   const handleConfirmClaim = async () => {
     if (!claimModalJuz) return;
     const targetJuz = claimModalJuz;
-    const trimmed = claimNameInput.trim() || 'قارئ محب للخير';
+    const trimmed = claimNameInput.trim() || t('قارئ محب للخير', 'Kind Reader');
     setClaimModalJuz(null);
 
     try {
@@ -516,13 +572,24 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
           setClaimTokens(updated);
           safeLocalStorage.setJSON(CLAIM_TOKENS_KEY, updated);
         }
-        showToast(`حُجز الجزء ${targetJuz} باسم ${trimmed}`);
+        showToast(
+          t(
+            `حُجز الجزء ${targetJuz} باسم ${trimmed}`,
+            `Juz ${targetJuz} reserved for ${trimmed}`
+          )
+        );
       } else {
         if (res.parts) setParts(res.parts);
-        showToast(res.error || `تعذر حجز الجزء ${targetJuz}`, 'err');
+        showToast(
+          res.error || t(`تعذر حجز الجزء ${targetJuz}`, `Could not reserve Juz ${targetJuz}`),
+          'err'
+        );
       }
     } catch {
-      showToast('تعذر الاتصال بالخادم لتسجيل الحجز', 'err');
+      showToast(
+        t('تعذر الاتصال بالخادم لتسجيل الحجز', 'Could not connect to server to save reservation'),
+        'err'
+      );
     }
   };
 
@@ -544,15 +611,27 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
         setParts(res.parts);
         const updatedPart = res.parts.find((p) => p.juzNumber === juzNumber);
         if (updatedPart?.isCompleted) {
-          showToast(`هنيئاً لك! تم إتمام قراءة الجزء ${juzNumber}`);
+          showToast(
+            t(
+              `هنيئاً لك! تم إتمام قراءة الجزء ${juzNumber}`,
+              `MashaAllah! Completed reading Juz ${juzNumber}`
+            )
+          );
         }
       } else {
         setParts(res.parts || previousParts);
-        showToast(res.error || 'غير مصرح بتحديث حالة هذا الجزء', 'err');
+        showToast(
+          res.error ||
+            t('غير مصرح بتحديث حالة هذا الجزء', 'Not authorized to update this Juz'),
+          'err'
+        );
       }
     } catch {
       setParts(previousParts);
-      showToast('تعذر الاتصال بالخادم لتحديث الجزء', 'err');
+      showToast(
+        t('تعذر الاتصال بالخادم لتحديث الجزء', 'Could not connect to server to update Juz'),
+        'err'
+      );
     }
   };
 
@@ -575,21 +654,33 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
       );
       if (res.success && res.parts) {
         setParts(res.parts);
-        showToast(`تم تحديث اسم القارئ للجزء ${juzNumber} إلى: ${trimmed}`);
+        showToast(
+          t(
+            `تم تحديث اسم القارئ للجزء ${juzNumber} إلى: ${trimmed}`,
+            `Updated Juz ${juzNumber} reader to: ${trimmed}`
+          )
+        );
       } else {
         setParts(res.parts || previousParts);
-        showToast(res.error || 'تعذر تعديل الاسم — تحقق من صلاحية المشرف', 'err');
+        showToast(
+          res.error ||
+            t('تعذر تعديل الاسم — تحقق من صلاحية المشرف', 'Could not update name — check admin key'),
+          'err'
+        );
       }
     } catch {
       setParts(previousParts);
-      showToast('تعذر الاتصال بالخادم لتعديل الاسم', 'err');
+      showToast(
+        t('تعذر الاتصال بالخادم لتعديل الاسم', 'Could not connect to server to update name'),
+        'err'
+      );
     }
   };
 
   const handleOpenAdminToggle = async () => {
     if (isAdminMode) {
       setIsAdminMode(false);
-      showToast('تم الخروج من وضع المشرف');
+      showToast(t('تم الخروج من وضع المشرف', 'Exited admin mode'));
       return;
     }
 
@@ -599,7 +690,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
         const res = await verifyAdminKeyApi(adminSessionKey, activeRoomId);
         if (res.success && res.verified) {
           setIsAdminMode(true);
-          showToast('تم تفعيل وضع المشرف');
+          showToast(t('تم تفعيل وضع المشرف', 'Admin mode activated'));
           return;
         }
       } catch {
@@ -615,7 +706,9 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
   const handleVerifyAdminKey = async () => {
     const extracted = extractAdminKeyInput(adminKeyInput);
     if (!extracted) {
-      setAdminUnlockError('يرجى لصق مفتاح أو رابط المشرف السري');
+      setAdminUnlockError(
+        t('يرجى لصق مفتاح أو رابط المشرف السري', 'Please paste the secret admin key or link')
+      );
       return;
     }
 
@@ -627,12 +720,16 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
         setIsAdminMode(true);
         setIsAdminUnlockOpen(false);
         setAdminUnlockError(null);
-        showToast('تم التحقق وتفعيل صلاحيات المشرف');
+        showToast(t('تم التحقق وتفعيل صلاحيات المشرف', 'Verified and enabled admin permissions'));
       } else {
-        setAdminUnlockError(res.error || 'مفتاح المشرف السري غير صحيح');
+        setAdminUnlockError(
+          res.error || t('مفتاح المشرف السري غير صحيح', 'Invalid secret admin key')
+        );
       }
     } catch {
-      setAdminUnlockError('تعذر الاتصال بالخادم للتحقق من المفتاح');
+      setAdminUnlockError(
+        t('تعذر الاتصال بالخادم للتحقق من المفتاح', 'Could not connect to server to verify key')
+      );
     }
   };
 
@@ -649,10 +746,13 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
           title: dedicationTitle,
         });
       } else {
-        showToast(res.error || 'تعذر تجديد مفتاح المشرف', 'err');
+        showToast(res.error || t('تعذر تجديد مفتاح المشرف', 'Could not rotate admin key'), 'err');
       }
     } catch {
-      showToast('تعذر الاتصال بالخادم لتدوير المفتاح', 'err');
+      showToast(
+        t('تعذر الاتصال بالخادم لتدوير المفتاح', 'Could not connect to server to rotate key'),
+        'err'
+      );
     }
   };
 
@@ -663,31 +763,43 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
     if (actionType === 'withdraw') {
       setConfirmModalConfig({
         isOpen: true,
-        title: 'الاعتذار والانسحاب من القراءة',
-        message: `هل ترغب في الاعتذار عن قراءة الجزء ${targetJuz}؟ سيتم إخلاء الجزء فوراً ليتمكن مشارك آخر من حجزه.`,
+        title: t('الاعتذار والانسحاب من القراءة', 'Release & Withdraw'),
+        message: t(
+          `هل ترغب في الاعتذار عن قراءة الجزء ${targetJuz}؟ سيتم إخلاء الجزء فوراً ليتمكن مشارك آخر من حجزه.`,
+          `Release Juz ${targetJuz}? It will become immediately available for another participant to claim.`
+        ),
         actionType,
         targetJuz,
       });
     } else if (actionType === 'admin-release') {
       setConfirmModalConfig({
         isOpen: true,
-        title: 'إخلاء الجزء (إجراء المشرف)',
-        message: `هل تريد تحرير الجزء ${targetJuz} وإعادة طرحه شاغراً للمشاركين؟`,
+        title: t('إخلاء الجزء (إجراء المشرف)', 'Release Juz (Admin Action)'),
+        message: t(
+          `هل تريد تحرير الجزء ${targetJuz} وإعادة طرحه شاغراً للمشاركين؟`,
+          `Make Juz ${targetJuz} available for participants again?`
+        ),
         actionType,
         targetJuz,
       });
     } else if (actionType === 'delete-room') {
       setConfirmModalConfig({
         isOpen: true,
-        title: 'حذف هذه الغرفة الخاصة نهائياً',
-        message: 'سيتم حذف غرفة الختمة الخاصة وجميع بياناتها من الخادم نهائياً. هل أنت متأكد؟',
+        title: t('حذف هذه الغرفة الخاصة نهائياً', 'Permanently Delete Private Room'),
+        message: t(
+          'سيتم حذف غرفة الختمة الخاصة وجميع بياناتها من الخادم نهائياً. هل أنت متأكد؟',
+          'This private Khatma room and all its data will be permanently deleted. Are you sure?'
+        ),
         actionType,
       });
     } else {
       setConfirmModalConfig({
         isOpen: true,
-        title: 'إعادة ضبط وبدء ختمة جديدة',
-        message: 'سيتم تفريغ كافة حجوزات الأجزاء الـ 30 وإعادة الختمة إلى نقطة البداية لجميع المشاركين.',
+        title: t('إعادة ضبط وبدء ختمة جديدة', 'Reset & Start a New Khatma'),
+        message: t(
+          'سيتم تفريغ كافة حجوزات الأجزاء الـ 30 وإعادة الختمة إلى نقطة البداية لجميع المشاركين.',
+          'All 30 Juz reservations will be cleared and the Khatma will reset to the start for everyone.'
+        ),
         actionType,
       });
     }
@@ -718,38 +830,62 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
           delete nextTokens[String(targetJuz)];
           setClaimTokens(nextTokens);
           safeLocalStorage.setJSON(CLAIM_TOKENS_KEY, nextTokens);
-          showToast(`تم إخلاء الجزء ${targetJuz} وإتاحته للجميع`);
+          showToast(
+            t(`تم إخلاء الجزء ${targetJuz} وإتاحته للجميع`, `Juz ${targetJuz} released and now available`)
+          );
         } else {
           setParts(res.parts || previousParts);
-          showToast(res.error || 'تفريغ الجزء متاح لصاحب الحجز أو المشرف فقط', 'err');
+          showToast(
+            res.error ||
+              t(
+                'تفريغ الجزء متاح لصاحب الحجز أو المشرف فقط',
+                'Only the claimer or room admin can release this Juz'
+              ),
+            'err'
+          );
         }
       } catch {
         setParts(previousParts);
-        showToast('تعذر الاتصال بالخادم لتحرير الجزء', 'err');
+        showToast(
+          t('تعذر الاتصال بالخادم لتحرير الجزء', 'Could not connect to server to release Juz'),
+          'err'
+        );
       }
     } else if (actionType === 'admin-release' && targetJuz) {
       try {
         const res = await executeAdminActionApi(adminSessionKey, 'release-part', { targetJuz }, activeRoomId);
         if (res.success && res.parts) {
           setParts(res.parts);
-          showToast(`تم تحرير الجزء ${targetJuz} من قبل المشرف`);
+          showToast(
+            t(`تم تحرير الجزء ${targetJuz} من قبل المشرف`, `Juz ${targetJuz} released by admin`)
+          );
         } else {
-          showToast(res.error || 'تعذر تحرير الجزء', 'err');
+          showToast(res.error || t('تعذر تحرير الجزء', 'Could not release Juz'), 'err');
         }
       } catch {
-        showToast('تعذر الاتصال بالخادم لتنفيذ إجراء المشرف', 'err');
+        showToast(
+          t('تعذر الاتصال بالخادم لتنفيذ إجراء المشرف', 'Could not connect to server for admin action'),
+          'err'
+        );
       }
     } else if (actionType === 'reset-all') {
       try {
         const res = await executeAdminActionApi(adminSessionKey, 'reset-all', undefined, activeRoomId);
         if (res.success && res.parts) {
           setParts(res.parts);
-          showToast('تمت إعادة ضبط الختمة وبدء دورة جديدة');
+          showToast(t('تمت إعادة ضبط الختمة وبدء دورة جديدة', 'Khatma reset for a new cycle'));
         } else {
-          showToast(res.error || 'تعذر إعادة الضبط، تحقق من صلاحية المشرف', 'err');
+          showToast(
+            res.error ||
+              t('تعذر إعادة الضبط، تحقق من صلاحية المشرف', 'Could not reset — check admin key'),
+            'err'
+          );
         }
       } catch {
-        showToast('تعذر الاتصال بالخادم لإعادة الضبط', 'err');
+        showToast(
+          t('تعذر الاتصال بالخادم لإعادة الضبط', 'Could not connect to server to reset'),
+          'err'
+        );
       }
     } else if (actionType === 'delete-room') {
       try {
@@ -757,13 +893,16 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
         if (res.success && res.deleted) {
           safeLocalStorage.removeItem(ADMIN_KEY_STORAGE);
           safeLocalStorage.removeItem(CLAIM_TOKENS_KEY);
-          showToast('تم حذف الغرفة الخاصة بنجاح');
+          showToast(t('تم حذف الغرفة الخاصة بنجاح', 'Private room deleted'));
           handleSelectRoom('public');
         } else {
-          showToast(res.error || 'تعذر حذف الغرفة', 'err');
+          showToast(res.error || t('تعذر حذف الغرفة', 'Could not delete room'), 'err');
         }
       } catch {
-        showToast('تعذر الاتصال بالخادم لحذف الغرفة', 'err');
+        showToast(
+          t('تعذر الاتصال بالخادم لحذف الغرفة', 'Could not connect to server to delete room'),
+          'err'
+        );
       }
     }
   };
@@ -776,12 +915,26 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
   const getKhatmaAdminSecretUrl = (roomId: string, adminKey: string) =>
     `${window.location.origin}/?tab=khatma&khatma=${encodeURIComponent(roomId)}&adminKey=${encodeURIComponent(adminKey)}`;
 
+  const displayDedicationTitle =
+    isEnglish && dedicationTitle === 'ختمة البر والصدقة الجارية لجميع موتى المسلمين'
+      ? 'Charitable Collective Khatma (Sadaqah Jariyah)'
+      : dedicationTitle;
+
+  const displayCreatorName =
+    isEnglish && creatorName === 'فاعل خير' ? 'Well-Wisher' : creatorName;
+
   const handleOpenWhatsAppReminderModal = (part: PartClaim) => {
     const shareUrl = getKhatmaShareUrl();
-    const msg = `السلام عليكم ورحمة الله وبركاته 🌸\nنذكركم بوردكم في الختمة الجماعية (${part.juzName}: ${part.surahsCovered}) بنية: "${dedicationTitle}".\n\nيمكنكم تأكيد إتمام القراءة عبر الرابط المباشر:\n${shareUrl}`;
+    const juzTitle = getJuzLabel(part.juzNumber, lang);
+    const surahsLabel = isEnglish
+      ? DEFAULT_JUZ_SURAS_EN[part.juzNumber] || part.surahsCovered
+      : part.surahsCovered;
+    const msg = isEnglish
+      ? `As-salamu alaykum 🌸\nFriendly reminder for your Wird in the Collective Khatma (${juzTitle}: ${surahsLabel}) dedicated to: "${displayDedicationTitle}".\n\nConfirm completion directly here:\n${shareUrl}`
+      : `السلام عليكم ورحمة الله وبركاته 🌸\nنذكركم بوردكم في الختمة الجماعية (${part.juzName}: ${part.surahsCovered}) بنية: "${dedicationTitle}".\n\nيمكنكم تأكيد إتمام القراءة عبر الرابط المباشر:\n${shareUrl}`;
     setWhatsAppModalConfig({
       isOpen: true,
-      title: `تذكير عبر واتساب — ${part.juzName}`,
+      title: t(`تذكير عبر واتساب — ${part.juzName}`, `WhatsApp Reminder — ${juzTitle}`),
       message: msg,
       whatsAppUrl: `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`,
     });
@@ -790,10 +943,12 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
   const handleOpenWhatsAppBroadcastModal = () => {
     const remainingCount = 30 - claimedCount;
     const shareUrl = getKhatmaShareUrl();
-    const msg = `قال تعالى: ﴿وَفِي ذَٰلِكَ فَلْيَتَنَافَسِ الْمُتَنَافِسُونَ﴾ 📖\n\nندعوكم للمشاركة في الختمة الجماعية:\n"${dedicationTitle}"\n\nنسبة الإنجاز: ${progressPercent}% (${completedCount} أجزاء مكتملة) · متبقي ${remainingCount} جزءاً متاحاً.\n\nالرابط المباشر للختمة:\n${shareUrl}`;
+    const msg = isEnglish
+      ? `“And for this let the competitors compete.” (Qur'an 83:26) 📖\n\nJoin our Collective Khatma:\n"${displayDedicationTitle}"\n\nProgress: ${progressPercent}% (${completedCount} Juz completed) · ${remainingCount} Juz still available.\n\nDirect link:\n${shareUrl}`
+      : `قال تعالى: ﴿وَفِي ذَٰلِكَ فَلْيَتَنَافَسِ الْمُتَنَافِسُونَ﴾ 📖\n\nندعوكم للمشاركة في الختمة الجماعية:\n"${dedicationTitle}"\n\nنسبة الإنجاز: ${progressPercent}% (${completedCount} أجزاء مكتملة) · متبقي ${remainingCount} جزءاً متاحاً.\n\nالرابط المباشر للختمة:\n${shareUrl}`;
     setWhatsAppModalConfig({
       isOpen: true,
-      title: 'دعوة ومتابعة الختمة عبر واتساب',
+      title: t('دعوة ومتابعة الختمة عبر واتساب', 'Invite & Share Khatma on WhatsApp'),
       message: msg,
       whatsAppUrl: `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`,
     });
@@ -803,7 +958,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
     const ok = await copyToClipboard(getKhatmaShareUrl());
     if (ok) {
       setCopiedLink(true);
-      showToast('تم نسخ رابط الغرفة المباشر');
+      showToast(t('تم نسخ رابط الغرفة المباشر', 'Room link copied'));
       setTimeout(() => setCopiedLink(false), 2500);
     }
   };
@@ -829,18 +984,21 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
         activeRoomId
       );
       if (res.success) {
-        showToast('تم تحديث بيانات الختمة ومزامنتها');
+        showToast(t('تم تحديث بيانات الختمة ومزامنتها', 'Khatma details updated and synced'));
       } else {
         setDedicationTitle(prevTitle);
         setCreatorName(prevCreator);
         setDeadlineDays(prevDays);
-        showToast(res.error || 'تعذر حفظ التعديلات', 'err');
+        showToast(res.error || t('تعذر حفظ التعديلات', 'Could not save changes'), 'err');
       }
     } catch {
       setDedicationTitle(prevTitle);
       setCreatorName(prevCreator);
       setDeadlineDays(prevDays);
-      showToast('تعذر الاتصال بالخادم لحفظ التعديل', 'err');
+      showToast(
+        t('تعذر الاتصال بالخادم لحفظ التعديل', 'Could not connect to server to save changes'),
+        'err'
+      );
     }
   };
 
@@ -876,7 +1034,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div
           role="tablist"
-          aria-label="نوع الختمة"
+          aria-label={t('نوع الختمة', 'Khatma Type')}
           className="inline-flex items-center p-1 rounded-2xl bg-[#EFE6D1] dark:bg-[#10161f] border border-[#8A6418]/25 dark:border-slate-800"
         >
           <button
@@ -891,7 +1049,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
             }`}
           >
             <BookOpen className="w-4 h-4 text-[#D9B45A]" />
-            <span>ختمتي الفردية</span>
+            <span>{t('ختمتي الفردية', 'My Personal Khatma')}</span>
           </button>
           <button
             type="button"
@@ -905,7 +1063,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
             }`}
           >
             <Users className="w-4 h-4 text-[#1F3A6E] dark:text-[#648cd4]" />
-            <span>الختمات الجماعية</span>
+            <span>{t('الختمات الجماعية', 'Collective Khatmas')}</span>
           </button>
         </div>
       </div>
@@ -921,21 +1079,29 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
       {/* Room Switcher & Create Unlisted Private Khatma */}
       <div className="p-3.5 rounded-2xl bg-[#FBF7EE] dark:bg-slate-900/90 border border-[#8A6418]/25 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-medium text-[#5C5549] dark:text-slate-300">المجلس الحالي:</span>
+          <span className="text-xs font-medium text-[#5C5549] dark:text-slate-300">
+            {t('المجلس الحالي:', 'Current Room:')}
+          </span>
           <select
-            aria-label="اختيار غرفة الختمة"
+            aria-label={t('اختيار غرفة الختمة', 'Select Khatma room')}
             value={activeRoomId}
             onChange={(e) => handleSelectRoom(e.target.value)}
             className="min-h-[40px] py-1.5 px-3 rounded-xl bg-white dark:bg-slate-950 border border-[#8A6418]/25 dark:border-slate-700 text-xs font-semibold text-[#1B1A17] dark:text-[#e9e3d3] outline-none focus:border-[#8A6418] dark:focus:border-[#d9b45a] cursor-pointer"
           >
-            {roomsList.map((r) => (
-              <option key={r.roomId} value={r.roomId} className="bg-white text-[#1B1A17] dark:bg-slate-900 dark:text-[#F6EFDD]">
-                الختمة العامة — {r.dedicationTitle.slice(0, 36)} ({toArabicIndic(r.completedCount)}/٣٠)
-              </option>
-            ))}
+            {roomsList.map((r) => {
+              const roomTitle =
+                isEnglish && r.dedicationTitle === 'ختمة البر والصدقة الجارية لجميع موتى المسلمين'
+                  ? 'Charitable Collective Khatma'
+                  : r.dedicationTitle.slice(0, 36);
+              return (
+                <option key={r.roomId} value={r.roomId} className="bg-white text-[#1B1A17] dark:bg-slate-900 dark:text-[#F6EFDD]">
+                  {t('الختمة العامة', 'Public Khatma')} — {roomTitle} ({formatLocalizedDigits(r.completedCount, lang)}/{formatLocalizedDigits(30, lang)})
+                </option>
+              );
+            })}
             {activeRoomId !== 'public' && (
               <option value={activeRoomId} className="bg-white text-[#1B1A17] dark:bg-slate-900 dark:text-[#F6EFDD]">
-                ختمة خاصة غير مدرجة ({activeRoomId.slice(0, 12)})
+                {t('ختمة خاصة غير مدرجة', 'Unlisted Private Khatma')} ({activeRoomId.slice(0, 12)})
               </option>
             )}
           </select>
@@ -950,7 +1116,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
           className="min-h-[40px] py-2 px-4 rounded-xl bg-[#1f3a6e] hover:bg-[#274888] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
         >
           <Plus className="w-3.5 h-3.5 text-[#D9B45A]" />
-          <span>إنشاء ختمة عائلية خاصة</span>
+          <span>{t('إنشاء ختمة عائلية خاصة', 'Create Private Family Khatma')}</span>
         </button>
       </div>
 
@@ -966,7 +1132,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
               onClick={() => handleSelectRoom('public')}
               className="py-1.5 px-3 rounded-lg bg-[#1F3A6E] text-white text-xs hover:bg-[#2E5499] cursor-pointer"
             >
-              العودة للختمة العامة
+              {t('العودة للختمة العامة', 'Back to Public Khatma')}
             </button>
           )}
         </div>
@@ -978,18 +1144,24 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
           <div className="space-y-2.5 max-w-2xl">
             <div className="flex flex-wrap items-center gap-3 text-xs text-[#5C5549] dark:text-slate-300">
               <span className="font-medium text-[#8A6418] dark:text-[#d9b45a]">
-                {isPublicRoom ? 'ختمة جماعية عامة' : 'ختمة خاصة (رابط سري غير مدرج)'}
+                {isPublicRoom
+                  ? t('ختمة جماعية عامة', 'Public Collective Khatma')
+                  : t('ختمة خاصة (رابط سري غير مدرج)', 'Private Khatma (Unlisted Secret Link)')}
               </span>
               <span aria-hidden="true">·</span>
               <span className="text-[#5C5549] dark:text-slate-300">
-                {isSyncing ? 'جارٍ التحديث...' : isOnline ? 'متصل بالمزامنة' : 'محفوظ محلياً'}
+                {isSyncing
+                  ? t('جارٍ التحديث...', 'Syncing...')
+                  : isOnline
+                  ? t('متصل بالمزامنة', 'Live synced')
+                  : t('محفوظ محلياً', 'Saved locally')}
               </span>
               {isAdminMode && (
                 <>
                   <span aria-hidden="true">·</span>
                   <span className="font-semibold text-[#8A6418] dark:text-[#d9b45a] inline-flex items-center gap-1">
                     <ShieldCheck className="w-3.5 h-3.5" />
-                    <span>وضع المشرف</span>
+                    <span>{t('وضع المشرف', 'Admin Mode')}</span>
                   </span>
                 </>
               )}
@@ -997,7 +1169,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
 
             <div className="flex items-center gap-2.5 flex-wrap">
               <h1 className="text-xl sm:text-2xl font-bold text-[#1B1A17] dark:text-[#f6efdd] font-kufi">
-                {dedicationTitle}
+                {displayDedicationTitle}
               </h1>
               {isAdminMode && (
                 <button
@@ -1008,7 +1180,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                     setTempDeadlineInput(deadlineDays);
                     setIsDedicationModalOpen(true);
                   }}
-                  aria-label="تعديل نية الختمة"
+                  aria-label={t('تعديل نية الختمة', 'Edit Khatma dedication')}
                   className="min-h-[36px] min-w-[36px] p-1.5 rounded-lg bg-[#EFE6D1] dark:bg-slate-800 hover:bg-[#E4D7BA] dark:hover:bg-slate-700 text-[#1B1A17] dark:text-slate-200 transition-colors cursor-pointer flex items-center justify-center"
                 >
                   <Edit2 className="w-3.5 h-3.5" />
@@ -1019,12 +1191,17 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
             <div className="flex flex-wrap items-center gap-3 text-xs text-[#5C5549] dark:text-slate-300">
               <span className="inline-flex items-center gap-1">
                 <Heart className="w-3.5 h-3.5 text-rose-500 dark:text-rose-400" />
-                <span>المنشئ: {creatorName}</span>
+                <span>
+                  {t('المنشئ:', 'Organizer:')} {displayCreatorName}
+                </span>
               </span>
               <span aria-hidden="true">·</span>
               <span className="inline-flex items-center gap-1 tabular-nums">
                 <Calendar className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#d9b45a]" />
-                <span>المدة المستهدفة: {deadlineDays} أيام</span>
+                <span>
+                  {t('المدة المستهدفة:', 'Target duration:')} {formatLocalizedDigits(deadlineDays, lang)}{' '}
+                  {t('أيام', deadlineDays === 1 ? 'day' : 'days')}
+                </span>
               </span>
             </div>
           </div>
@@ -1037,7 +1214,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
               className="min-h-[40px] py-2 px-4 rounded-xl bg-[#1f3a6e] hover:bg-[#274888] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
             >
               <MessageCircle className="w-4 h-4" />
-              <span>دعوة عبر واتساب</span>
+              <span>{t('دعوة عبر واتساب', 'Invite on WhatsApp')}</span>
             </button>
 
             <button
@@ -1046,7 +1223,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
               className="min-h-[40px] py-2 px-4 rounded-xl bg-[#EFE6D1] hover:bg-[#E4D7BA] dark:bg-slate-900 dark:hover:bg-slate-800 border border-[#8A6418]/25 dark:border-slate-700 text-[#1B1A17] dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
             >
               {copiedLink ? <Check className="w-4 h-4 text-[#8A6418] dark:text-[#d9b45a]" /> : <Copy className="w-4 h-4" />}
-              <span>{copiedLink ? 'تم النسخ' : 'نسخ رابط الغرفة'}</span>
+              <span>{copiedLink ? t('تم النسخ', 'Copied') : t('نسخ رابط الغرفة', 'Copy Room Link')}</span>
             </button>
 
             <button
@@ -1059,7 +1236,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
               }`}
             >
               {isAdminMode ? <Lock className="w-3.5 h-3.5" /> : <Key className="w-3.5 h-3.5" />}
-              <span>{isAdminMode ? 'خروج المشرف' : 'مفتاح المشرف'}</span>
+              <span>{isAdminMode ? t('خروج المشرف', 'Exit Admin') : t('مفتاح المشرف', 'Admin Key')}</span>
             </button>
 
             {isAdminMode && (
@@ -1067,8 +1244,8 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                 <button
                   type="button"
                   onClick={handleRotateAdminKey}
-                  aria-label="تجديد مفتاح المشرف السري"
-                  title="تجديد الرابط السري للمشرف"
+                  aria-label={t('تجديد مفتاح المشرف السري', 'Rotate secret admin key')}
+                  title={t('تجديد الرابط السري للمشرف', 'Rotate secret admin link')}
                   className="min-h-[40px] min-w-[40px] p-2 rounded-xl bg-[#EFE6D1] hover:bg-[#E4D7BA] dark:bg-slate-900 dark:hover:bg-slate-800 border border-[#8A6418]/35 dark:border-[#d9b45a]/40 text-[#8A6418] dark:text-[#d9b45a] transition-colors cursor-pointer flex items-center justify-center"
                 >
                   <Key className="w-4 h-4" />
@@ -1079,13 +1256,13 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                   className="min-h-[40px] py-2 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 border border-rose-500/40 text-rose-700 dark:text-rose-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  <span>إعادة ضبط</span>
+                  <span>{t('إعادة ضبط', 'Reset')}</span>
                 </button>
                 {!isPublicRoom && (
                   <button
                     type="button"
                     onClick={() => handleOpenConfirmModal('delete-room')}
-                    aria-label="حذف الغرفة الخاصة"
+                    aria-label={t('حذف الغرفة الخاصة', 'Delete private room')}
                     className="min-h-[40px] min-w-[40px] p-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 border border-rose-500/40 text-rose-700 dark:text-rose-300 transition-colors cursor-pointer flex items-center justify-center"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -1118,9 +1295,11 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
         <div className="lg:col-span-2 space-y-5">
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs sm:text-sm">
-              <span className="text-[#1B1A17] dark:text-slate-200 font-semibold">تقدم الختمة الجماعية</span>
+              <span className="text-[#1B1A17] dark:text-slate-200 font-semibold">
+                {t('تقدم الختمة الجماعية', 'Collective Khatma Progress')}
+              </span>
               <span className="font-mono tabular-nums text-[#8A6418] dark:text-[#d9b45a] font-bold text-base">
-                {progressPercent}%
+                {formatLocalizedDigits(progressPercent, lang)}%
               </span>
             </div>
             <div className="w-full h-2.5 bg-[#E5DBBF] dark:bg-slate-950 rounded-full overflow-hidden border border-[#8A6418]/20 dark:border-slate-800">
@@ -1130,22 +1309,37 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
               />
             </div>
             <p className="text-xs text-[#5C5549] dark:text-slate-300">
-              يتم تأمين كل حجز بمفتاح سري يُحفظ في متصفحك لإتمام القراءة أو الاعتذار لاحقاً.
+              {t(
+                'يتم تأمين كل حجز بمفتاح سري يُحفظ في متصفحك لإتمام القراءة أو الاعتذار لاحقاً.',
+                'Each reservation is secured with a private token saved in your browser so you can mark it complete or release it later.'
+              )}
             </p>
           </div>
 
           <div className="grid grid-cols-3 gap-3 pt-2 border-t border-[#8A6418]/15 dark:border-slate-800/80">
             <div className="text-center p-3 rounded-2xl bg-[#EFE6D1] dark:bg-slate-950/60 border border-[#8A6418]/20 dark:border-slate-800/80">
-              <div className="text-2xl font-bold font-mono tabular-nums text-[#1B1A17] dark:text-slate-200">{30 - claimedCount}</div>
-              <div className="text-xs text-[#5C5549] dark:text-slate-400 mt-1">شاغر للحجز</div>
+              <div className="text-2xl font-bold font-mono tabular-nums text-[#1B1A17] dark:text-slate-200">
+                {formatLocalizedDigits(30 - claimedCount, lang)}
+              </div>
+              <div className="text-xs text-[#5C5549] dark:text-slate-400 mt-1">
+                {t('شاغر للحجز', 'Available')}
+              </div>
             </div>
             <div className="text-center p-3 rounded-2xl bg-[#EFE6D1] dark:bg-slate-950/60 border border-[#1F3A6E]/25 dark:border-[#2e5499]/40">
-              <div className="text-2xl font-bold font-mono tabular-nums text-[#1F3A6E] dark:text-[#648cd4]">{claimedCount - completedCount}</div>
-              <div className="text-xs text-[#5C5549] dark:text-slate-300 mt-1">قيد القراءة</div>
+              <div className="text-2xl font-bold font-mono tabular-nums text-[#1F3A6E] dark:text-[#648cd4]">
+                {formatLocalizedDigits(claimedCount - completedCount, lang)}
+              </div>
+              <div className="text-xs text-[#5C5549] dark:text-slate-300 mt-1">
+                {t('قيد القراءة', 'Reading')}
+              </div>
             </div>
             <div className="text-center p-3 rounded-2xl bg-[#EFE6D1] dark:bg-slate-950/60 border border-[#8A6418]/30 dark:border-[#d9b45a]/40">
-              <div className="text-2xl font-bold font-mono tabular-nums text-[#8A6418] dark:text-[#d9b45a]">{completedCount}</div>
-              <div className="text-xs text-[#5C5549] dark:text-slate-300 mt-1">مكتمل</div>
+              <div className="text-2xl font-bold font-mono tabular-nums text-[#8A6418] dark:text-[#d9b45a]">
+                {formatLocalizedDigits(completedCount, lang)}
+              </div>
+              <div className="text-xs text-[#5C5549] dark:text-slate-300 mt-1">
+                {t('مكتمل', 'Completed')}
+              </div>
             </div>
           </div>
         </div>
@@ -1153,24 +1347,39 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
 
       {/* Filter Tabs */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-1 bg-[#EFE6D1] dark:bg-slate-900/90 p-1 rounded-2xl border border-[#8A6418]/20 dark:border-slate-800">
+        <div className="flex items-center gap-1 bg-[#EFE6D1] dark:bg-slate-900/90 p-1 rounded-2xl border border-[#8A6418]/20 dark:border-slate-800 overflow-x-auto max-w-full">
           {[
-            { id: 'all', label: 'كافة الأجزاء (30)' },
-            { id: 'available', label: `المتاحة (${30 - claimedCount})` },
-            { id: 'claimed', label: `قيد القراءة (${claimedCount - completedCount})` },
-            { id: 'completed', label: `المكتملة (${completedCount})` },
-          ].map((t) => (
+            { id: 'all', label: t('كافة الأجزاء (30)', 'All Parts (30)') },
+            {
+              id: 'available',
+              label: t(
+                `المتاحة (${30 - claimedCount})`,
+                `Available (${30 - claimedCount})`
+              ),
+            },
+            {
+              id: 'claimed',
+              label: t(
+                `قيد القراءة (${claimedCount - completedCount})`,
+                `Reading (${claimedCount - completedCount})`
+              ),
+            },
+            {
+              id: 'completed',
+              label: t(`المكتملة (${completedCount})`, `Completed (${completedCount})`),
+            },
+          ].map((tabItem) => (
             <button
-              key={t.id}
+              key={tabItem.id}
               type="button"
-              onClick={() => setFilter(t.id as typeof filter)}
+              onClick={() => setFilter(tabItem.id as typeof filter)}
               className={`min-h-[38px] py-1.5 px-3 rounded-xl text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
-                filter === t.id
+                filter === tabItem.id
                   ? 'bg-[#1f3a6e] text-white'
                   : 'text-[#5C5549] hover:text-[#1B1A17] hover:bg-[#E4D7BA] dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-800'
               }`}
             >
-              {t.label}
+              {tabItem.label}
             </button>
           ))}
         </div>
@@ -1182,6 +1391,10 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
           const isClaimed = part.claimedBy !== null;
           const isDone = part.isCompleted;
           const canManageThisPart = Boolean(claimTokens[String(part.juzNumber)] || isAdminMode);
+          const displayJuzTitle = getJuzLabel(part.juzNumber, lang);
+          const displaySurahsCovered = isEnglish
+            ? DEFAULT_JUZ_SURAS_EN[part.juzNumber] || part.surahsCovered
+            : part.surahsCovered;
 
           return (
             <div
@@ -1198,11 +1411,13 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="w-7 h-7 rounded-lg bg-[#1F3A6E]/10 dark:bg-[#1f3a6e]/40 text-[#1F3A6E] dark:text-[#f6efdd] font-semibold text-xs flex items-center justify-center font-mono tabular-nums border border-[#1F3A6E]/25 dark:border-[#2e5499]/50">
-                      {toArabicIndic(part.juzNumber)}
+                      {formatLocalizedDigits(part.juzNumber, lang)}
                     </span>
-                    <h3 className="font-bold text-sm text-[#1B1A17] dark:text-white">{part.juzName}</h3>
+                    <h3 className="font-bold text-sm text-[#1B1A17] dark:text-white">{displayJuzTitle}</h3>
                   </div>
-                  <p className="text-xs text-[#5C5549] dark:text-slate-400 mt-1 line-clamp-1">{part.surahsCovered}</p>
+                  <p className="text-xs text-[#5C5549] dark:text-slate-400 mt-1 line-clamp-1">
+                    {displaySurahsCovered}
+                  </p>
                 </div>
 
                 {/* Unboxed typographic status label */}
@@ -1211,7 +1426,11 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                     isDone ? 'text-[#8A6418] dark:text-[#d9b45a]' : isClaimed ? 'text-[#1F3A6E] dark:text-[#648cd4]' : 'text-[#5C5549] dark:text-slate-400'
                   }`}
                 >
-                  {isDone ? 'مكتمل ✓' : isClaimed ? 'محجوز' : 'شاغر'}
+                  {isDone
+                    ? t('مكتمل ✓', 'Completed ✓')
+                    : isClaimed
+                    ? t('محجوز', 'Claimed')
+                    : t('شاغر', 'Available')}
                 </span>
               </div>
 
@@ -1231,7 +1450,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                       />
                       <button
                         type="button"
-                        aria-label="حفظ اسم القارئ"
+                        aria-label={t('حفظ اسم القارئ', 'Save reader name')}
                         onClick={() => handleSaveEditName(part.juzNumber)}
                         className="min-h-[34px] min-w-[34px] p-1.5 bg-[#1f3a6e] hover:bg-[#274888] text-white rounded-lg flex items-center justify-center cursor-pointer"
                       >
@@ -1245,7 +1464,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                         <span className="font-semibold text-[#1B1A17] dark:text-slate-100 truncate">{part.claimedBy}</span>
                         {part.claimedAt && (
                           <span className="text-[11px] text-[#5C5549] dark:text-slate-400 shrink-0">
-                            · {formatRelativeTime(part.claimedAt)}
+                            · {formatRelativeTime(part.claimedAt, lang)}
                           </span>
                         )}
                       </div>
@@ -1257,7 +1476,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                             setEditingJuz(part.juzNumber);
                             setEditingNameInput(part.claimedBy || '');
                           }}
-                          aria-label="تعديل اسم القارئ"
+                          aria-label={t('تعديل اسم القارئ', 'Edit reader name')}
                           className="min-h-[32px] min-w-[32px] p-1 text-[#5C5549] dark:text-slate-400 hover:text-[#8A6418] dark:hover:text-[#d9b45a] flex items-center justify-center cursor-pointer"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
@@ -1266,7 +1485,9 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                     </div>
                   )
                 ) : (
-                  <span className="text-[#5C5549] dark:text-slate-400 text-xs">لا يوجد قارئ مسجل بعد</span>
+                  <span className="text-[#5C5549] dark:text-slate-400 text-xs">
+                    {t('لا يوجد قارئ مسجل بعد', 'No reader registered yet')}
+                  </span>
                 )}
               </div>
 
@@ -1281,7 +1502,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                     className="flex-1 min-h-[40px] py-2 px-3 rounded-xl bg-[#1f3a6e] hover:bg-[#274888] text-white font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>احجز هذا الجزء</span>
+                    <span>{t('احجز هذا الجزء', 'Claim This Juz')}</span>
                   </button>
                 ) : (
                   <>
@@ -1291,8 +1512,11 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                       disabled={!canManageThisPart}
                       title={
                         canManageThisPart
-                          ? 'تحديث حالة الإتمام'
-                          : 'متاح لصاحب الحجز (من متصفحه) أو المشرف'
+                          ? t('تحديث حالة الإتمام', 'Toggle completion status')
+                          : t(
+                              'متاح لصاحب الحجز (من متصفحه) أو المشرف',
+                              'Only available to the claimer (same browser) or admin'
+                            )
                       }
                       className={`flex-1 min-h-[40px] py-2 px-3 rounded-xl font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors ${
                         !canManageThisPart
@@ -1303,7 +1527,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                       }`}
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>{isDone ? 'إلغاء الإتمام' : 'تمت القراءة'}</span>
+                      <span>{isDone ? t('إلغاء الإتمام', 'Undo Done') : t('تمت القراءة', 'Mark Read')}</span>
                     </button>
 
                     {canManageThisPart && (
@@ -1312,8 +1536,12 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                         onClick={() =>
                           handleOpenConfirmModal(isAdminMode ? 'admin-release' : 'withdraw', part.juzNumber)
                         }
-                        aria-label={`إخلاء الجزء ${part.juzNumber}`}
-                        title={isAdminMode ? 'إخلاء الجزء (المشرف)' : 'الاعتذار والانسحاب'}
+                        aria-label={t(`إخلاء الجزء ${part.juzNumber}`, `Release Juz ${part.juzNumber}`)}
+                        title={
+                          isAdminMode
+                            ? t('إخلاء الجزء (المشرف)', 'Release Juz (Admin)')
+                            : t('الاعتذار والانسحاب', 'Release Reservation')
+                        }
                         className="min-h-[40px] min-w-[40px] p-2 rounded-xl bg-[#EFE6D1] dark:bg-slate-950 border border-[#8A6418]/20 dark:border-slate-800 text-[#5C5549] dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-500/40 transition-colors flex items-center justify-center cursor-pointer"
                       >
                         {isAdminMode ? <X className="w-4 h-4" /> : <UserMinus className="w-4 h-4" />}
@@ -1323,7 +1551,10 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                     <button
                       type="button"
                       onClick={() => handleOpenWhatsAppReminderModal(part)}
-                      aria-label={`تذكير قارئ الجزء ${part.juzNumber} عبر واتساب`}
+                      aria-label={t(
+                        `تذكير قارئ الجزء ${part.juzNumber} عبر واتساب`,
+                        `Remind Juz ${part.juzNumber} reader on WhatsApp`
+                      )}
                       className="min-h-[40px] min-w-[40px] p-2 rounded-xl bg-[#EFE6D1] dark:bg-slate-950 border border-[#8A6418]/20 dark:border-slate-800 text-[#5C5549] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white hover:border-[#8A6418]/45 dark:hover:border-slate-600 transition-colors flex items-center justify-center cursor-pointer"
                     >
                       <MessageCircle className="w-4 h-4" />
@@ -1335,7 +1566,10 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                   <button
                     type="button"
                     onClick={() => onNavigateToJuz(part.juzNumber)}
-                    aria-label={`قراءة الجزء ${part.juzNumber} في المصحف`}
+                    aria-label={t(
+                      `قراءة الجزء ${part.juzNumber} في المصحف`,
+                      `Read Juz ${part.juzNumber} in the Mus'haf`
+                    )}
                     className="min-h-[40px] min-w-[40px] p-2 rounded-xl bg-[#EFE6D1] dark:bg-slate-950 border border-[#8A6418]/20 dark:border-slate-800 text-[#5C5549] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white hover:border-[#8A6418]/45 dark:hover:border-slate-600 transition-colors flex items-center justify-center cursor-pointer"
                   >
                     <BookOpen className="w-4 h-4" />
@@ -1354,11 +1588,13 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
             <div className="flex items-center justify-between pb-3 border-b border-[#8A6418]/15 dark:border-slate-800">
               <div className="flex items-center gap-2 text-[#8A6418] dark:text-[#d9b45a] font-bold">
                 <BookOpen className="w-4 h-4" />
-                <h3 className="text-base text-[#1B1A17] dark:text-white">حجز قراءة الجزء {claimModalJuz}</h3>
+                <h3 className="text-base text-[#1B1A17] dark:text-white">
+                  {t(`حجز قراءة الجزء ${claimModalJuz}`, `Reserve ${getJuzLabel(claimModalJuz, lang)}`)}
+                </h3>
               </div>
               <button
                 type="button"
-                aria-label="إغلاق"
+                aria-label={t('إغلاق', 'Close')}
                 onClick={() => setClaimModalJuz(null)}
                 className="min-h-[36px] min-w-[36px] p-1 text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white rounded-lg hover:bg-[#EFE6D1] dark:hover:bg-slate-800 flex items-center justify-center cursor-pointer"
               >
@@ -1367,11 +1603,16 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
             </div>
 
             <p className="text-xs text-[#5C5549] dark:text-slate-300 leading-relaxed">
-              اكتب اسمك لحجز هذا الجزء. سيحفظ هذا المتصفح مفتاحاً خاصاً لتمكينك وحدك من تأكيد إتمام القراءة أو الاعتذار لاحقاً.
+              {t(
+                'اكتب اسمك لحجز هذا الجزء. سيحفظ هذا المتصفح مفتاحاً خاصاً لتمكينك وحدك من تأكيد إتمام القراءة أو الاعتذار لاحقاً.',
+                'Enter your name to reserve this Juz. Your browser saves a private token so only you can mark it complete or release it later.'
+              )}
             </p>
 
             <div>
-              <label className="text-xs font-semibold text-[#1B1A17] dark:text-slate-200 block mb-1.5">اسم القارئ:</label>
+              <label className="text-xs font-semibold text-[#1B1A17] dark:text-slate-200 block mb-1.5">
+                {t('اسم القارئ:', 'Reader Name:')}
+              </label>
               <input
                 type="text"
                 value={claimNameInput}
@@ -1379,7 +1620,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleConfirmClaim();
                 }}
-                placeholder="مثال: محمد، أم أحمد، فاعل خير..."
+                placeholder={t('مثال: محمد، أم أحمد، فاعل خير...', 'e.g. Muhammad, Umm Ahmad, Well-Wisher...')}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-950 border border-[#8A6418]/25 dark:border-slate-800 focus:border-[#8A6418] dark:focus:border-[#d9b45a] text-sm text-[#1B1A17] dark:text-white outline-none"
                 autoFocus
               />
@@ -1391,7 +1632,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                 onClick={() => setClaimModalJuz(null)}
                 className="min-h-[40px] py-2 px-4 rounded-xl text-xs text-[#5C5549] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white cursor-pointer"
               >
-                إلغاء
+                {t('إلغاء', 'Cancel')}
               </button>
               <button
                 type="button"
@@ -1399,7 +1640,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                 className="min-h-[40px] py-2 px-5 rounded-xl bg-[#1f3a6e] hover:bg-[#274888] text-white font-semibold text-xs flex items-center gap-1.5 cursor-pointer"
               >
                 <Check className="w-4 h-4" />
-                <span>تأكيد الحجز</span>
+                <span>{t('تأكيد الحجز', 'Confirm Reservation')}</span>
               </button>
             </div>
           </div>
@@ -1416,7 +1657,9 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
               </div>
               <div>
                 <h3 className="text-base font-bold text-[#1B1A17] dark:text-white">{confirmModalConfig.title}</h3>
-                <p className="text-xs text-[#5C5549] dark:text-slate-400 mt-0.5">يرجى التأكيد للمتابعة</p>
+                <p className="text-xs text-[#5C5549] dark:text-slate-400 mt-0.5">
+                  {t('يرجى التأكيد للمتابعة', 'Please confirm to continue')}
+                </p>
               </div>
             </div>
             <p className="text-xs sm:text-sm text-[#1B1A17] dark:text-slate-200 leading-relaxed bg-[#EFE6D1] dark:bg-slate-950 p-3.5 rounded-xl border border-[#8A6418]/20 dark:border-slate-800">
@@ -1428,14 +1671,14 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                 onClick={() => setConfirmModalConfig((prev) => ({ ...prev, isOpen: false }))}
                 className="min-h-[40px] py-2 px-4 rounded-xl text-xs text-[#5C5549] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white cursor-pointer"
               >
-                تراجع
+                {t('تراجع', 'Cancel')}
               </button>
               <button
                 type="button"
                 onClick={handleExecuteConfirm}
                 className="min-h-[40px] py-2 px-5 rounded-xl bg-rose-700 hover:bg-rose-600 text-white font-semibold text-xs cursor-pointer"
               >
-                تأكيد الإجراء
+                {t('تأكيد الإجراء', 'Confirm')}
               </button>
             </div>
           </div>
@@ -1453,7 +1696,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
               </div>
               <button
                 type="button"
-                aria-label="إغلاق"
+                aria-label={t('إغلاق', 'Close')}
                 onClick={() => setWhatsAppModalConfig((prev) => ({ ...prev, isOpen: false }))}
                 className="min-h-[36px] min-w-[36px] p-1 text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white rounded-lg hover:bg-[#EFE6D1] dark:hover:bg-slate-800 flex items-center justify-center cursor-pointer"
               >
@@ -1468,12 +1711,12 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                 type="button"
                 onClick={() => {
                   copyToClipboard(whatsAppModalConfig.message);
-                  showToast('تم نسخ نص الرسالة');
+                  showToast(t('تم نسخ نص الرسالة', 'Message copied'));
                 }}
                 className="min-h-[40px] py-2 px-3 rounded-xl bg-[#EFE6D1] hover:bg-[#E4D7BA] dark:bg-slate-800 dark:hover:bg-slate-700 text-[#1B1A17] dark:text-slate-200 text-xs flex items-center gap-1.5 cursor-pointer"
               >
                 <Copy className="w-3.5 h-3.5" />
-                <span>نسخ النص</span>
+                <span>{t('نسخ النص', 'Copy Text')}</span>
               </button>
               <a
                 href={whatsAppModalConfig.whatsAppUrl}
@@ -1483,7 +1726,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                 className="min-h-[40px] py-2 px-5 rounded-xl bg-[#1f3a6e] hover:bg-[#274888] text-white font-semibold text-xs flex items-center gap-2"
               >
                 <ExternalLink className="w-4 h-4" />
-                <span>فتح واتساب</span>
+                <span>{t('فتح واتساب', 'Open WhatsApp')}</span>
               </a>
             </div>
           </div>
@@ -1495,10 +1738,12 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
         <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
           <div className="relative w-full max-w-md bg-[#FBF7EE] dark:bg-slate-900 border border-[#8A6418]/30 dark:border-slate-800 rounded-2xl shadow-2xl p-5 sm:p-6 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-[#8A6418]/15 dark:border-slate-800">
-              <h3 className="text-base font-bold text-[#1B1A17] dark:text-white">تعديل نية الختمة</h3>
+              <h3 className="text-base font-bold text-[#1B1A17] dark:text-white">
+                {t('تعديل نية الختمة', 'Edit Khatma Dedication')}
+              </h3>
               <button
                 type="button"
-                aria-label="إغلاق"
+                aria-label={t('إغلاق', 'Close')}
                 onClick={() => setIsDedicationModalOpen(false)}
                 className="min-h-[36px] min-w-[36px] p-1 text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white rounded-lg hover:bg-[#EFE6D1] dark:hover:bg-slate-800 flex items-center justify-center cursor-pointer"
               >
@@ -1507,7 +1752,9 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
             </div>
             <div className="space-y-3 text-xs">
               <div>
-                <label className="font-semibold text-[#1B1A17] dark:text-slate-300 block mb-1">عنوان ونية الختمة:</label>
+                <label className="font-semibold text-[#1B1A17] dark:text-slate-300 block mb-1">
+                  {t('عنوان ونية الختمة:', 'Khatma Title & Dedication:')}
+                </label>
                 <input
                   type="text"
                   value={tempTitleInput}
@@ -1516,7 +1763,9 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                 />
               </div>
               <div>
-                <label className="font-semibold text-[#1B1A17] dark:text-slate-300 block mb-1">اسم المنشئ:</label>
+                <label className="font-semibold text-[#1B1A17] dark:text-slate-300 block mb-1">
+                  {t('اسم المنشئ:', 'Organizer Name:')}
+                </label>
                 <input
                   type="text"
                   value={tempCreatorInput}
@@ -1525,7 +1774,9 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                 />
               </div>
               <div>
-                <label className="font-semibold text-[#1B1A17] dark:text-slate-300 block mb-1">المدة المستهدفة (أيام):</label>
+                <label className="font-semibold text-[#1B1A17] dark:text-slate-300 block mb-1">
+                  {t('المدة المستهدفة (أيام):', 'Target Duration (Days):')}
+                </label>
                 <input
                   type="number"
                   min={1}
@@ -1542,7 +1793,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                 onClick={() => setIsDedicationModalOpen(false)}
                 className="min-h-[40px] py-2 px-4 rounded-xl text-xs text-[#5C5549] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white cursor-pointer"
               >
-                إلغاء
+                {t('إلغاء', 'Cancel')}
               </button>
               <button
                 type="button"
@@ -1550,7 +1801,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                 className="min-h-[40px] py-2 px-5 rounded-xl bg-[#1f3a6e] hover:bg-[#274888] text-white font-semibold text-xs flex items-center gap-1.5 cursor-pointer"
               >
                 <Check className="w-4 h-4" />
-                <span>حفظ التعديلات</span>
+                <span>{t('حفظ التعديلات', 'Save Changes')}</span>
               </button>
             </div>
           </div>
@@ -1564,11 +1815,13 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
             <div className="flex items-center justify-between pb-3 border-b border-[#8A6418]/15 dark:border-slate-800">
               <div className="flex items-center gap-2 text-[#8A6418] dark:text-[#d9b45a] font-bold">
                 <ShieldCheck className="w-5 h-5" />
-                <h3 className="text-base text-[#1B1A17] dark:text-white">صلاحية مشرف الغرفة</h3>
+                <h3 className="text-base text-[#1B1A17] dark:text-white">
+                  {t('صلاحية مشرف الغرفة', 'Room Admin Access')}
+                </h3>
               </div>
               <button
                 type="button"
-                aria-label="إغلاق"
+                aria-label={t('إغلاق', 'Close')}
                 onClick={() => setIsAdminUnlockOpen(false)}
                 className="min-h-[36px] min-w-[36px] p-1 text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white rounded-lg hover:bg-[#EFE6D1] dark:hover:bg-slate-800 flex items-center justify-center cursor-pointer"
               >
@@ -1577,7 +1830,10 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
             </div>
 
             <p className="text-xs text-[#5C5549] dark:text-slate-300 leading-relaxed">
-              ألصق مفتاح المشرف السري (128-bit) أو رابط المشرف الكامل لفتح صلاحيات تعديل الأسماء وإدارة الأجزاء.
+              {t(
+                'ألصق مفتاح المشرف السري (128-bit) أو رابط المشرف الكامل لفتح صلاحيات تعديل الأسماء وإدارة الأجزاء.',
+                'Paste the 128-bit secret admin key or full admin link to unlock reader editing and room management.'
+              )}
             </p>
 
             {adminUnlockError && (
@@ -1588,7 +1844,9 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
             )}
 
             <div>
-              <label className="text-xs font-semibold text-[#1B1A17] dark:text-slate-200 block mb-1.5">المفتاح السري أو رابط المشرف:</label>
+              <label className="text-xs font-semibold text-[#1B1A17] dark:text-slate-200 block mb-1.5">
+                {t('المفتاح السري أو رابط المشرف:', 'Secret Key or Admin Link:')}
+              </label>
               <input
                 type="password"
                 dir="ltr"
@@ -1600,7 +1858,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleVerifyAdminKey();
                 }}
-                placeholder="ألصق المفتاح أو الرابط السري هنا..."
+                placeholder={t('ألصق المفتاح أو الرابط السري هنا...', 'Paste secret key or admin URL here...')}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-950 border border-[#8A6418]/25 dark:border-slate-800 focus:border-[#8A6418] dark:focus:border-[#d9b45a] text-sm text-[#1B1A17] dark:text-white outline-none font-mono"
                 autoFocus
               />
@@ -1612,7 +1870,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                 onClick={() => setIsAdminUnlockOpen(false)}
                 className="min-h-[40px] py-2 px-4 rounded-xl text-xs text-[#5C5549] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white cursor-pointer"
               >
-                إلغاء
+                {t('إلغاء', 'Cancel')}
               </button>
               <button
                 type="button"
@@ -1620,7 +1878,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                 className="min-h-[40px] py-2 px-5 rounded-xl bg-[#d9b45a] hover:bg-[#e3c270] text-[#1b1a17] font-bold text-xs flex items-center gap-1.5 cursor-pointer"
               >
                 <Check className="w-4 h-4" />
-                <span>تفعيل صلاحية المشرف</span>
+                <span>{t('تفعيل صلاحية المشرف', 'Enable Admin Mode')}</span>
               </button>
             </div>
           </div>
@@ -1634,11 +1892,13 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
             <div className="flex items-center justify-between pb-3 border-b border-[#8A6418]/15 dark:border-slate-800">
               <div className="flex items-center gap-2 text-[#8A6418] dark:text-[#d9b45a] font-bold">
                 <Key className="w-5 h-5" />
-                <h3 className="text-base text-[#1B1A17] dark:text-white">احفظ رابط المشرف السري للختمة</h3>
+                <h3 className="text-base text-[#1B1A17] dark:text-white">
+                  {t('احفظ رابط المشرف السري للختمة', 'Save Your Secret Khatma Admin Link')}
+                </h3>
               </div>
               <button
                 type="button"
-                aria-label="إغلاق"
+                aria-label={t('إغلاق', 'Close')}
                 onClick={() => setCreatedAdminInfo(null)}
                 className="min-h-[36px] min-w-[36px] p-1 text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white rounded-lg hover:bg-[#EFE6D1] dark:hover:bg-slate-800 flex items-center justify-center cursor-pointer"
               >
@@ -1647,12 +1907,17 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
             </div>
 
             <p className="text-xs text-[#1B1A17] dark:text-slate-200 leading-relaxed">
-              تم إنشاء الغرفة «{createdAdminInfo.title}» وتأمينها بمفتاح سري عشوائي. يُحفظ هذا الرابط في متصفحك تلقائياً، ولكن يُنصح بنسخه وحفظه لإدارة الغرفة من أي جهاز آخر دون مشاركته مع القراء.
+              {t(
+                `تم إنشاء الغرفة «${createdAdminInfo.title}» وتأمينها بمفتاح سري عشوائي. يُحفظ هذا الرابط في متصفحك تلقائياً، ولكن يُنصح بنسخه وحفظه لإدارة الغرفة من أي جهاز آخر دون مشاركته مع القراء.`,
+                `Room "${createdAdminInfo.title}" has been created and secured with a random secret key. It is saved in this browser automatically, and you should copy it to manage the room from another device without sharing it with readers.`
+              )}
             </p>
 
             <div className="space-y-2.5 text-xs">
               <div className="p-3 rounded-xl bg-[#EFE6D1] dark:bg-slate-950 border border-[#8A6418]/20 dark:border-slate-800 space-y-2">
-                <div className="font-semibold text-[#5C5549] dark:text-slate-300">١. رابط المشاركة العام للقراء:</div>
+                <div className="font-semibold text-[#5C5549] dark:text-slate-300">
+                  {t('١. رابط المشاركة العام للقراء:', '1. Public Share Link for Readers:')}
+                </div>
                 <div className="flex items-center gap-2">
                   <code dir="ltr" className="flex-1 text-[11px] text-[#1B1A17] dark:text-slate-300 truncate bg-white dark:bg-slate-900 px-2.5 py-2 rounded-lg">
                     {getKhatmaShareUrl()}
@@ -1662,13 +1927,15 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                     onClick={handleCopyLink}
                     className="min-h-[36px] px-3 py-1.5 rounded-lg bg-[#1f3a6e] hover:bg-[#274888] text-white font-semibold cursor-pointer shrink-0"
                   >
-                    نسخ
+                    {t('نسخ', 'Copy')}
                   </button>
                 </div>
               </div>
 
               <div className="p-3 rounded-xl bg-[#EFE6D1] dark:bg-slate-950 border border-[#8A6418]/40 dark:border-[#d9b45a]/40 space-y-2">
-                <div className="font-semibold text-[#8A6418] dark:text-[#d9b45a]">٢. رابط المشرف السري (لك فقط):</div>
+                <div className="font-semibold text-[#8A6418] dark:text-[#d9b45a]">
+                  {t('٢. رابط المشرف السري (لك فقط):', '2. Secret Admin Link (Private — Keep Safe):')}
+                </div>
                 <div className="flex items-center gap-2">
                   <code dir="ltr" className="flex-1 text-[11px] text-[#1B1A17] dark:text-[#f6efdd] truncate bg-white dark:bg-slate-900 px-2.5 py-2 rounded-lg">
                     {getKhatmaAdminSecretUrl(createdAdminInfo.roomId, createdAdminInfo.adminKey)}
@@ -1679,11 +1946,11 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                       const ok = await copyToClipboard(
                         getKhatmaAdminSecretUrl(createdAdminInfo.roomId, createdAdminInfo.adminKey)
                       );
-                      if (ok) showToast('تم نسخ رابط المشرف السري');
+                      if (ok) showToast(t('تم نسخ رابط المشرف السري', 'Secret admin link copied'));
                     }}
                     className="min-h-[36px] px-3 py-1.5 rounded-lg bg-[#d9b45a] hover:bg-[#e3c270] text-[#1b1a17] font-bold cursor-pointer shrink-0"
                   >
-                    نسخ السري
+                    {t('نسخ السري', 'Copy Secret')}
                   </button>
                 </div>
               </div>
@@ -1695,7 +1962,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                 onClick={() => setCreatedAdminInfo(null)}
                 className="min-h-[40px] py-2 px-5 rounded-xl bg-[#EFE6D1] hover:bg-[#E4D7BA] dark:bg-slate-800 dark:hover:bg-slate-700 text-[#1B1A17] dark:text-white text-xs font-semibold cursor-pointer"
               >
-                تم الحفظ والمتابعة
+                {t('تم الحفظ والمتابعة', 'Saved & Continue')}
               </button>
             </div>
           </div>
@@ -1709,11 +1976,11 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
             <div className="flex items-center justify-between border-b border-[#8A6418]/15 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2 text-[#8A6418] dark:text-[#d9b45a] font-bold text-sm">
                 <Users className="w-4 h-4" />
-                <span>إنشاء ختمة خاصة غير مدرجة</span>
+                <span>{t('إنشاء ختمة خاصة غير مدرجة', 'Create Unlisted Private Khatma')}</span>
               </div>
               <button
                 type="button"
-                aria-label="إغلاق"
+                aria-label={t('إغلاق', 'Close')}
                 onClick={() => setIsCreateRoomOpen(false)}
                 className="min-h-[36px] min-w-[36px] p-1 rounded-lg text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white hover:bg-[#EFE6D1] dark:hover:bg-slate-800 flex items-center justify-center cursor-pointer"
               >
@@ -1722,7 +1989,10 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
             </div>
 
             <p className="text-xs text-[#5C5549] dark:text-slate-300 leading-relaxed">
-              لن تظهر الغرفة الخاصة في القوائم العامة، ولا يمكن الوصول إليها إلا عبر رابطها العشوائي الآمن، مع توليد مفتاح مشرف سري تلقائياً.
+              {t(
+                'لن تظهر الغرفة الخاصة في القوائم العامة، ولا يمكن الوصول إليها إلا عبر رابطها العشوائي الآمن، مع توليد مفتاح مشرف سري تلقائياً.',
+                'Private rooms do not appear in public directories and are only accessible via their random secure link, with an automatic secret admin key.'
+              )}
             </p>
 
             {createRoomError && (
@@ -1734,29 +2004,35 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="font-semibold text-[#1B1A17] dark:text-slate-200 block mb-1">نية وعنوان الختمة:</label>
+                <label className="font-semibold text-[#1B1A17] dark:text-slate-200 block mb-1">
+                  {t('نية وعنوان الختمة:', 'Khatma Title & Dedication:')}
+                </label>
                 <input
                   type="text"
                   value={newRoomTitle}
                   onChange={(e) => setNewRoomTitle(e.target.value)}
-                  placeholder="مثال: ختمة عائلة آل فلان"
+                  placeholder={t('مثال: ختمة عائلة آل فلان', 'e.g. Family Weekly Khatma')}
                   className="w-full px-3 py-2.5 rounded-xl bg-white dark:bg-slate-950 border border-[#8A6418]/25 dark:border-slate-800 focus:border-[#8A6418] dark:focus:border-[#d9b45a] text-[#1B1A17] dark:text-white outline-none"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="font-semibold text-[#1B1A17] dark:text-slate-200 block mb-1">اسم المنشئ:</label>
+                  <label className="font-semibold text-[#1B1A17] dark:text-slate-200 block mb-1">
+                    {t('اسم المنشئ:', 'Organizer Name:')}
+                  </label>
                   <input
                     type="text"
                     value={newRoomCreator}
                     onChange={(e) => setNewRoomCreator(e.target.value)}
-                    placeholder="أبو عبد الله"
+                    placeholder={t('أبو عبد الله', 'Abu Abdullah')}
                     className="w-full px-3 py-2.5 rounded-xl bg-white dark:bg-slate-950 border border-[#8A6418]/25 dark:border-slate-800 focus:border-[#8A6418] dark:focus:border-[#d9b45a] text-[#1B1A17] dark:text-white outline-none"
                   />
                 </div>
                 <div>
-                  <label className="font-semibold text-[#1B1A17] dark:text-slate-200 block mb-1">المدة (أيام):</label>
+                  <label className="font-semibold text-[#1B1A17] dark:text-slate-200 block mb-1">
+                    {t('المدة (أيام):', 'Duration (Days):')}
+                  </label>
                   <input
                     type="number"
                     min={1}
@@ -1769,13 +2045,15 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
               </div>
 
               <div>
-                <label className="font-semibold text-[#5C5549] dark:text-slate-300 block mb-1">معرّف مخصص (اختياري بالإنجليزية، 6+ أحرف):</label>
+                <label className="font-semibold text-[#5C5549] dark:text-slate-300 block mb-1">
+                  {t('معرّف مخصص (اختياري بالإنجليزية، 6+ أحرف):', 'Custom Slug (optional, 6+ alphanumeric chars):')}
+                </label>
                 <input
                   type="text"
                   dir="ltr"
                   value={newRoomSlug}
                   onChange={(e) => setNewRoomSlug(e.target.value)}
-                  placeholder="يترك فارغاً لتوليد رابط عشوائي سري (موصى به)"
+                  placeholder={t('يترك فارغاً لتوليد رابط عشوائي سري (موصى به)', 'Leave blank for a random secret slug (recommended)')}
                   className="w-full px-3 py-2.5 rounded-xl bg-white dark:bg-slate-950 border border-[#8A6418]/25 dark:border-slate-800 focus:border-[#8A6418] dark:focus:border-[#d9b45a] text-[#1B1A17] dark:text-white font-mono outline-none"
                 />
               </div>
@@ -1787,7 +2065,7 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                 onClick={() => setIsCreateRoomOpen(false)}
                 className="min-h-[40px] py-2 px-4 rounded-xl text-xs text-[#5C5549] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white cursor-pointer"
               >
-                إلغاء
+                {t('إلغاء', 'Cancel')}
               </button>
               <button
                 type="button"
@@ -1796,7 +2074,11 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
                 className="min-h-[40px] py-2 px-5 rounded-xl bg-[#1f3a6e] hover:bg-[#274888] disabled:opacity-60 text-white font-semibold text-xs flex items-center gap-1.5 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                <span>{isCreatingRoom ? 'جارٍ الإنشاء...' : 'إنشاء الغرفة'}</span>
+                <span>
+                  {isCreatingRoom
+                    ? t('جارٍ الإنشاء...', 'Creating...')
+                    : t('إنشاء الغرفة', 'Create Room')}
+                </span>
               </button>
             </div>
           </div>

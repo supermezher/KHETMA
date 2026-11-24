@@ -98,3 +98,4 @@ describe('Media Session lock-screen metadata payload', () => {
     expect(payload.artist).toBe('الشيخ');
   });
 });
+

@@ -269,5 +269,48 @@ describe('Memorization Loop single-ayah playback & repeat transitions', () => {
       })
     ).toEqual({ type: 'advance-next-ayah', nextAyahNumber: 3 });
   });
+
+  it('advances smoothly to the next Surah at Surah end only when continuous Mushaf recitation is enabled', () => {
+    expect(
+      resolveAudioEndedTransition({
+        stopAfterAyahMode: false,
+        memorizationRepeatTarget: 1,
+        repeatMode: 'none',
+        currentRepeatCount: 1,
+        currentAyahNumber: 4,
+        totalAyahs: 4,
+        surahNumber: 112,
+        canAdvanceNextSurah: true,
+      })
+    ).toEqual({ type: 'advance-next-surah', nextSurahNumber: 113 });
+
+    // Stops cleanly at the final Surah (An-Nas 114)
+    expect(
+      resolveAudioEndedTransition({
+        stopAfterAyahMode: false,
+        memorizationRepeatTarget: 1,
+        repeatMode: 'none',
+        currentRepeatCount: 1,
+        currentAyahNumber: 6,
+        totalAyahs: 6,
+        surahNumber: 114,
+        canAdvanceNextSurah: true,
+      })
+    ).toEqual({ type: 'stop' });
+
+    // Never advances Surah in Memorization mode even if canAdvanceNextSurah is passed
+    expect(
+      resolveAudioEndedTransition({
+        stopAfterAyahMode: true,
+        memorizationRepeatTarget: 1,
+        repeatMode: 'none',
+        currentRepeatCount: 1,
+        currentAyahNumber: 4,
+        totalAyahs: 4,
+        surahNumber: 112,
+        canAdvanceNextSurah: true,
+      })
+    ).toEqual({ type: 'stop' });
+  });
 });
 

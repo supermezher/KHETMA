@@ -4,9 +4,9 @@ import {
   PenLine, Search, ChevronDown,
   ShieldCheck, Flame, Maximize2,
   Menu, X, AlertCircle, RefreshCw, AlertTriangle, Sprout,
-  Sun, Moon, Globe
+  Sun, Moon, Globe, Languages
 } from 'lucide-react';
-import { SURAHS_LIST } from './data/quranMetadata';
+import { SURAHS_LIST, getRevelationTypeLabel } from './data/quranMetadata';
 import {
   SurahData,
   Ayah,
@@ -28,7 +28,7 @@ import { Reciter, RECITERS_LIST } from './data/reciters';
 import { safeLocalStorage } from './utils/safeStorage';
 import { idbGet, idbSet } from './utils/quranIndexedDb';
 import { BayanUserBackup, READER_PREFS_KEY, sanitizeJournalNotesList } from './utils/userBackup';
-import { toArabicIndic } from './components/khatma/KhatmaRing';
+import { formatLocalizedDigits, LanguageProvider, useLanguage } from './utils/i18n';
 import {
   getDailyWirdSummary,
   KhatmaPlan,
@@ -64,12 +64,47 @@ const RuqyahSection = lazy(() => import('./components/RuqyahSection').then((m) =
 const KidsHifzSection = lazy(() => import('./components/KidsHifzSection').then((m) => ({ default: m.KidsHifzSection })));
 const TranslationsSection = lazy(() => import('./components/TranslationsSection').then((m) => ({ default: m.TranslationsSection })));
 
-const SectionLoadingFallback: React.FC = () => (
-  <div className="p-16 text-center rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f]/60 border border-[#D9B45A]/25 dark:border-slate-800 flex flex-col items-center justify-center space-y-3">
-    <div className="w-10 h-10 rounded-full border-2 border-[#D9B45A] border-t-transparent animate-spin" />
-    <p className="text-xs text-[#5C5549] dark:text-slate-300 font-medium">جارٍ تجهيز القسم…</p>
-  </div>
-);
+const SectionLoadingFallback: React.FC = () => {
+  const { t } = useLanguage();
+  return (
+    <div className="p-16 text-center rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f]/60 border border-[#D9B45A]/25 dark:border-slate-800 flex flex-col items-center justify-center space-y-3">
+      <div className="w-10 h-10 rounded-full border-2 border-[#D9B45A] border-t-transparent animate-spin" />
+      <p className="text-xs text-[#5C5549] dark:text-slate-300 font-medium">
+        {t('جارٍ تجهيز القسم…', 'Loading section…')}
+      </p>
+    </div>
+  );
+};
+
+const LazySectionErrorCard: React.FC<{ onRetry: () => void }> = ({ onRetry }) => {
+  const { t } = useLanguage();
+  return (
+    <div className="p-10 text-center rounded-2xl bg-rose-50 dark:bg-rose-950/20 border border-rose-500/30 flex flex-col items-center justify-center space-y-4 max-w-lg mx-auto my-8 shadow-2xl">
+      <div className="w-12 h-12 rounded-2xl bg-rose-500/15 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+        <AlertCircle className="w-6 h-6" />
+      </div>
+      <div className="space-y-1">
+        <h3 className="text-base font-bold text-[#1B1A17] dark:text-[#F6EFDD]">
+          {t('تعذر فتح هذا القسم', 'Unable to open this section')}
+        </h3>
+        <p className="text-xs text-[#5C5549] dark:text-slate-300 leading-relaxed">
+          {t(
+            'قد يكون السبب انقطاع الاتصال أثناء تحميل ملفات القسم لأول مرة.',
+            'This may be due to a network interruption while loading section files.'
+          )}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="min-h-[42px] py-2.5 px-6 rounded-xl bg-[#1F3A6E] hover:bg-[#2E5499] border border-[#648CD4]/45 text-[#F6EFDD] font-bold text-xs flex items-center gap-2 shadow-lg transition-all cursor-pointer"
+      >
+        <RefreshCw className="w-4 h-4" />
+        <span>{t('إعادة المحاولة', 'Try Again')}</span>
+      </button>
+    </div>
+  );
+};
 
 interface LazySectionBoundaryProps {
   resetKey: string;
@@ -99,27 +134,7 @@ class LazySectionBoundary extends Component<LazySectionBoundaryProps, LazySectio
 
   render() {
     if (this.state.hasError) {
-      return (
-        <div className="p-10 text-center rounded-2xl bg-rose-50 dark:bg-rose-950/20 border border-rose-500/30 flex flex-col items-center justify-center space-y-4 max-w-lg mx-auto my-8 shadow-2xl">
-          <div className="w-12 h-12 rounded-2xl bg-rose-500/15 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 flex items-center justify-center">
-            <AlertCircle className="w-6 h-6" />
-          </div>
-          <div className="space-y-1">
-            <h3 className="text-base font-bold text-[#1B1A17] dark:text-[#F6EFDD]">تعذر فتح هذا القسم</h3>
-            <p className="text-xs text-[#5C5549] dark:text-slate-300 leading-relaxed">
-              قد يكون السبب انقطاع الاتصال أثناء تحميل ملفات القسم لأول مرة.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => this.setState({ hasError: false })}
-            className="min-h-[42px] py-2.5 px-6 rounded-xl bg-[#1F3A6E] hover:bg-[#2E5499] border border-[#648CD4]/45 text-[#F6EFDD] font-bold text-xs flex items-center gap-2 shadow-lg transition-all cursor-pointer"
-          >
-            <RefreshCw className="w-4 h-4" />
-            <span>إعادة المحاولة</span>
-          </button>
-        </div>
-      );
+      return <LazySectionErrorCard onRetry={() => this.setState({ hasError: false })} />;
     }
     return this.props.children;
   }
@@ -172,7 +187,8 @@ type ActiveView =
   | 'journal'
   | 'flutter-arch';
 
-export default function App() {
+function AppContent() {
+  const { lang, toggleLang, t } = useLanguage();
   const [activeView, setActiveView] = useState<ActiveView>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -218,6 +234,7 @@ export default function App() {
   const [memorizationPlaybackCycle, setMemorizationPlaybackCycle] = useState<PlaybackCycleEvent | null>(null);
   const [audioCurrentTime, setAudioCurrentTime] = useState<number>(0);
   const [audioDuration, setAudioDuration] = useState<number>(1);
+  const [audioPlaybackSpeed, setAudioPlaybackSpeed] = useState<number>(1);
   const [isTajweedActive, setIsTajweedActive] = useState<boolean>(() => {
     const prefs = safeLocalStorage.getJSON<{ isTajweedActive?: boolean }>(READER_PREFS_KEY, {});
     return typeof prefs?.isTajweedActive === 'boolean' ? prefs.isTajweedActive : true;
@@ -260,7 +277,7 @@ export default function App() {
     return sanitizeJournalNotesList(safeLocalStorage.getJSON<unknown[]>('bayan_journal_notes', []));
   });
 
-  // Pending target ayah when switching surah (stored in ref so clearing it never retriggers load effect)
+  // Pending target ayah & auto-play when switching surah (stored in refs so clearing never retriggers load effect)
   const pendingTargetAyahRef = useRef<number | null>(
     typeof window !== 'undefined'
       ? (() => {
@@ -269,6 +286,7 @@ export default function App() {
         })()
       : null
   );
+  const pendingAutoPlayRef = useRef<{ surahNumber: number; ayahNumber: number } | null>(null);
   const [surahReloadTrigger, setSurahReloadTrigger] = useState<number>(0);
 
   const [surahError, setSurahError] = useState<string | null>(null);
@@ -291,7 +309,13 @@ export default function App() {
 
     const handleStorageError = (e: Event) => {
       const detail = (e as CustomEvent<{ message?: string }>).detail;
-      setStorageWarning(detail?.message || 'تعذر حفظ التغييرات محلياً: قد تكون سعة التخزين ممتلئة.');
+      setStorageWarning(
+        detail?.message ||
+          t(
+            'تعذر حفظ التغييرات محلياً: قد تكون سعة التخزين ممتلئة.',
+            'Could not save changes locally: device storage may be full.'
+          )
+      );
     };
     const handleKhatmaSync = () => {
       setPersonalKhatmaPlan(loadPersonalKhatmaPlan());
@@ -416,13 +440,23 @@ export default function App() {
           }
           setIsLoadingSurah(false);
           setSurahError(null);
+
+          const pendingPlay = pendingAutoPlayRef.current;
+          if (pendingPlay && pendingPlay.surahNumber === data.meta.number) {
+            pendingAutoPlayRef.current = null;
+            setMemorizationCurrentRepeat(1);
+            setPlayTriggerNonce((n) => n + 1);
+            setIsPlayingAudio(true);
+            setIsAudioBarVisible(true);
+          }
         }
       })
       .catch((err) => {
         if (!isCancelled) {
           console.error('Failed loading surah:', err);
+          pendingAutoPlayRef.current = null;
           setIsLoadingSurah(false);
-          setSurahError(err.message || 'تعذر تحميل السورة الكريمة من الخادم');
+          setSurahError(err.message || t('تعذر تحميل السورة الكريمة من الخادم', 'Could not load the Surah from the server'));
         }
       });
 
@@ -491,7 +525,7 @@ export default function App() {
   const handleUpdateJournalNote = (ayahId: number, newText: string) => {
     const updated = journalNotes.map((n) =>
       n.ayahId === ayahId
-        ? { ...n, text: newText, date: new Date().toLocaleDateString('ar-SA') }
+        ? { ...n, text: newText, date: new Date().toLocaleDateString(lang === 'en' ? 'en-US' : 'ar-SA') }
         : n
     );
     setJournalNotes(updated);
@@ -529,12 +563,23 @@ export default function App() {
   };
 
   const handlePlayAyahAudio = (ayahNum: number, surahNum?: number) => {
-    if (surahNum && surahNum !== currentSurahNumber) {
+    const resolvedTargetSurah = surahNum ?? currentSurahNumber;
+    const isSurahLoaded = Boolean(surahData && surahData.meta.number === resolvedTargetSurah);
+
+    if (!isSurahLoaded) {
       pendingTargetAyahRef.current = ayahNum;
-      setCurrentSurahNumber(surahNum);
-    } else {
-      setActiveAyahNumber(ayahNum);
+      pendingAutoPlayRef.current = { surahNumber: resolvedTargetSurah, ayahNumber: ayahNum };
+      setIsPlayingAudio(false);
+      if (resolvedTargetSurah !== currentSurahNumber) {
+        setCurrentSurahNumber(resolvedTargetSurah);
+      }
+      setMemorizationCurrentRepeat(1);
+      setIsAudioBarVisible(true);
+      return;
     }
+
+    pendingAutoPlayRef.current = null;
+    setActiveAyahNumber(ayahNum);
     setMemorizationCurrentRepeat(1);
     setPlayTriggerNonce((n) => n + 1);
     setIsPlayingAudio(true);
@@ -557,8 +602,9 @@ export default function App() {
   const filteredSurahs = SURAHS_LIST.filter(s =>
     s.name.includes(surahSearchTerm) ||
     s.englishName.toLowerCase().includes(surahSearchTerm.toLowerCase()) ||
-    String(s.number) === surahSearchTerm ||
-    String(s.juzNumber) === surahSearchTerm
+    s.englishNameTranslation.toLowerCase().includes(surahSearchTerm.toLowerCase()) ||
+    String(s.number) === surahSearchTerm.trim() ||
+    String(s.juzNumber) === surahSearchTerm.trim()
   );
 
   const handleToggleAppTheme = () => {
@@ -584,7 +630,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => setStorageWarning(null)}
-            aria-label="إغلاق التنبيه"
+            aria-label={t('إغلاق التنبيه', 'Dismiss alert')}
             className="p-1 rounded-lg hover:bg-rose-200/60 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-200 cursor-pointer"
           >
             <X className="w-4 h-4" />
@@ -603,26 +649,26 @@ export default function App() {
                 setActiveView('mushaf');
                 setIsDesktopMoreOpen(false);
               }}
-              className="flex items-center gap-2.5 cursor-pointer group whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D9B45A] rounded-xl p-1 -mr-1"
+              className="flex items-center gap-2.5 cursor-pointer group whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D9B45A] rounded-xl p-1 -ms-1"
             >
               <span className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#1F3A6E] to-[#2E5499] border border-[#D9B45A]/45 flex items-center justify-center text-[#D9B45A] shadow-md font-bold text-lg font-kufi group-hover:scale-105 transition-transform">
                 ب
               </span>
               <span className="font-bold text-lg text-[#1B1A17] dark:text-[#F6EFDD] font-kufi tracking-tight">
-                بَيَان
+                {t('بَيَان', 'Bayan')}
               </span>
             </button>
 
             {/* Zone 2: Primary Desktop Navigation + Organized 2-Group Overflow Menu */}
             <nav
-              aria-label="التنقل الرئيسي"
+              aria-label={t('التنقل الرئيسي', 'Main navigation')}
               className="hidden lg:flex items-center gap-1 h-full"
             >
               {[
-                { id: 'mushaf', label: 'المصحف الشريف', icon: BookOpen },
-                { id: 'memorization', label: 'حلقة الحفظ', icon: Award },
-                { id: 'ruqyah', label: 'الرقية الشرعية', icon: ShieldCheck },
-                { id: 'khatma', label: 'الختمات', icon: Sparkles },
+                { id: 'mushaf', label: t('المصحف الشريف', "Mus'haf"), icon: BookOpen },
+                { id: 'memorization', label: t('حلقة الحفظ', 'Hifz Circle'), icon: Award },
+                { id: 'ruqyah', label: t('الرقية الشرعية', 'Ruqyah'), icon: ShieldCheck },
+                { id: 'khatma', label: t('الختمات', 'Khatmas'), icon: Sparkles },
               ].map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeView === tab.id;
@@ -649,21 +695,51 @@ export default function App() {
                 );
               })}
 
-              {/* Secondary Destinations Dropdown ("المزيد") — 2 Logical Groups */}
+              {/* Secondary Destinations Dropdown ("More") — 2 Logical Groups */}
               <div ref={desktopMoreRef} className="relative h-full flex items-center">
                 {(() => {
                   const learningTabs: { id: ActiveView; label: string; sub: string; icon: typeof Heart }[] = [
-                    { id: 'translations', label: 'ترجمات المعاني', sub: 'السويدية والإنجليزية ولغات أخرى', icon: Globe },
-                    { id: 'tajweed', label: 'موسوعة التجويد', sub: 'أحكام التلاوة والأمثلة والتطبيق', icon: HelpCircle },
-                    { id: 'kids', label: 'تحفيظ الصغار', sub: 'تلقين صوتي ونجوم للأطفال', icon: Sprout },
-                    { id: 'mood', label: 'القرآن حياتي', sub: 'آيات بحسب المشاعر والحال', icon: Heart },
+                    {
+                      id: 'translations',
+                      label: t('ترجمات المعاني', 'Translations'),
+                      sub: t('السويدية والإنجليزية ولغات أخرى', 'Swedish, English & more'),
+                      icon: Globe,
+                    },
+                    {
+                      id: 'tajweed',
+                      label: t('موسوعة التجويد', 'Tajweed Guide'),
+                      sub: t('أحكام التلاوة والأمثلة والتطبيق', 'Rules, examples & practice'),
+                      icon: HelpCircle,
+                    },
+                    {
+                      id: 'kids',
+                      label: t('تحفيظ الصغار', 'Kids Hifz'),
+                      sub: t('تلقين صوتي ونجوم للأطفال', 'Audio prompting & rewards'),
+                      icon: Sprout,
+                    },
+                    {
+                      id: 'mood',
+                      label: t('القرآن حياتي', 'Quran & Mood'),
+                      sub: t('آيات بحسب المشاعر والحال', 'Verses for your heart & state'),
+                      icon: Heart,
+                    },
                   ];
                   const trackingTabs: { id: ActiveView; label: string; sub: string; icon: typeof Heart }[] = [
-                    { id: 'analytics', label: 'سجل الختمات', sub: 'إحصاءات القراءة والنسخ الاحتياطي', icon: Calendar },
-                    { id: 'journal', label: 'مفكرتي والعلامات', sub: 'الخواطر وعلامات الوقف المحفوظة', icon: PenLine },
+                    {
+                      id: 'analytics',
+                      label: t('سجل الختمات', 'Reading Log'),
+                      sub: t('إحصاءات القراءة والنسخ الاحتياطي', 'Stats & local backups'),
+                      icon: Calendar,
+                    },
+                    {
+                      id: 'journal',
+                      label: t('مفكرتي والعلامات', 'Notes & Bookmarks'),
+                      sub: t('الخواطر وعلامات الوقف المحفوظة', 'Reflections & saved bookmarks'),
+                      icon: PenLine,
+                    },
                   ];
                   const allSecondary = [...learningTabs, ...trackingTabs];
-                  const activeSecondary = allSecondary.find((t) => t.id === activeView);
+                  const activeSecondary = allSecondary.find((tItem) => tItem.id === activeView);
                   return (
                     <>
                       <button
@@ -679,7 +755,7 @@ export default function App() {
                             : 'text-[#4A4338] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-[#F6EFDD]'
                         }`}
                       >
-                        <span>{activeSecondary ? activeSecondary.label : 'المزيد'}</span>
+                        <span>{activeSecondary ? activeSecondary.label : t('المزيد', 'More')}</span>
                         <ChevronDown
                           className={`w-3.5 h-3.5 transition-transform ${
                             isDesktopMoreOpen ? 'rotate-180' : ''
@@ -697,7 +773,7 @@ export default function App() {
                         >
                           <div className="space-y-0.5">
                             <div className="px-2.5 pt-1 pb-0.5 text-[10px] font-bold text-[#8A6418] dark:text-[#D9B45A]/90">
-                              التعلّم والتدبّر
+                              {t('التعلّم والتدبّر', 'Learning & Reflection')}
                             </div>
                             {learningTabs.map((item) => {
                               const Icon = item.icon;
@@ -711,7 +787,7 @@ export default function App() {
                                     setActiveView(item.id);
                                     setIsDesktopMoreOpen(false);
                                   }}
-                                  className={`w-full text-right p-2 rounded-xl flex items-center gap-3 transition-colors cursor-pointer ${
+                                  className={`w-full text-start p-2 rounded-xl flex items-center gap-3 transition-colors cursor-pointer ${
                                     isSelected
                                       ? 'bg-[#1F3A6E] dark:bg-[#1F3A6E]/60 text-[#F6EFDD] dark:text-[#D9B45A] border border-[#648CD4]/45'
                                       : 'text-[#1B1A17] dark:text-[#E9E3D3] hover:bg-[#EFE6D1] dark:hover:bg-slate-800/80 border border-transparent'
@@ -739,7 +815,7 @@ export default function App() {
 
                           <div className="border-t border-[#D9B45A]/20 dark:border-slate-800 pt-1.5 space-y-0.5">
                             <div className="px-2.5 pt-0.5 pb-0.5 text-[10px] font-bold text-[#1F3A6E] dark:text-[#648CD4]">
-                              المتابعة الشخصية
+                              {t('المتابعة الشخصية', 'Personal Tracking')}
                             </div>
                             {trackingTabs.map((item) => {
                               const Icon = item.icon;
@@ -753,7 +829,7 @@ export default function App() {
                                     setActiveView(item.id);
                                     setIsDesktopMoreOpen(false);
                                   }}
-                                  className={`w-full text-right p-2 rounded-xl flex items-center gap-3 transition-colors cursor-pointer ${
+                                  className={`w-full text-start p-2 rounded-xl flex items-center gap-3 transition-colors cursor-pointer ${
                                     isSelected
                                       ? 'bg-[#1F3A6E] dark:bg-[#1F3A6E]/60 text-[#F6EFDD] dark:text-[#D9B45A] border border-[#648CD4]/45'
                                       : 'text-[#1B1A17] dark:text-[#E9E3D3] hover:bg-[#EFE6D1] dark:hover:bg-slate-800/80 border border-transparent'
@@ -786,16 +862,35 @@ export default function App() {
               </div>
             </nav>
 
-            {/* Zone 3: Utilities, Day/Night Theme Toggle & Daily Wird */}
+            {/* Zone 3: Utilities, Language Switcher, Day/Night Theme Toggle & Daily Wird */}
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               <PWAInstallButton />
               <AmbientAudioBar />
 
               <button
                 type="button"
+                onClick={toggleLang}
+                aria-label={t('Switch interface to English', 'التبديل إلى الواجهة العربية')}
+                title={t('Switch to English', 'التبديل إلى العربية')}
+                className="min-w-[38px] min-h-[38px] flex items-center justify-center gap-1.5 px-2.5 rounded-xl bg-white/90 dark:bg-slate-900 hover:bg-[#EFE6D1] dark:hover:bg-slate-800 border border-[#D9B45A]/30 dark:border-slate-800 text-[#1B1A17] dark:text-[#F6EFDD] text-xs font-bold transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D9B45A]"
+              >
+                <Languages className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A] shrink-0" />
+                <span>{lang === 'ar' ? 'EN' : 'عربي'}</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={handleToggleAppTheme}
-                aria-label={appTheme === 'dark' ? 'التبديل إلى الوضع النهاري' : 'التبديل إلى الوضع الليلي'}
-                title={appTheme === 'dark' ? 'الوضع النهاري الدافئ' : 'الوضع الليلي الهادي'}
+                aria-label={
+                  appTheme === 'dark'
+                    ? t('التبديل إلى الوضع النهاري', 'Switch to light mode')
+                    : t('التبديل إلى الوضع الليلي', 'Switch to dark mode')
+                }
+                title={
+                  appTheme === 'dark'
+                    ? t('الوضع النهاري الدافئ', 'Warm Day Mode')
+                    : t('الوضع الليلي الهادي', 'Calm Night Mode')
+                }
                 className="min-w-[38px] min-h-[38px] flex items-center justify-center gap-1.5 px-2.5 rounded-xl bg-white/90 dark:bg-slate-900 hover:bg-[#EFE6D1] dark:hover:bg-slate-800 border border-[#D9B45A]/30 dark:border-slate-800 text-[#1B1A17] dark:text-[#F6EFDD] text-xs font-semibold transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D9B45A]"
               >
                 {appTheme === 'dark' ? (
@@ -803,7 +898,9 @@ export default function App() {
                 ) : (
                   <Moon className="w-4 h-4 text-[#1F3A6E] shrink-0" />
                 )}
-                <span className="hidden xl:inline">{appTheme === 'dark' ? 'نهاري' : 'ليلي'}</span>
+                <span className="hidden xl:inline">
+                  {appTheme === 'dark' ? t('نهاري', 'Day') : t('ليلي', 'Night')}
+                </span>
               </button>
 
               {(() => {
@@ -822,26 +919,32 @@ export default function App() {
                     }`}
                     title={
                       wirdSummary.hasPlan
-                        ? `وِرد اليوم: ${toArabicIndic(wirdSummary.todayPagesRead)} من ${toArabicIndic(wirdSummary.dailyTargetPages)} صفحة`
-                        : 'مخطط الورد والختمة الذكية'
+                        ? t(
+                            `وِرد اليوم: ${formatLocalizedDigits(wirdSummary.todayPagesRead, lang)} من ${formatLocalizedDigits(wirdSummary.dailyTargetPages, lang)} صفحة`,
+                            `Today's Wird: ${wirdSummary.todayPagesRead} of ${wirdSummary.dailyTargetPages} pages`
+                          )
+                        : t('مخطط الورد والختمة الذكية', 'Smart Daily Wird & Khatma Planner')
                     }
                   >
                     <Flame className={`w-3.5 h-3.5 shrink-0 ${wirdSummary.hasPlan && wirdSummary.isTodayComplete ? 'text-emerald-300 dark:text-emerald-400' : 'text-[#D9B45A]'}`} />
                     {wirdSummary.hasPlan ? (
                       <>
                         <span className="sm:hidden">
-                          {toArabicIndic(wirdSummary.todayPagesRead)}/{toArabicIndic(wirdSummary.dailyTargetPages)}
+                          {formatLocalizedDigits(wirdSummary.todayPagesRead, lang)}/{formatLocalizedDigits(wirdSummary.dailyTargetPages, lang)}
                         </span>
                         <span className="hidden sm:inline">
                           {wirdSummary.isTodayComplete
-                            ? '✓ اكتمل الورد'
-                            : `الورد (${toArabicIndic(wirdSummary.todayPagesRead)}/${toArabicIndic(wirdSummary.dailyTargetPages)})`}
+                            ? t('✓ اكتمل الورد', '✓ Wird Done')
+                            : t(
+                                `الورد (${formatLocalizedDigits(wirdSummary.todayPagesRead, lang)}/${formatLocalizedDigits(wirdSummary.dailyTargetPages, lang)})`,
+                                `Wird (${wirdSummary.todayPagesRead}/${wirdSummary.dailyTargetPages})`
+                              )}
                         </span>
                       </>
                     ) : (
                       <>
-                        <span className="sm:hidden">الورد</span>
-                        <span className="hidden sm:inline">مخطط الورد</span>
+                        <span className="sm:hidden">{t('الورد', 'Wird')}</span>
+                        <span className="hidden sm:inline">{t('مخطط الورد', 'Daily Wird')}</span>
                       </>
                     )}
                   </button>
@@ -868,14 +971,16 @@ export default function App() {
             {isLoadingSurah && surahData && (
               <div className="mb-2 flex items-center justify-center gap-2 py-1 px-3 rounded-xl bg-[#FBF7EE] dark:bg-[#142038] border border-[#D9B45A]/30 text-xs text-[#8A6418] dark:text-[#D9B45A] max-w-fit mx-auto">
                 <div className="w-3 h-3 rounded-full border-2 border-[#D9B45A] border-t-transparent animate-spin" />
-                <span>جارٍ تحميل السورة الكريمة…</span>
+                <span>{t('جارٍ تحميل السورة الكريمة…', 'Loading Surah…')}</span>
               </div>
             )}
 
             {isLoadingSurah && !surahData ? (
               <div className="p-16 text-center rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f]/60 border border-[#D9B45A]/25 dark:border-slate-800 flex flex-col items-center justify-center space-y-3">
                 <div className="w-10 h-10 rounded-full border-2 border-[#D9B45A] border-t-transparent animate-spin" />
-                <p className="text-xs text-[#5C5549] dark:text-slate-300 font-medium">جارٍ تحميل السورة بالرسم العثماني المعتمد…</p>
+                <p className="text-xs text-[#5C5549] dark:text-slate-300 font-medium">
+                  {t('جارٍ تحميل السورة بالرسم العثماني المعتمد…', 'Loading authenticated Uthmani script…')}
+                </p>
               </div>
             ) : surahError && !surahData ? (
               <div className="p-10 text-center rounded-2xl bg-rose-50 dark:bg-rose-950/20 border border-rose-500/30 flex flex-col items-center justify-center space-y-4 max-w-lg mx-auto my-12 shadow-2xl">
@@ -883,7 +988,9 @@ export default function App() {
                   <AlertCircle className="w-6 h-6" />
                 </div>
                 <div className="space-y-1">
-                  <h3 className="text-base font-bold text-[#1B1A17] dark:text-[#F6EFDD]">تعذر تحميل السورة الكريمة</h3>
+                  <h3 className="text-base font-bold text-[#1B1A17] dark:text-[#F6EFDD]">
+                    {t('تعذر تحميل السورة الكريمة', 'Could not load Surah')}
+                  </h3>
                   <p className="text-xs text-[#5C5549] dark:text-slate-300 leading-relaxed">{surahError}</p>
                 </div>
                 <button
@@ -892,7 +999,7 @@ export default function App() {
                   className="min-h-[42px] py-2.5 px-6 rounded-xl bg-[#1F3A6E] hover:bg-[#2E5499] border border-[#648CD4]/45 text-[#F6EFDD] font-bold text-xs flex items-center gap-2 shadow-lg transition-all cursor-pointer"
                 >
                   <RefreshCw className="w-4 h-4" />
-                  <span>إعادة المحاولة الآن</span>
+                  <span>{t('إعادة المحاولة الآن', 'Retry Now')}</span>
                 </button>
               </div>
             ) : surahData ? (
@@ -925,8 +1032,10 @@ export default function App() {
                 onToggleSmartScroll={() => setIsSmartScrollActive(!isSmartScrollActive)}
                 onOpenTajweedLegend={() => setIsTajweedLegendOpen(true)}
                 isPlayingAudio={isPlayingAudio}
+                playTriggerNonce={playTriggerNonce}
                 currentTime={audioCurrentTime}
                 duration={audioDuration}
+                playbackRate={audioPlaybackSpeed}
                 isFullScreen={isFullScreenReading}
                 onToggleFullScreen={handleToggleFullScreen}
                 isAudioBarVisible={isAudioBarVisible}
@@ -1019,7 +1128,9 @@ export default function App() {
                 ) : (
                   <div className="p-16 text-center rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f]/60 border border-[#D9B45A]/25 dark:border-slate-800 flex flex-col items-center justify-center space-y-3">
                     <div className="w-10 h-10 rounded-full border-2 border-[#D9B45A] border-t-transparent animate-spin" />
-                    <p className="text-xs text-[#5C5549] dark:text-slate-300 font-medium">جارٍ تجهيز آيات السورة لحلقة الحفظ…</p>
+                    <p className="text-xs text-[#5C5549] dark:text-slate-300 font-medium">
+                      {t('جارٍ تجهيز آيات السورة لحلقة الحفظ…', 'Preparing Surah verses for Hifz Circle…')}
+                    </p>
                   </div>
                 )
               )}
@@ -1043,7 +1154,7 @@ export default function App() {
                     setShareReflectionContext({
                       text: verse.translationText,
                       dir: edition.dir,
-                      label: `ترجمة المعاني (${edition.nativeTitle})`,
+                      label: t(`ترجمة المعاني (${edition.nativeTitle})`, `Translation (${edition.nativeTitle})`),
                     });
                     setShareAyah({
                       numberInSurah: verse.ayahNumber,
@@ -1123,12 +1234,20 @@ export default function App() {
             setAudioCurrentTime(0);
           }}
           isPlaying={isPlayingAudio}
-          onPlayPauseToggle={(playing) => setIsPlayingAudio(playing)}
+          onPlayPauseToggle={(playing) => {
+            if (!playing) {
+              pendingAutoPlayRef.current = null;
+            }
+            setIsPlayingAudio(playing);
+          }}
           isSmartScrollEnabled={isSmartScrollActive}
           onToggleSmartScroll={() => setIsSmartScrollActive(!isSmartScrollActive)}
-          onPlaybackProgress={(cur, dur) => {
+          onPlaybackProgress={(cur, dur, rate) => {
             setAudioCurrentTime(cur);
             setAudioDuration(dur);
+            if (typeof rate === 'number' && Number.isFinite(rate) && rate > 0) {
+              setAudioPlaybackSpeed((prev) => (prev === rate ? prev : rate));
+            }
           }}
           onAyahComplete={(ayahNum, durationSec) => {
             const completedAyah = surahData.ayahs.find((a) => a.numberInSurah === ayahNum);
@@ -1156,6 +1275,11 @@ export default function App() {
               }));
             }
           }}
+          onAdvanceNextSurah={
+            activeView === 'mushaf'
+              ? (nextSurahNumber) => handlePlayAyahAudio(1, nextSurahNumber)
+              : undefined
+          }
           mushafSheetMode={activeView === 'mushaf'}
           isMushafSheetOpen={isMushafAudioSheetOpen}
           onCloseMushafSheet={() => setIsMushafAudioSheetOpen(false)}
@@ -1166,14 +1290,14 @@ export default function App() {
       {/* Mobile Bottom Navigation Bar (Hidden in full-screen reading, desktop, and in Mushaf view where Floating Glass Dock is active) */}
       {!isFullScreenReading && activeView !== 'mushaf' && (
         <nav
-          aria-label="التنقل السفلي"
+          aria-label={t('التنقل السفلي', 'Bottom navigation')}
           className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#FBF7EE]/95 dark:bg-[#0d121a]/95 border-t border-[#D9B45A]/25 dark:border-slate-800 backdrop-blur-xl shadow-2xl flex items-center justify-around px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] select-none"
         >
           {[
-            { id: 'mushaf', label: 'المصحف', icon: BookOpen },
-            { id: 'memorization', label: 'الحفظ', icon: Award },
-            { id: 'ruqyah', label: 'الرقية', icon: ShieldCheck },
-            { id: 'khatma', label: 'الختمات', icon: Sparkles },
+            { id: 'mushaf', label: t('المصحف', "Mus'haf"), icon: BookOpen },
+            { id: 'memorization', label: t('الحفظ', 'Hifz'), icon: Award },
+            { id: 'ruqyah', label: t('الرقية', 'Ruqyah'), icon: ShieldCheck },
+            { id: 'khatma', label: t('الختمات', 'Khatma'), icon: Sparkles },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeView === tab.id;
@@ -1219,7 +1343,7 @@ export default function App() {
             }`}>
               <Menu className="w-5 h-5" />
             </div>
-            <span className="text-[11px] mt-0.5 tracking-tight font-medium">المزيد</span>
+            <span className="text-[11px] mt-0.5 tracking-tight font-medium">{t('المزيد', 'More')}</span>
           </button>
         </nav>
       )}
@@ -1238,12 +1362,14 @@ export default function App() {
             <div className="flex items-center justify-between pb-2 border-b border-[#D9B45A]/20 dark:border-slate-800">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
-                <h3 className="font-bold text-[#1B1A17] dark:text-[#F6EFDD] text-sm font-kufi">أقسام بيان القرآنية</h3>
+                <h3 className="font-bold text-[#1B1A17] dark:text-[#F6EFDD] text-sm font-kufi">
+                  {t('أقسام بيان القرآنية', 'Bayan Sections')}
+                </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setIsMobileMoreOpen(false)}
-                aria-label="إغلاق القائمة"
+                aria-label={t('إغلاق القائمة', 'Close menu')}
                 className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white hover:bg-[#EFE6D1] dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -1253,34 +1379,36 @@ export default function App() {
             <div className="space-y-4">
               {/* Group 1: Learning & Tadabbur */}
               <div className="space-y-2">
-                <div className="text-[11px] font-bold text-[#8A6418] dark:text-[#D9B45A] px-1">التعلّم والتدبّر</div>
+                <div className="text-[11px] font-bold text-[#8A6418] dark:text-[#D9B45A] px-1">
+                  {t('التعلّم والتدبّر', 'Learning & Reflection')}
+                </div>
                 <div className="grid grid-cols-2 gap-2.5">
                   {[
                     {
                       id: 'translations',
-                      label: 'ترجمات المعاني',
-                      sub: 'السويدية والإنجليزية ولغات أخرى',
+                      label: t('ترجمات المعاني', 'Translations'),
+                      sub: t('السويدية والإنجليزية ولغات أخرى', 'Swedish, English & more'),
                       icon: Globe,
                       color: 'text-[#1F3A6E] dark:text-[#648CD4] bg-[#1F3A6E]/10 dark:bg-[#1F3A6E]/40 border-[#648CD4]/35'
                     },
                     {
                       id: 'tajweed',
-                      label: 'موسوعة التجويد',
-                      sub: 'أحكام التلاوة والتدريب الصوتي',
+                      label: t('موسوعة التجويد', 'Tajweed Guide'),
+                      sub: t('أحكام التلاوة والتدريب الصوتي', 'Rules & audio practice'),
                       icon: HelpCircle,
                       color: 'text-[#8A6418] dark:text-[#D9B45A] bg-[#D9B45A]/15 border-[#D9B45A]/30'
                     },
                     {
                       id: 'kids',
-                      label: 'تحفيظ الصغار',
-                      sub: 'تلقين صوتي ونجوم للأطفال',
+                      label: t('تحفيظ الصغار', 'Kids Hifz'),
+                      sub: t('تلقين صوتي ونجوم للأطفال', 'Audio prompting & rewards'),
                       icon: Sprout,
                       color: 'text-emerald-700 dark:text-emerald-300 bg-emerald-500/15 dark:bg-emerald-950/60 border-emerald-500/40'
                     },
                     {
                       id: 'mood',
-                      label: 'القرآن حياتي',
-                      sub: 'آيات بحسب مشاعرك وحالك',
+                      label: t('القرآن حياتي', 'Quran & Mood'),
+                      sub: t('آيات بحسب مشاعرك وحالك', 'Verses for your heart'),
                       icon: Heart,
                       color: 'text-[#1F3A6E] dark:text-[#648CD4] bg-[#1F3A6E]/10 dark:bg-[#1F3A6E]/40 border-[#648CD4]/35'
                     },
@@ -1295,7 +1423,7 @@ export default function App() {
                           setActiveView(item.id as ActiveView);
                           setIsMobileMoreOpen(false);
                         }}
-                        className={`p-3 rounded-2xl border text-right transition-all flex flex-col gap-2 cursor-pointer ${
+                        className={`p-3 rounded-2xl border text-start transition-all flex flex-col gap-2 cursor-pointer ${
                           isActive
                             ? 'bg-[#1F3A6E] dark:bg-[#1F3A6E]/55 border-[#D9B45A] text-[#F6EFDD] shadow-md'
                             : 'bg-white dark:bg-slate-950/70 border-[#D9B45A]/25 dark:border-slate-800 text-[#1B1A17] dark:text-slate-200 hover:border-[#D9B45A]/50 dark:hover:border-slate-700'
@@ -1316,27 +1444,29 @@ export default function App() {
 
               {/* Group 2: Personal Tracking */}
               <div className="space-y-2">
-                <div className="text-[11px] font-bold text-[#1F3A6E] dark:text-[#648CD4] px-1">المتابعة الشخصية</div>
+                <div className="text-[11px] font-bold text-[#1F3A6E] dark:text-[#648CD4] px-1">
+                  {t('المتابعة الشخصية', 'Personal Tracking')}
+                </div>
                 <div className="grid grid-cols-2 gap-2.5">
                   {[
                     {
                       id: 'analytics',
-                      label: 'سجل الختمات',
-                      sub: 'إحصاءات التدبر والنسخ الاحتياطي',
+                      label: t('سجل الختمات', 'Reading Log'),
+                      sub: t('إحصاءات التدبر والنسخ الاحتياطي', 'Stats & local backups'),
                       icon: Calendar,
                       color: 'text-[#1F3A6E] dark:text-[#648CD4] bg-[#1F3A6E]/10 dark:bg-[#1F3A6E]/40 border-[#648CD4]/35'
                     },
                     {
                       id: 'journal',
-                      label: 'مفكرتي والعلامات',
-                      sub: 'خواطر التدبر وعلامات الوقف',
+                      label: t('مفكرتي والعلامات', 'Notes & Bookmarks'),
+                      sub: t('خواطر التدبر وعلامات الوقف', 'Reflections & bookmarks'),
                       icon: PenLine,
                       color: 'text-[#1F3A6E] dark:text-[#648CD4] bg-[#1F3A6E]/10 dark:bg-[#1F3A6E]/40 border-[#648CD4]/35'
                     },
                     {
                       id: 'planner',
-                      label: 'مخطط الورد',
-                      sub: 'جدول الختمة الميسرة في ٣٠ يوماً',
+                      label: t('مخطط الورد', 'Daily Wird'),
+                      sub: t('جدول الختمة الميسرة في ٣٠ يوماً', 'Guided 30-day Khatma plan'),
                       icon: Flame,
                       color: 'text-[#8A6418] dark:text-[#D9B45A] bg-[#D9B45A]/15 border-[#D9B45A]/30',
                       action: () => {
@@ -1360,7 +1490,7 @@ export default function App() {
                             setIsMobileMoreOpen(false);
                           }
                         }}
-                        className={`p-3 rounded-2xl border text-right transition-all flex flex-col gap-2 cursor-pointer ${
+                        className={`p-3 rounded-2xl border text-start transition-all flex flex-col gap-2 cursor-pointer ${
                           isActive
                             ? 'bg-[#1F3A6E] dark:bg-[#1F3A6E]/55 border-[#D9B45A] text-[#F6EFDD] shadow-md'
                             : 'bg-white dark:bg-slate-950/70 border-[#D9B45A]/25 dark:border-slate-800 text-[#1B1A17] dark:text-slate-200 hover:border-[#D9B45A]/50 dark:hover:border-slate-700'
@@ -1380,16 +1510,25 @@ export default function App() {
               </div>
             </div>
 
-            <div className="pt-2 border-t border-[#D9B45A]/20 dark:border-slate-800 flex items-center justify-between text-xs text-[#5C5549] dark:text-slate-400">
-              <span className="text-[11px]">وقف خيري لوجه الله تعالى</span>
-              <div className="flex items-center gap-2">
+            <div className="pt-2 border-t border-[#D9B45A]/20 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs text-[#5C5549] dark:text-slate-400">
+              <span className="text-[11px]">{t('وقف خيري لوجه الله تعالى', 'Charitable Sadaqah Jariyah project')}</span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={toggleLang}
+                  aria-label={t('Switch interface to English', 'التبديل إلى الواجهة العربية')}
+                  className="min-h-[36px] py-1 px-2.5 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-[#1B1A17] dark:text-[#F6EFDD] font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Languages className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
+                  <span>{lang === 'ar' ? 'EN' : 'عربي'}</span>
+                </button>
                 <button
                   type="button"
                   onClick={handleToggleAppTheme}
                   className="min-h-[36px] py-1 px-3 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-[#1B1A17] dark:text-[#F6EFDD] font-bold text-xs flex items-center gap-1.5 cursor-pointer"
                 >
                   {appTheme === 'dark' ? <Sun className="w-3.5 h-3.5 text-[#D9B45A]" /> : <Moon className="w-3.5 h-3.5 text-[#1F3A6E]" />}
-                  <span>{appTheme === 'dark' ? 'نهاري' : 'ليلي'}</span>
+                  <span>{appTheme === 'dark' ? t('نهاري', 'Day') : t('ليلي', 'Night')}</span>
                 </button>
                 <button
                   type="button"
@@ -1400,7 +1539,7 @@ export default function App() {
                   className="min-h-[36px] py-1 px-3 rounded-xl bg-[#D9B45A]/15 border border-[#D9B45A]/35 text-[#8A6418] dark:text-[#D9B45A] font-bold text-xs flex items-center gap-1 cursor-pointer"
                 >
                   <Maximize2 className="w-3.5 h-3.5" />
-                  <span>ملء الشاشة</span>
+                  <span>{t('ملء الشاشة', 'Fullscreen')}</span>
                 </button>
               </div>
             </div>
@@ -1413,7 +1552,7 @@ export default function App() {
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="فهرس السور والبحث في القرآن"
+          aria-label={t('فهرس السور والبحث في القرآن', 'Surah Index & Quran Search')}
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150"
         >
           <div className="relative w-full max-w-2xl max-h-[85vh] bg-[#FBF7EE] dark:bg-[#10161f] border border-[#D9B45A]/35 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
@@ -1429,7 +1568,7 @@ export default function App() {
                   }`}
                 >
                   <BookOpen className="w-3.5 h-3.5" />
-                  <span>فهرس السور (١١٤)</span>
+                  <span>{t('فهرس السور (١١٤)', 'Surahs (114)')}</span>
                 </button>
                 <button
                   type="button"
@@ -1441,13 +1580,13 @@ export default function App() {
                   }`}
                 >
                   <Search className="w-3.5 h-3.5" />
-                  <span>بحث في آيات القرآن</span>
+                  <span>{t('بحث في آيات القرآن', 'Search Ayahs')}</span>
                 </button>
               </div>
               <button
                 type="button"
                 onClick={() => setIsSurahPickerOpen(false)}
-                aria-label="إغلاق الفهرس"
+                aria-label={t('إغلاق الفهرس', 'Close index')}
                 className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white hover:bg-[#EFE6D1] dark:hover:bg-slate-800 cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -1458,14 +1597,14 @@ export default function App() {
               <>
                 <div className="p-3 border-b border-[#D9B45A]/20 dark:border-slate-800 bg-[#FBF7EE] dark:bg-[#10161f]">
                   <div className="relative">
-                    <Search className="absolute right-3.5 top-3 w-4 h-4 text-[#5C5549] dark:text-slate-400" />
+                    <Search className="absolute start-3.5 top-3 w-4 h-4 text-[#5C5549] dark:text-slate-400" />
                     <input
                       type="text"
                       value={surahSearchTerm}
                       onChange={(e) => setSurahSearchTerm(e.target.value)}
-                      placeholder="ابحث باسم السورة، رقمها، أو الجزء..."
-                      aria-label="ابحث باسم السورة، رقمها، أو الجزء"
-                      className="w-full min-h-[42px] pr-10 pl-4 py-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-xs text-[#1B1A17] dark:text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
+                      placeholder={t('ابحث باسم السورة، رقمها، أو الجزء...', 'Search by Surah name, number, or Juz...')}
+                      aria-label={t('ابحث باسم السورة، رقمها، أو الجزء', 'Search by Surah name, number, or Juz')}
+                      className="w-full min-h-[42px] ps-10 pe-4 py-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-xs text-[#1B1A17] dark:text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
                     />
                   </div>
                 </div>
@@ -1482,7 +1621,7 @@ export default function App() {
                           setIsSurahPickerOpen(false);
                           setSurahSearchTerm('');
                         }}
-                        className={`min-h-[48px] p-2.5 rounded-xl border text-right transition-all flex items-center justify-between cursor-pointer ${
+                        className={`min-h-[48px] p-2.5 rounded-xl border text-start transition-all flex items-center justify-between cursor-pointer ${
                           isSelected
                             ? 'bg-[#1F3A6E] dark:bg-[#1F3A6E]/60 border-[#D9B45A] text-[#F6EFDD] font-bold'
                             : 'bg-white dark:bg-slate-950/60 border-[#D9B45A]/25 dark:border-slate-800 text-[#1B1A17] dark:text-slate-200 hover:border-[#D9B45A]/50 dark:hover:border-slate-700 hover:bg-[#EFE6D1]/70 dark:hover:bg-slate-900'
@@ -1494,14 +1633,20 @@ export default function App() {
                               ? 'bg-[#D9B45A]/20 text-[#D9B45A]'
                               : 'bg-[#EFE6D1] dark:bg-slate-800/80 text-[#8A6418] dark:text-[#D9B45A]'
                           }`}>
-                            {toArabicIndic(s.number)}
+                            {formatLocalizedDigits(s.number, lang)}
                           </span>
                           <div>
-                            <div className={`font-bold text-xs ${isSelected ? 'text-[#F6EFDD]' : 'text-[#1B1A17] dark:text-[#F6EFDD]'}`}>سورة {s.name}</div>
-                            <div className={`text-[11px] tabular-nums ${isSelected ? 'text-[#E9E3D3]/80' : 'text-[#5C5549] dark:text-slate-400'}`}>{s.revelationTypeAr} · {toArabicIndic(s.numberOfAyahs)} آيات</div>
+                            <div className={`font-bold text-xs ${isSelected ? 'text-[#F6EFDD]' : 'text-[#1B1A17] dark:text-[#F6EFDD]'}`}>
+                              {t(`سورة ${s.name}`, s.englishName)}
+                            </div>
+                            <div className={`text-[11px] tabular-nums ${isSelected ? 'text-[#E9E3D3]/80' : 'text-[#5C5549] dark:text-slate-400'}`}>
+                              {getRevelationTypeLabel(s.revelationType, lang)} · {formatLocalizedDigits(s.numberOfAyahs, lang)} {t('آيات', 'Ayahs')}
+                            </div>
                           </div>
                         </div>
-                        <span className={`text-[11px] tabular-nums ${isSelected ? 'text-[#D9B45A]' : 'text-[#5C5549] dark:text-slate-400'}`}>جـ {toArabicIndic(s.juzNumber)}</span>
+                        <span className={`text-[11px] tabular-nums ${isSelected ? 'text-[#D9B45A]' : 'text-[#5C5549] dark:text-slate-400'}`}>
+                          {t('جـ', 'Juz')} {formatLocalizedDigits(s.juzNumber, lang)}
+                        </span>
                       </button>
                     );
                   })}
@@ -1511,14 +1656,14 @@ export default function App() {
               <>
                 <div className="p-3 border-b border-[#D9B45A]/20 dark:border-slate-800 bg-[#FBF7EE] dark:bg-[#10161f]">
                   <div className="relative">
-                    <Search className="absolute right-3.5 top-3 w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
+                    <Search className="absolute start-3.5 top-3 w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
                     <input
                       type="text"
                       value={ayahSearchQuery}
                       onChange={(e) => setAyahSearchQuery(e.target.value)}
-                      placeholder="اكتب كلمة أو جزءاً من آية للبحث في المصحف الشريف كله..."
-                      aria-label="البحث في آيات القرآن"
-                      className="w-full min-h-[42px] pr-10 pl-4 py-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-xs text-[#1B1A17] dark:text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
+                      placeholder={t('اكتب كلمة أو جزءاً من آية للبحث في المصحف الشريف كله...', 'Enter an Arabic word or phrase to search across the Quran...')}
+                      aria-label={t('البحث في آيات القرآن', 'Search Quran Ayahs')}
+                      className="w-full min-h-[42px] ps-10 pe-4 py-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-xs text-[#1B1A17] dark:text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
                     />
                   </div>
                 </div>
@@ -1526,44 +1671,65 @@ export default function App() {
                 <div className="p-3 overflow-y-auto space-y-2 min-h-[260px]">
                   {ayahSearchQuery.trim().length < 2 ? (
                     <div className="text-center py-12 text-xs text-[#5C5549] dark:text-slate-400 space-y-1.5">
-                      <p className="font-semibold text-[#1B1A17] dark:text-slate-200">ابحث في آيات القرآن الكريم</p>
-                      <p>أدخل حرفين على الأقل للبحث الفوري في السور المخزنة محلياً وعبر خادم المصحف المعتمد</p>
+                      <p className="font-semibold text-[#1B1A17] dark:text-slate-200">
+                        {t('ابحث في آيات القرآن الكريم', 'Search Holy Quran Verses')}
+                      </p>
+                      <p>
+                        {t(
+                          'أدخل حرفين على الأقل للبحث الفوري في السور المخزنة محلياً وعبر خادم المصحف المعتمد',
+                          'Enter at least 2 characters to search cached and online Quran verses'
+                        )}
+                      </p>
                     </div>
                   ) : isSearchingAyahs ? (
                     <div className="py-12 text-center flex flex-col items-center gap-2.5 text-xs text-[#5C5549] dark:text-slate-400">
                       <div className="w-7 h-7 rounded-full border-2 border-[#D9B45A] border-t-transparent animate-spin" />
-                      <span>جارٍ البحث في آيات المصحف الشريف…</span>
+                      <span>{t('جارٍ البحث في آيات المصحف الشريف…', 'Searching Quran verses…')}</span>
                     </div>
                   ) : ayahSearchResults.length === 0 ? (
                     <div className="text-center py-12 text-xs text-[#5C5549] dark:text-slate-400">
-                      لم يتم العثور على آيات مطابقة لعبارة «{ayahSearchQuery}»
+                      {t(
+                        `لم يتم العثور على آيات مطابقة لعبارة «${ayahSearchQuery}»`,
+                        `No matching verses found for "${ayahSearchQuery}"`
+                      )}
                     </div>
                   ) : (
                     <>
                       <div className="text-[11px] text-[#8A6418] dark:text-[#D9B45A] font-semibold px-1">
-                        تم العثور على {toArabicIndic(ayahSearchResults.length)} نتيجة
+                        {t(
+                          `تم العثور على ${formatLocalizedDigits(ayahSearchResults.length, lang)} نتيجة`,
+                          `Found ${ayahSearchResults.length} results`
+                        )}
                       </div>
-                      {ayahSearchResults.map((match) => (
-                        <button
-                          key={`${match.surahNumber}:${match.ayahNumber}`}
-                          type="button"
-                          onClick={() => {
-                            handleNavigateToAyah(match.surahNumber, match.ayahNumber);
-                            setIsSurahPickerOpen(false);
-                          }}
-                          className="w-full p-3 rounded-xl bg-white dark:bg-slate-950/70 hover:bg-[#EFE6D1]/80 dark:hover:bg-slate-800/80 border border-[#D9B45A]/25 dark:border-slate-800 hover:border-[#D9B45A]/60 text-right transition-all space-y-1.5 cursor-pointer"
-                        >
-                          <div className="flex items-center justify-between text-[11px]">
-                            <span className="font-bold text-[#8A6418] dark:text-[#D9B45A]">
-                              سورة {match.surahName} · الآية {toArabicIndic(match.ayahNumber)}
-                            </span>
-                            <span className="text-[#5C5549] dark:text-slate-400">انتقال للقراءة ↵</span>
-                          </div>
-                          <p className="font-quran text-base sm:text-lg text-[#1B1A17] dark:text-[#F6EFDD] leading-relaxed">
-                            {match.text}
-                          </p>
-                        </button>
-                      ))}
+                      {ayahSearchResults.map((match) => {
+                        const matchedMeta = SURAHS_LIST[match.surahNumber - 1];
+                        return (
+                          <button
+                            key={`${match.surahNumber}:${match.ayahNumber}`}
+                            type="button"
+                            onClick={() => {
+                              handleNavigateToAyah(match.surahNumber, match.ayahNumber);
+                              setIsSurahPickerOpen(false);
+                            }}
+                            className="w-full p-3 rounded-xl bg-white dark:bg-slate-950/70 hover:bg-[#EFE6D1]/80 dark:hover:bg-slate-800/80 border border-[#D9B45A]/25 dark:border-slate-800 hover:border-[#D9B45A]/60 text-start transition-all space-y-1.5 cursor-pointer"
+                          >
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="font-bold text-[#8A6418] dark:text-[#D9B45A]">
+                                {t(
+                                  `سورة ${match.surahName} · الآية ${formatLocalizedDigits(match.ayahNumber, lang)}`,
+                                  `Surah ${matchedMeta?.englishName || match.surahName} · Ayah ${match.ayahNumber}`
+                                )}
+                              </span>
+                              <span className="text-[#5C5549] dark:text-slate-400">
+                                {t('انتقال للقراءة ↵', 'Open ↵')}
+                              </span>
+                            </div>
+                            <p dir="rtl" lang="ar" className="font-quran text-base sm:text-lg text-[#1B1A17] dark:text-[#F6EFDD] leading-relaxed text-right">
+                              {match.text}
+                            </p>
+                          </button>
+                        );
+                      })}
                     </>
                   )}
                 </div>
@@ -1648,12 +1814,21 @@ export default function App() {
               setIsKhatmaPlannerOpen(false);
               const targetDesc =
                 saved.goalMode === 'juz'
-                  ? `${toArabicIndic(saved.targetJuzCount || 30)} جزءاً`
+                  ? t(
+                      `${formatLocalizedDigits(saved.targetJuzCount || 30, lang)} جزءاً`,
+                      `${saved.targetJuzCount || 30} Juz`
+                    )
                   : (saved.targetKhatmas || 1) === 1
-                  ? 'ختمة واحدة'
-                  : `${toArabicIndic(saved.targetKhatmas || 1)} ختمات`;
+                  ? t('ختمة واحدة', '1 Khatma')
+                  : t(
+                      `${formatLocalizedDigits(saved.targetKhatmas || 1, lang)} ختمات`,
+                      `${saved.targetKhatmas || 1} Khatmas`
+                    );
               setPlannerToast(
-                `تم اعتماد خطتك (${targetDesc}): ${toArabicIndic(saved.pagesPerDay)} صفحة يومياً خلال ${toArabicIndic(saved.targetDays)} يوماً`
+                t(
+                  `تم اعتماد خطتك (${targetDesc}): ${formatLocalizedDigits(saved.pagesPerDay, lang)} صفحة يومياً خلال ${formatLocalizedDigits(saved.targetDays, lang)} يوماً`,
+                  `Plan saved (${targetDesc}): ${saved.pagesPerDay} pages/day over ${saved.targetDays} days`
+                )
               );
               setTimeout(() => setPlannerToast(null), 4000);
             }}
@@ -1670,5 +1845,13 @@ export default function App() {
       )}
 
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <LanguageProvider>
+      <AppContent />
+    </LanguageProvider>
   );
 }

@@ -35,7 +35,7 @@ import {
   KeyRound,
   LogOut,
 } from 'lucide-react';
-import { SURAHS_LIST } from '../data/quranMetadata';
+import { SURAHS_LIST, getSurahDisplayName, getSurahFullTitle } from '../data/quranMetadata';
 import {
   Ayah,
   getSurahData,
@@ -43,7 +43,7 @@ import {
   sanitizeAyahText,
   WordSegment,
 } from '../data/quranService';
-import { RECITERS_LIST, getAyahAudioUrl } from '../data/reciters';
+import { RECITERS_LIST, getAyahAudioUrl, getReciterDisplayName } from '../data/reciters';
 import { getCachedAudioBlobUrl } from '../utils/audioOfflineCache';
 import { getSpokenWordRawIndices } from '../utils/tajweedParser';
 import {
@@ -53,6 +53,7 @@ import {
 } from '../utils/recitationMatcher';
 import { toArabicIndic } from './khatma/KhatmaRing';
 import { AudioLevelMeter } from './AudioLevelMeter';
+import { formatLocalizedDigits, useLanguage } from '../utils/i18n';
 import {
   KidsAvatarId,
   KidsDailyWird,
@@ -70,7 +71,10 @@ import {
   computeGardenStage,
   createDefaultWird,
   createKidProfile,
+  formatParentGateQuestion,
   generateParentGateChallenge,
+  getGardenStageDisplayName,
+  getKidAvatarDisplayLabel,
   loadKidsHifzState,
   makeAyahKey,
   playKidEncouragementSound,
@@ -117,6 +121,13 @@ function renderAvatarIcon(avatarId: KidsAvatarId, className = 'w-5 h-5') {
 }
 
 export const KidsHifzSection: React.FC = () => {
+  const { lang, isEnglish, t } = useLanguage();
+  const langRef = useRef(lang);
+  langRef.current = lang;
+  const tr = <T,>(ar: T, en: T): T => (langRef.current === 'en' ? en : ar);
+  const displayKidName = (name: string) =>
+    name === 'بطل القرآن' ? t('بطل القرآن', "Qur'an Champion") : name;
+
   const [state, setState] = useState<KidsHifzState>(() => loadKidsHifzState());
   const activeProfile: KidsProfile = useMemo(
     () => state.profiles.find((p) => p.id === state.activeProfileId) || state.profiles[0],
@@ -204,7 +215,9 @@ export const KidsHifzSection: React.FC = () => {
   const [supervisorSession, setSupervisorSession] = useState<RemoteCircleSupervisorSession | null>(() =>
     loadSupervisorCircleSession()
   );
-  const [createCircleTitle, setCreateCircleTitle] = useState<string>('حلقة تحفيظ الصغار');
+  const [createCircleTitle, setCreateCircleTitle] = useState<string>(() =>
+    lang === 'en' ? 'Kids Hifz Circle' : 'حلقة تحفيظ الصغار'
+  );
   const [createSupervisorName, setCreateSupervisorName] = useState<string>('');
   const [connectCircleCode, setConnectCircleCode] = useState<string>('');
   const [connectAdminKey, setConnectAdminKey] = useState<string>('');
@@ -480,7 +493,7 @@ export const KidsHifzSection: React.FC = () => {
       });
     } catch (err) {
       if (!silent) {
-        setRemoteError(err instanceof Error ? err.message : 'تعذر تحميل بيانات الحلقة');
+        setRemoteError(err instanceof Error ? err.message : tr('تعذر تحميل بيانات الحلقة', 'Could not load circle data'));
       }
     } finally {
       if (!silent) setRemoteLoading(false);
@@ -546,7 +559,7 @@ export const KidsHifzSection: React.FC = () => {
       })
       .catch((err) => {
         if (!cancelled) {
-          setSurahLoadError(err?.message || 'تعذر تحميل آيات السورة');
+          setSurahLoadError(err?.message || tr('تعذر تحميل آيات السورة', 'Could not load Surah ayahs'));
           setIsLoadingSurah(false);
         }
       });
@@ -721,7 +734,12 @@ export const KidsHifzSection: React.FC = () => {
         window.cancelAnimationFrame(listenRafRef.current);
         listenRafRef.current = null;
       }
-      setAudioError('تعذر تشغيل التلاوة الصوتية حالياً؛ تأكد من اتصال الإنترنت.');
+      setAudioError(
+        tr(
+          'تعذر تشغيل التلاوة الصوتية حالياً؛ تأكد من اتصال الإنترنت.',
+          'Could not play audio recitation right now; please check your internet connection.'
+        )
+      );
       setPromptPhase('idle');
     };
 
@@ -805,10 +823,13 @@ export const KidsHifzSection: React.FC = () => {
 
           setStatusBanner(
             willCompleteSurahNow
-              ? `ما شاء الله! أتممت سورة ${surahMeta.name} وحصلت على وسام السورة (+٥ نجوم)`
+              ? tr(
+                  `ما شاء الله! أتممت سورة ${surahMeta.name} وحصلت على وسام السورة (+٥ نجوم)`,
+                  `MashaAllah! You completed Surah ${surahMeta.englishName} and earned the Surah Badge (+5 stars)`
+                )
               : alreadyMastered
-              ? 'أحسنت يا بطل! مراجعة ممتازة للآية'
-              : 'ممتاز يا بطل! أضأت نجمة جديدة لهذه الآية'
+              ? tr('أحسنت يا بطل! مراجعة ممتازة للآية', 'Well done, champion! Great Ayah review')
+              : tr('ممتاز يا بطل! أضأت نجمة جديدة لهذه الآية', 'Awesome, champion! You lit a new star for this Ayah')
           );
 
           if (
@@ -833,7 +854,9 @@ export const KidsHifzSection: React.FC = () => {
       }
     } catch {
       if (sessionTokenRef.current === token) {
-        setAudioError('اضغط على الزر مرة أخرى للسماح بتشغيل الصوت.');
+        setAudioError(
+          tr('اضغط على الزر مرة أخرى للسماح بتشغيل الصوت.', 'Tap the button again to allow audio playback.')
+        );
         setPromptPhase('idle');
       }
     }
@@ -868,7 +891,12 @@ export const KidsHifzSection: React.FC = () => {
     }
     const RecognitionCtor = getSpeechRecognitionConstructor();
     if (!RecognitionCtor || !activeAyah) {
-      setMicError('التسميع الذكي المباشر غير مدعوم في هذا المتصفح؛ يمكنك استخدام «سجِّل صوتك».');
+      setMicError(
+        t(
+          'التسميع الذكي المباشر غير مدعوم في هذا المتصفح؛ يمكنك استخدام «سجِّل صوتك».',
+          'Live smart recitation check is not supported in this browser; you can use "Record Voice".'
+        )
+      );
       return;
     }
 
@@ -929,7 +957,10 @@ export const KidsHifzSection: React.FC = () => {
             playKidEncouragementSound('star');
           }
           setStatusBanner(
-            `ما شاء الله يا بطل! سمّعت الآية بدقة ${toArabicIndic(evalRes.accuracyPercent)}٪ وحصلت على نجمة!`
+            tr(
+              `ما شاء الله يا بطل! سمّعت الآية بدقة ${toArabicIndic(evalRes.accuracyPercent)}٪ وحصلت على نجمة!`,
+              `MashaAllah, champion! Recited with ${evalRes.accuracyPercent}% accuracy and earned a star!`
+            )
           );
         }
       };
@@ -940,11 +971,23 @@ export const KidsHifzSection: React.FC = () => {
           return;
         }
         if (event?.error === 'not-allowed' || event?.error === 'service-not-allowed') {
-          setMicError('يرجى السماح بصلاحية الميكروفون ليسمعك التطبيق يا بطل.');
+          setMicError(
+            tr(
+              'يرجى السماح بصلاحية الميكروفون ليسمعك التطبيق يا بطل.',
+              'Please allow microphone permission so the app can hear you, champion.'
+            )
+          );
         } else if (event?.error === 'no-speech') {
-          setMicError('لم أسمع صوتك بعد يا بطل، اقرأ بصوت واضح!');
+          setMicError(
+            tr('لم أسمع صوتك بعد يا بطل، اقرأ بصوت واضح!', "Didn't hear you yet, champion — recite clearly!")
+          );
         } else {
-          setMicError('تأكد من اتصال الإنترنت للتسميع الذكي أو استخدم «سجِّل صوتك».');
+          setMicError(
+            tr(
+              'تأكد من اتصال الإنترنت للتسميع الذكي أو استخدم «سجِّل صوتك».',
+              'Check internet connection for smart check or use "Record Voice".'
+            )
+          );
         }
         kidSpeechRecRef.current = null;
         setIsKidVoiceChecking(false);
@@ -963,7 +1006,7 @@ export const KidsHifzSection: React.FC = () => {
     } catch {
       kidSpeechRecRef.current = null;
       setIsKidVoiceChecking(false);
-      setMicError('تعذر بدء التسميع الصوتي الآن.');
+      setMicError(tr('تعذر بدء التسميع الصوتي الآن.', 'Could not start voice recitation check right now.'));
     }
   };
 
@@ -997,7 +1040,7 @@ export const KidsHifzSection: React.FC = () => {
         playKidEncouragementSound('star');
       }
       setPromptPhase('celebrating');
-      setStatusBanner('ممتاز يا بطل! أتممت ترديد هذه الآية');
+      setStatusBanner(t('ممتاز يا بطل! أتممت ترديد هذه الآية', 'Awesome, champion! You finished repeating this Ayah'));
       if (currentWird.autoAdvanceAyah && activeAyah.numberInSurah < currentWird.endAyah) {
         autoAdvanceTimerRef.current = window.setTimeout(() => {
           if (sessionTokenRef.current !== token) return;
@@ -1020,7 +1063,7 @@ export const KidsHifzSection: React.FC = () => {
     }
 
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-      setMicError('التسجيل الصوتي غير مدعوم في هذا المتصفح.');
+      setMicError(t('التسجيل الصوتي غير مدعوم في هذا المتصفح.', 'Audio recording is not supported in this browser.'));
       return;
     }
 
@@ -1042,9 +1085,13 @@ export const KidsHifzSection: React.FC = () => {
 
       const targetSurah = currentWird.surahNumber;
       const targetAyah = activeAyah ? activeAyah.numberInSurah : currentWird.startAyah;
+      const surahTitle = getSurahFullTitle(surahMeta, lang);
       const targetLabel = activeAyah
-        ? `سورة ${surahMeta.name} · الآية ${toArabicIndic(activeAyah.numberInSurah)}`
-        : `سورة ${surahMeta.name}`;
+        ? t(
+            `${surahTitle} · الآية ${toArabicIndic(activeAyah.numberInSurah)}`,
+            `${surahTitle} · Ayah ${activeAyah.numberInSurah}`
+          )
+        : surahTitle;
 
       recorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) {
@@ -1075,7 +1122,12 @@ export const KidsHifzSection: React.FC = () => {
       setIsRecordingVoice(true);
     } catch {
       setActiveChildStream(null);
-      setMicError('يرجى السماح بصلاحية الميكروفون ليتمكن الطفل من تسجيل صوته وسماعه.');
+      setMicError(
+        t(
+          'يرجى السماح بصلاحية الميكروفون ليتمكن الطفل من تسجيل صوته وسماعه.',
+          'Please allow microphone permission so the child can record and listen to their voice.'
+        )
+      );
       setIsRecordingVoice(false);
     }
   };
@@ -1137,12 +1189,19 @@ export const KidsHifzSection: React.FC = () => {
         }
       );
       setKidRemoteSubmissions((prev) => [res.submission, ...prev]);
-      setSubmissionNotice('أحسنت! تم إرسال تسجيلك للمشرف بنجاح ليسمعه ويشجعك.');
+      setSubmissionNotice(
+        tr(
+          'أحسنت! تم إرسال تسجيلك للمشرف بنجاح ليسمعه ويشجعك.',
+          'Well done! Your recording was sent to the supervisor for review.'
+        )
+      );
       if (activeProfile.soundEffectsEnabled) {
         playKidEncouragementSound('star');
       }
     } catch (err) {
-      setMicError(err instanceof Error ? err.message : 'تعذر إرسال التسميع للمشرف');
+      setMicError(
+        err instanceof Error ? err.message : tr('تعذر إرسال التسميع للمشرف', 'Could not send recitation to supervisor')
+      );
     } finally {
       setIsSendingSubmission(false);
     }
@@ -1152,7 +1211,7 @@ export const KidsHifzSection: React.FC = () => {
     e.preventDefault();
     const digits = joinCircleCodeInput.replace(/[^0-9]/g, '');
     if (digits.length !== 6) {
-      setJoinError('يرجى إدخال كود الحلقة المكون من ٦ أرقام.');
+      setJoinError(t('يرجى إدخال كود الحلقة المكون من ٦ أرقام.', 'Please enter the 6-digit circle code.'));
       return;
     }
     setJoinError(null);
@@ -1176,9 +1235,14 @@ export const KidsHifzSection: React.FC = () => {
         },
       }));
       setIsJoinCircleModalOpen(false);
-      setStatusBanner(`تم الانضمام بنجاح إلى ${res.title} بإشراف ${res.supervisorName}`);
+      setStatusBanner(
+        tr(
+          `تم الانضمام بنجاح إلى ${res.title} بإشراف ${res.supervisorName}`,
+          `Joined ${res.title} supervised by ${res.supervisorName}`
+        )
+      );
     } catch (err) {
-      setJoinError(err instanceof Error ? err.message : 'تعذر الانضمام إلى الحلقة');
+      setJoinError(err instanceof Error ? err.message : tr('تعذر الانضمام إلى الحلقة', 'Could not join the circle'));
     } finally {
       setIsJoiningCircle(false);
     }
@@ -1201,8 +1265,8 @@ export const KidsHifzSection: React.FC = () => {
     setRemoteLoading(true);
     try {
       const res = await createRemoteKidsCircleApi({
-        title: createCircleTitle.trim() || 'حلقة تحفيظ الصغار',
-        supervisorName: createSupervisorName.trim() || 'المشرف',
+        title: createCircleTitle.trim() || t('حلقة تحفيظ الصغار', 'Kids Hifz Circle'),
+        supervisorName: createSupervisorName.trim() || t('المشرف', 'Supervisor'),
       });
       const sess: RemoteCircleSupervisorSession = {
         circleCode: res.circleCode,
@@ -1214,9 +1278,14 @@ export const KidsHifzSection: React.FC = () => {
       setSupervisorSession(sess);
       setRemoteCircleKids([]);
       setRemoteSubmissions([]);
-      setRemoteSuccessMsg(`تم إنشاء الحلقة بنجاح! شارك الكود (${res.circleCode}) مع الأطفال.`);
+      setRemoteSuccessMsg(
+        tr(
+          `تم إنشاء الحلقة بنجاح! شارك الكود (${res.circleCode}) مع الأطفال.`,
+          `Circle created! Share code (${res.circleCode}) with your children.`
+        )
+      );
     } catch (err) {
-      setRemoteError(err instanceof Error ? err.message : 'تعذر إنشاء الحلقة');
+      setRemoteError(err instanceof Error ? err.message : tr('تعذر إنشاء الحلقة', 'Could not create circle'));
     } finally {
       setRemoteLoading(false);
     }
@@ -1226,7 +1295,9 @@ export const KidsHifzSection: React.FC = () => {
     e.preventDefault();
     const digits = connectCircleCode.replace(/[^0-9]/g, '');
     if (digits.length !== 6 || !connectAdminKey.trim()) {
-      setRemoteError('أدخل كود الحلقة (٦ أرقام) ومفتاح المشرف السري.');
+      setRemoteError(
+        t('أدخل كود الحلقة (٦ أرقام) ومفتاح المشرف السري.', 'Enter the 6-digit circle code and secret supervisor key.')
+      );
       return;
     }
     setRemoteError(null);
@@ -1246,7 +1317,7 @@ export const KidsHifzSection: React.FC = () => {
       setConnectAdminKey('');
       await refreshSupervisorCircle(sess, false);
     } catch (err) {
-      setRemoteError(err instanceof Error ? err.message : 'مفتاح المشرف غير صحيح');
+      setRemoteError(err instanceof Error ? err.message : tr('مفتاح المشرف غير صحيح', 'Invalid supervisor key'));
     } finally {
       setRemoteLoading(false);
     }
@@ -1267,9 +1338,14 @@ export const KidsHifzSection: React.FC = () => {
       setRemoteCircleKids((prev) =>
         prev.map((k) => (k.kidId === res.member.kidId ? res.member : k))
       );
-      setRemoteSuccessMsg(`تم إرسال الورد الجديد إلى جهاز ${res.member.name} بنجاح!`);
+      setRemoteSuccessMsg(
+        tr(
+          `تم إرسال الورد الجديد إلى جهاز ${res.member.name} بنجاح!`,
+          `New daily Wird sent to ${res.member.name}'s device!`
+        )
+      );
     } catch (err) {
-      setRemoteError(err instanceof Error ? err.message : 'تعذر تحديث ورد الطفل');
+      setRemoteError(err instanceof Error ? err.message : tr('تعذر تحديث ورد الطفل', 'Could not update child Wird'));
     } finally {
       setRemoteLoading(false);
     }
@@ -1282,7 +1358,7 @@ export const KidsHifzSection: React.FC = () => {
       return;
     }
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-      setRemoteError('التسجيل الصوتي غير مدعوم في هذا المتصفح.');
+      setRemoteError(t('التسجيل الصوتي غير مدعوم في هذا المتصفح.', 'Audio recording is not supported in this browser.'));
       return;
     }
     try {
@@ -1310,7 +1386,7 @@ export const KidsHifzSection: React.FC = () => {
           const dataUrl = await blobToDataUrl(blob);
           setSupervisorAudioDraftMap((prev) => ({ ...prev, [subId]: dataUrl }));
         } catch {
-          setRemoteError('تعذر تجهيز الرسالة الصوتية للمشرف');
+          setRemoteError(tr('تعذر تجهيز الرسالة الصوتية للمشرف', 'Could not prepare supervisor voice note'));
         }
       };
 
@@ -1318,7 +1394,12 @@ export const KidsHifzSection: React.FC = () => {
       setRecordingForSubId(subId);
     } catch {
       setActiveSupStream(null);
-      setRemoteError('يرجى السماح بصلاحية الميكروفون لتسجيل توجيه صوتي للطفل.');
+      setRemoteError(
+        t(
+          'يرجى السماح بصلاحية الميكروفون لتسجيل توجيه صوتي للطفل.',
+          'Please allow microphone access to record voice feedback for the child.'
+        )
+      );
     }
   };
 
@@ -1350,11 +1431,11 @@ export const KidsHifzSection: React.FC = () => {
       }
       setRemoteSuccessMsg(
         decision === 'approved'
-          ? 'تم اعتماد التلاوة وإضافة النجوم للطفل!'
-          : 'تم إرسال توصية الإعادة اللطيفة للطفل.'
+          ? tr('تم اعتماد التلاوة وإضافة النجوم للطفل!', 'Recitation approved and stars awarded!')
+          : tr('تم إرسال توصية الإعادة اللطيفة للطفل.', 'Gentle retry note sent to the child.')
       );
     } catch (err) {
-      setRemoteError(err instanceof Error ? err.message : 'تعذر حفظ تقييم التلاوة');
+      setRemoteError(err instanceof Error ? err.message : tr('تعذر حفظ تقييم التلاوة', 'Could not save recitation review'));
     } finally {
       setReviewingSubId(null);
     }
@@ -1377,7 +1458,12 @@ export const KidsHifzSection: React.FC = () => {
       setGateError(null);
       setViewMode('supervisor');
     } else {
-      setGateError('الإجابة غير صحيحة؛ هذه البوابة مخصصة للمشرف أو ولي الأمر.');
+      setGateError(
+        t(
+          'الإجابة غير صحيحة؛ هذه البوابة مخصصة للمشرف أو ولي الأمر.',
+          'Incorrect answer; this gate is for the supervisor or parent.'
+        )
+      );
     }
   };
 
@@ -1484,15 +1570,21 @@ export const KidsHifzSection: React.FC = () => {
           <div className="space-y-1">
             <div className="flex items-center gap-2 text-xs text-[#D9B45A] font-semibold">
               <Unlock className="w-4 h-4" />
-              <span>لوحة المشرف وولي الأمر</span>
+              <span>{t('لوحة المشرف وولي الأمر', 'Supervisor & Parent Panel')}</span>
               <span aria-hidden="true">·</span>
-              <span>تحفيظ الصغار</span>
+              <span>{t('تحفيظ الصغار', 'Kids Hifz Oasis')}</span>
             </div>
             <h1 className="text-xl sm:text-2xl font-bold text-[#F6EFDD] font-kufi">
-              إدارة ورد {activeProfile.name} ومتابعة التسميع
+              {t(
+                `إدارة ورد ${displayKidName(activeProfile.name)} ومتابعة التسميع`,
+                `Manage ${displayKidName(activeProfile.name)}'s Wird & Review`
+              )}
             </h1>
             <p className="text-xs text-[#E5DCC5] dark:text-slate-300">
-              اضبط الورد على هذا الجهاز، أو أنشئ حلقة عن بُعد لإرسال الأوراد واستقبال التسميع الصوتي من أجهزة الأطفال.
+              {t(
+                'اضبط الورد على هذا الجهاز، أو أنشئ حلقة عن بُعد لإرسال الأوراد واستقبال التسميع الصوتي من أجهزة الأطفال.',
+                "Configure the daily Wird on this device, or create a remote circle to assign Wirds and review children's voice recitations."
+              )}
             </p>
           </div>
 
@@ -1502,7 +1594,7 @@ export const KidsHifzSection: React.FC = () => {
             className="min-h-[46px] px-5 py-2.5 rounded-xl bg-[#D9B45A] hover:bg-[#c9a349] text-[#1B1A17] font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition-colors cursor-pointer whitespace-nowrap shrink-0"
           >
             <Lock className="w-4 h-4" />
-            <span>العودة وقفل شاشة الطفل</span>
+            <span>{t('العودة وقفل شاشة الطفل', 'Back & Lock Child Screen')}</span>
           </button>
         </div>
 
@@ -1518,7 +1610,7 @@ export const KidsHifzSection: React.FC = () => {
             }`}
           >
             <Users className="w-4 h-4 text-[#D9B45A]" />
-            <span>ملفات هذا الجهاز والورد المحلي</span>
+            <span>{t('ملفات هذا الجهاز والورد المحلي', 'Device Profiles & Local Wird')}</span>
           </button>
 
           <button
@@ -1531,10 +1623,10 @@ export const KidsHifzSection: React.FC = () => {
             }`}
           >
             <Radio className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
-            <span>الحلقة عن بُعد وصندوق التسميع</span>
+            <span>{t('الحلقة عن بُعد وصندوق التسميع', 'Remote Circle & Voice Inbox')}</span>
             {pendingInboxCount > 0 && (
               <span className="px-2 py-0.5 rounded-lg bg-[#D9B45A] text-[#1B1A17] text-[11px] font-bold tabular-nums">
-                {toArabicIndic(pendingInboxCount)}
+                {formatLocalizedDigits(pendingInboxCount, lang)}
               </span>
             )}
           </button>
@@ -1565,37 +1657,40 @@ export const KidsHifzSection: React.FC = () => {
                   <div className="space-y-1">
                     <h2 className="text-base font-bold text-[#1B1A17] dark:text-[#F6EFDD] flex items-center gap-2">
                       <Plus className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
-                      <span>إنشاء حلقة مشرف جديدة (كود ٦ أرقام)</span>
+                      <span>{t('إنشاء حلقة مشرف جديدة (كود ٦ أرقام)', 'Create New Supervisor Circle (6-Digit Code)')}</span>
                     </h2>
                     <p className="text-xs text-[#6B6251] dark:text-slate-400">
-                      أنشئ حلقة واحدة وشارك كودها المكون من ٦ أرقام مع أطفالك دون حاجة لحسابات بريد إلكتروني.
+                      {t(
+                        'أنشئ حلقة واحدة وشارك كودها المكون من ٦ أرقام مع أطفالك دون حاجة لحسابات بريد إلكتروني.',
+                        'Create one circle and share its 6-digit code with your children—no email accounts needed.'
+                      )}
                     </p>
                   </div>
 
                   <div className="space-y-1.5">
                     <label htmlFor="create-circle-title" className="block text-xs font-semibold text-[#4B4539] dark:text-slate-300">
-                      اسم الحلقة
+                      {t('اسم الحلقة', 'Circle Name')}
                     </label>
                     <input
                       id="create-circle-title"
                       type="text"
                       value={createCircleTitle}
                       onChange={(e) => setCreateCircleTitle(e.target.value)}
-                      placeholder="مثلاً: حلقة براعم الفجر"
+                      placeholder={t('مثلاً: حلقة براعم الفجر', 'e.g. Dawn Buds Circle')}
                       className="w-full min-h-[44px] px-3.5 py-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-sm text-[#1B1A17] dark:text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
                     />
                   </div>
 
                   <div className="space-y-1.5">
                     <label htmlFor="create-supervisor-name" className="block text-xs font-semibold text-[#4B4539] dark:text-slate-300">
-                      اسم المشرف / ولي الأمر
+                      {t('اسم المشرف / ولي الأمر', 'Supervisor / Parent Name')}
                     </label>
                     <input
                       id="create-supervisor-name"
                       type="text"
                       value={createSupervisorName}
                       onChange={(e) => setCreateSupervisorName(e.target.value)}
-                      placeholder="مثلاً: الأستاذ أحمد أو أم عمر"
+                      placeholder={t('مثلاً: الأستاذ أحمد أو أم عمر', 'e.g. Teacher Ahmad or Umm Omar')}
                       className="w-full min-h-[44px] px-3.5 py-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-sm text-[#1B1A17] dark:text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
                     />
                   </div>
@@ -1605,7 +1700,7 @@ export const KidsHifzSection: React.FC = () => {
                     disabled={remoteLoading}
                     className="w-full min-h-[46px] px-5 py-2.5 rounded-xl bg-[#D9B45A] hover:bg-[#c9a349] disabled:opacity-50 text-[#1B1A17] font-bold text-sm cursor-pointer transition-colors"
                   >
-                    {remoteLoading ? 'جارٍ الإنشاء...' : 'إنشاء الحلقة وإصدار الكود'}
+                    {remoteLoading ? t('جارٍ الإنشاء...', 'Creating...') : t('إنشاء الحلقة وإصدار الكود', 'Create Circle & Generate Code')}
                   </button>
                 </form>
 
@@ -1617,16 +1712,19 @@ export const KidsHifzSection: React.FC = () => {
                   <div className="space-y-1">
                     <h2 className="text-base font-bold text-[#1B1A17] dark:text-[#F6EFDD] flex items-center gap-2">
                       <KeyRound className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
-                      <span>فتح حلقة قائمة من جهاز آخر</span>
+                      <span>{t('فتح حلقة قائمة من جهاز آخر', 'Open Existing Circle from Another Device')}</span>
                     </h2>
                     <p className="text-xs text-[#6B6251] dark:text-slate-400">
-                      أدخل كود الحلقة (٦ أرقام) ومفتاح المشرف السري الذي حفظته عند الإنشاء.
+                      {t(
+                        'أدخل كود الحلقة (٦ أرقام) ومفتاح المشرف السري الذي حفظته عند الإنشاء.',
+                        'Enter the 6-digit circle code and the secret supervisor key saved upon creation.'
+                      )}
                     </p>
                   </div>
 
                   <div className="space-y-1.5">
                     <label htmlFor="connect-circle-code" className="block text-xs font-semibold text-[#4B4539] dark:text-slate-300">
-                      كود الحلقة (٦ أرقام)
+                      {t('كود الحلقة (٦ أرقام)', 'Circle Code (6 Digits)')}
                     </label>
                     <input
                       id="connect-circle-code"
@@ -1635,21 +1733,21 @@ export const KidsHifzSection: React.FC = () => {
                       maxLength={6}
                       value={connectCircleCode}
                       onChange={(e) => setConnectCircleCode(e.target.value)}
-                      placeholder="مثال: 482910"
+                      placeholder={t('مثال: 482910', 'e.g. 482910')}
                       className="w-full min-h-[44px] px-3.5 py-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-sm text-[#1B1A17] dark:text-[#F6EFDD] tabular-nums outline-none focus:border-[#D9B45A]"
                     />
                   </div>
 
                   <div className="space-y-1.5">
                     <label htmlFor="connect-admin-key" className="block text-xs font-semibold text-[#4B4539] dark:text-slate-300">
-                      مفتاح المشرف السري
+                      {t('مفتاح المشرف السري', 'Secret Supervisor Key')}
                     </label>
                     <input
                       id="connect-admin-key"
                       type="password"
                       value={connectAdminKey}
                       onChange={(e) => setConnectAdminKey(e.target.value)}
-                      placeholder="أدخل مفتاح المشرف السري..."
+                      placeholder={t('أدخل مفتاح المشرف السري...', 'Enter secret supervisor key...')}
                       className="w-full min-h-[44px] px-3.5 py-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-sm text-[#1B1A17] dark:text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
                     />
                   </div>
@@ -1659,7 +1757,7 @@ export const KidsHifzSection: React.FC = () => {
                     disabled={remoteLoading}
                     className="w-full min-h-[46px] px-5 py-2.5 rounded-xl bg-[#1F3A6E] hover:bg-[#2E5499] disabled:opacity-50 border border-[#648CD4]/45 text-[#F6EFDD] font-bold text-sm cursor-pointer transition-colors"
                   >
-                    {remoteLoading ? 'جارٍ التحقق...' : 'فتح لوحة الحلقة'}
+                    {remoteLoading ? t('جارٍ التحقق...', 'Verifying...') : t('فتح لوحة الحلقة', 'Open Circle Panel')}
                   </button>
                 </form>
               </div>
@@ -1671,9 +1769,9 @@ export const KidsHifzSection: React.FC = () => {
                     <div className="space-y-1">
                       <div className="flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-300 font-bold">
                         <Radio className="w-3.5 h-3.5" />
-                        <span>حلقة متصلة ومباشرة</span>
+                        <span>{t('حلقة متصلة ومباشرة', 'Live Connected Circle')}</span>
                         <span aria-hidden="true">·</span>
-                        <span>إشراف: {supervisorSession.supervisorName}</span>
+                        <span>{t(`إشراف: ${supervisorSession.supervisorName}`, `Supervisor: ${supervisorSession.supervisorName}`)}</span>
                       </div>
                       <h2 className="text-lg sm:text-xl font-bold text-[#1B1A17] dark:text-[#F6EFDD] font-kufi">
                         {supervisorSession.title}
@@ -1682,7 +1780,7 @@ export const KidsHifzSection: React.FC = () => {
 
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="px-4 py-2 rounded-xl bg-[#1F3A6E] dark:bg-[#142038] border border-[#D9B45A]/50 text-center">
-                        <div className="text-[10px] text-[#E5DCC5] dark:text-slate-300">كود انضمام الأطفال</div>
+                        <div className="text-[10px] text-[#E5DCC5] dark:text-slate-300">{t('كود انضمام الأطفال', 'Children Join Code')}</div>
                         <div className="text-xl font-bold text-[#D9B45A] tracking-widest tabular-nums" dir="ltr">
                           {supervisorSession.circleCode}
                         </div>
@@ -1694,7 +1792,7 @@ export const KidsHifzSection: React.FC = () => {
                         className="min-h-[44px] px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 hover:bg-[#F3E9D2] dark:hover:bg-slate-800 border border-[#D9B45A]/30 dark:border-slate-700 text-xs font-bold text-[#1B1A17] dark:text-slate-200 flex items-center gap-1.5 cursor-pointer"
                       >
                         <RefreshCw className={`w-4 h-4 ${remoteLoading ? 'animate-spin' : ''}`} />
-                        <span>تحديث</span>
+                        <span>{t('تحديث', 'Refresh')}</span>
                       </button>
 
                       <button
@@ -1708,7 +1806,7 @@ export const KidsHifzSection: React.FC = () => {
                         className="min-h-[44px] px-3.5 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-950/70 border border-rose-300 dark:border-rose-500/35 text-xs font-bold text-rose-800 dark:text-rose-200 flex items-center gap-1.5 cursor-pointer"
                       >
                         <LogOut className="w-4 h-4" />
-                        <span>إغلاق الجلسة</span>
+                        <span>{t('إغلاق الجلسة', 'End Session')}</span>
                       </button>
                     </div>
                   </div>
@@ -1722,11 +1820,11 @@ export const KidsHifzSection: React.FC = () => {
                     >
                       <span className="flex items-center gap-2">
                         <Link2 className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
-                        <span>نسخ رابط انضمام الأطفال المباشر</span>
+                        <span>{t('نسخ رابط انضمام الأطفال المباشر', 'Copy Direct Child Invite Link')}</span>
                       </span>
                       {copiedCodeLabel === 'childLink' ? (
                         <span className="text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
-                          <Check className="w-3.5 h-3.5" /> تم النسخ
+                          <Check className="w-3.5 h-3.5" /> {t('تم النسخ', 'Copied')}
                         </span>
                       ) : (
                         <Copy className="w-3.5 h-3.5 text-[#6B6251] dark:text-slate-400" />
@@ -1740,11 +1838,11 @@ export const KidsHifzSection: React.FC = () => {
                     >
                       <span className="flex items-center gap-2">
                         <KeyRound className="w-4 h-4 text-[#8A6418] dark:text-amber-400" />
-                        <span>نسخ رابط المشرف السري (لجهازك فقط)</span>
+                        <span>{t('نسخ رابط المشرف السري (لجهازك فقط)', 'Copy Secret Supervisor Link (Your Device Only)')}</span>
                       </span>
                       {copiedCodeLabel === 'adminLink' ? (
                         <span className="text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
-                          <Check className="w-3.5 h-3.5" /> تم النسخ
+                          <Check className="w-3.5 h-3.5" /> {t('تم النسخ', 'Copied')}
                         </span>
                       ) : (
                         <Copy className="w-3.5 h-3.5 text-[#6B6251] dark:text-slate-400" />
@@ -1760,31 +1858,32 @@ export const KidsHifzSection: React.FC = () => {
                     <div className="flex items-center justify-between">
                       <h3 className="text-base font-bold text-[#1B1A17] dark:text-[#F6EFDD] flex items-center gap-2">
                         <Users className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
-                        <span>الأطفال المنضمون ({toArabicIndic(remoteCircleKids.length)})</span>
+                        <span>{t(`الأطفال المنضمون (${toArabicIndic(remoteCircleKids.length)})`, `Joined Children (${remoteCircleKids.length})`)}</span>
                       </h3>
                     </div>
 
                     {remoteCircleKids.length === 0 ? (
                       <div className="p-6 rounded-xl bg-white dark:bg-slate-950/70 border border-[#D9B45A]/20 dark:border-slate-800 text-center space-y-2">
                         <p className="text-xs text-[#4B4539] dark:text-slate-300">
-                          لم ينضم أي طفل للحلقة بعد. اعطِ الطفل الكود{' '}
+                          {t('لم ينضم أي طفل للحلقة بعد. اعطِ الطفل الكود ', 'No child has joined yet. Give your child the code ')}
                           <span className="text-[#8A6418] dark:text-[#D9B45A] font-bold tabular-nums" dir="ltr">
                             {supervisorSession.circleCode}
                           </span>{' '}
-                          ليدخل من جهازه.
+                          {t('ليدخل من جهازه.', 'to join from their device.')}
                         </p>
                       </div>
                     ) : (
-                      <div className="space-y-2.5 max-h-[240px] overflow-y-auto pr-1">
+                      <div className="space-y-2.5 max-h-[240px] overflow-y-auto pe-1">
                         {remoteCircleKids.map((kid) => {
                           const isSel = kid.kidId === selectedRemoteKidId;
                           const kSurah = SURAHS_LIST.find((s) => s.number === kid.dailyWird.surahNumber);
+                          const kSurahLabel = kSurah ? getSurahFullTitle(kSurah, lang) : '';
                           return (
                             <button
                               key={kid.kidId}
                               type="button"
                               onClick={() => setSelectedRemoteKidId(kid.kidId)}
-                              className={`w-full text-right p-3 rounded-xl border flex items-center justify-between gap-3 cursor-pointer transition-colors ${
+                              className={`w-full text-start p-3 rounded-xl border flex items-center justify-between gap-3 cursor-pointer transition-colors ${
                                 isSel
                                   ? 'bg-[#1F3A6E] dark:bg-[#1F3A6E]/55 border-[#D9B45A] text-[#F6EFDD]'
                                   : 'bg-white dark:bg-slate-950/80 border-[#D9B45A]/20 dark:border-slate-800 text-[#1B1A17] dark:text-slate-200 hover:border-[#D9B45A]'
@@ -1801,9 +1900,12 @@ export const KidsHifzSection: React.FC = () => {
                                   {renderAvatarIcon(kid.avatarId, 'w-5 h-5')}
                                 </span>
                                 <div className="min-w-0">
-                                  <div className="font-bold text-sm truncate">{kid.name}</div>
+                                  <div className="font-bold text-sm truncate">{displayKidName(kid.name)}</div>
                                   <div className={`text-[11px] tabular-nums truncate ${isSel ? 'text-[#E5DCC5]' : 'text-[#6B6251] dark:text-slate-300'}`}>
-                                    {toArabicIndic(kid.stars)} نجمة · ورد سورة {kSurah?.name || ''} ({toArabicIndic(kid.dailyWird.startAyah)}–{toArabicIndic(kid.dailyWird.endAyah)})
+                                    {t(
+                                      `${toArabicIndic(kid.stars)} نجمة · ورد ${kSurahLabel} (${toArabicIndic(kid.dailyWird.startAyah)}–${toArabicIndic(kid.dailyWird.endAyah)})`,
+                                      `${kid.stars} stars · ${kSurahLabel} (${kid.dailyWird.startAyah}–${kid.dailyWird.endAyah})`
+                                    )}
                                   </div>
                                 </div>
                               </div>
@@ -1816,11 +1918,11 @@ export const KidsHifzSection: React.FC = () => {
                     {selectedRemoteKid && (
                       <div className="pt-4 border-t border-[#D9B45A]/20 dark:border-slate-800 space-y-3">
                         <div className="text-xs font-bold text-[#8A6418] dark:text-[#D9B45A]">
-                          إرسال ورد جديد لجهاز: {selectedRemoteKid.name}
+                          {t(`إرسال ورد جديد لجهاز: ${displayKidName(selectedRemoteKid.name)}`, `Send New Wird to: ${displayKidName(selectedRemoteKid.name)}`)}
                         </div>
 
                         <select
-                          aria-label="سورة الورد عن بعد"
+                          aria-label={t('سورة الورد عن بعد', 'Remote Wird Surah')}
                           value={remoteWirdDraft.surahNumber}
                           onChange={(e) => {
                             const sNum = Number(e.target.value);
@@ -1836,14 +1938,17 @@ export const KidsHifzSection: React.FC = () => {
                         >
                           {SURAHS_LIST.map((s) => (
                             <option key={s.number} value={s.number} className="bg-white text-[#1B1A17] dark:bg-slate-900 dark:text-[#F6EFDD]">
-                              {toArabicIndic(s.number)}. سورة {s.name} ({toArabicIndic(s.numberOfAyahs)} آية)
+                              {t(
+                                `${toArabicIndic(s.number)}. سورة ${s.name} (${toArabicIndic(s.numberOfAyahs)} آية)`,
+                                `${s.number}. Surah ${s.englishName} (${s.numberOfAyahs} Ayahs)`
+                              )}
                             </option>
                           ))}
                         </select>
 
                         <div className="grid grid-cols-3 gap-2">
                           <div>
-                            <label className="block text-[11px] text-[#6B6251] dark:text-slate-400 mb-1">من آية</label>
+                            <label className="block text-[11px] text-[#6B6251] dark:text-slate-400 mb-1">{t('من آية', 'From Ayah')}</label>
                             <input
                               type="number"
                               min={1}
@@ -1861,7 +1966,7 @@ export const KidsHifzSection: React.FC = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-[11px] text-[#6B6251] dark:text-slate-400 mb-1">إلى آية</label>
+                            <label className="block text-[11px] text-[#6B6251] dark:text-slate-400 mb-1">{t('إلى آية', 'To Ayah')}</label>
                             <input
                               type="number"
                               min={remoteWirdDraft.startAyah}
@@ -1879,7 +1984,7 @@ export const KidsHifzSection: React.FC = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-[11px] text-[#6B6251] dark:text-slate-400 mb-1">التكرار</label>
+                            <label className="block text-[11px] text-[#6B6251] dark:text-slate-400 mb-1">{t('التكرار', 'Repeats')}</label>
                             <select
                               value={remoteWirdDraft.repeatCount}
                               onChange={(e) =>
@@ -1890,9 +1995,9 @@ export const KidsHifzSection: React.FC = () => {
                               }
                               className="w-full min-h-[40px] px-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-xs text-[#1B1A17] dark:text-[#F6EFDD]"
                             >
-                              <option value={3}>٣ مرات</option>
-                              <option value={5}>٥ مرات</option>
-                              <option value={7}>٧ مرات</option>
+                              <option value={3}>{t('٣ مرات', '3 times')}</option>
+                              <option value={5}>{t('٥ مرات', '5 times')}</option>
+                              <option value={7}>{t('٧ مرات', '7 times')}</option>
                             </select>
                           </div>
                         </div>
@@ -1904,7 +2009,7 @@ export const KidsHifzSection: React.FC = () => {
                           className="w-full min-h-[44px] px-4 py-2 rounded-xl bg-[#D9B45A] hover:bg-[#c9a349] disabled:opacity-50 text-[#1B1A17] text-xs font-bold flex items-center justify-center gap-2 cursor-pointer"
                         >
                           <Send className="w-4 h-4" />
-                          <span>اعتماد وإرسال الورد لجهاز الطفل</span>
+                          <span>{t('اعتماد وإرسال الورد لجهاز الطفل', "Approve & Send Wird to Child's Device")}</span>
                         </button>
                       </div>
                     )}
@@ -1915,7 +2020,7 @@ export const KidsHifzSection: React.FC = () => {
                     <div className="flex items-center justify-between gap-2">
                       <h3 className="text-base font-bold text-[#1B1A17] dark:text-[#F6EFDD] flex items-center gap-2">
                         <Inbox className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
-                        <span>صندوق التسميع الصوتي</span>
+                        <span>{t('صندوق التسميع الصوتي', 'Voice Recitation Inbox')}</span>
                       </h3>
                       <div className="flex items-center gap-1 p-1 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/25 dark:border-slate-800">
                         <button
@@ -1927,7 +2032,7 @@ export const KidsHifzSection: React.FC = () => {
                               : 'text-[#6B6251] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white'
                           }`}
                         >
-                          قيد الانتظار ({toArabicIndic(pendingInboxCount)})
+                          {t(`قيد الانتظار (${toArabicIndic(pendingInboxCount)})`, `Pending (${pendingInboxCount})`)}
                         </button>
                         <button
                           type="button"
@@ -1938,7 +2043,7 @@ export const KidsHifzSection: React.FC = () => {
                               : 'text-[#6B6251] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white'
                           }`}
                         >
-                          الكل ({toArabicIndic(remoteSubmissions.length)})
+                          {t(`الكل (${toArabicIndic(remoteSubmissions.length)})`, `All (${remoteSubmissions.length})`)}
                         </button>
                       </div>
                     </div>
@@ -1946,13 +2051,14 @@ export const KidsHifzSection: React.FC = () => {
                     {filteredSubmissions.length === 0 ? (
                       <div className="p-8 rounded-xl bg-white dark:bg-slate-950/70 border border-[#D9B45A]/20 dark:border-slate-800 text-center text-xs text-[#6B6251] dark:text-slate-400">
                         {inboxFilter === 'pending'
-                          ? 'لا توجد تسجيلات صوتية جديدة بانتظار المراجعة حالياً.'
-                          : 'لم يُرسل الأطفال أي تسجيلات تسميع صوتية بعد.'}
+                          ? t('لا توجد تسجيلات صوتية جديدة بانتظار المراجعة حالياً.', 'No new voice recordings awaiting review.')
+                          : t('لم يُرسل الأطفال أي تسجيلات تسميع صوتية بعد.', 'Children have not sent any voice recordings yet.')}
                       </div>
                     ) : (
-                      <div className="space-y-3 max-h-[460px] overflow-y-auto pr-1">
+                      <div className="space-y-3 max-h-[460px] overflow-y-auto pe-1">
                         {filteredSubmissions.map((sub) => {
                           const sMeta = SURAHS_LIST.find((x) => x.number === sub.surahNumber);
+                          const subSurahTitle = sMeta ? getSurahFullTitle(sMeta, lang) : `${t('سورة', 'Surah')} ${sub.surahNumber}`;
                           const isPlayingClip = playingRemoteAudioId === sub.id;
                           const isSupRecording = recordingForSubId === sub.id;
                           const hasSupAudio = Boolean(supervisorAudioDraftMap[sub.id]);
@@ -1965,7 +2071,7 @@ export const KidsHifzSection: React.FC = () => {
                               <div className="flex items-center justify-between gap-2">
                                 <div className="min-w-0">
                                   <div className="text-sm font-bold text-[#1B1A17] dark:text-[#F6EFDD] flex items-center gap-2">
-                                    <span>{sub.kidName}</span>
+                                    <span>{displayKidName(sub.kidName)}</span>
                                     <span
                                       className={`text-[11px] px-2 py-0.5 rounded-md font-semibold ${
                                         sub.status === 'approved'
@@ -1976,14 +2082,17 @@ export const KidsHifzSection: React.FC = () => {
                                       }`}
                                     >
                                       {sub.status === 'approved'
-                                        ? 'مُتقن'
+                                        ? t('مُتقن', 'Mastered')
                                         : sub.status === 'retry'
-                                        ? 'توصية إعادة'
-                                        : 'بانتظار المراجعة'}
+                                        ? t('توصية إعادة', 'Retry Suggested')
+                                        : t('بانتظار المراجعة', 'Pending Review')}
                                     </span>
                                   </div>
                                   <div className="text-[11px] text-[#6B6251] dark:text-slate-400 tabular-nums mt-0.5">
-                                    سورة {sMeta?.name || sub.surahNumber} · الآية {toArabicIndic(sub.ayahNumber)} · المدة {toArabicIndic(sub.durationSec)} ث
+                                    {t(
+                                      `${subSurahTitle} · الآية ${toArabicIndic(sub.ayahNumber)} · المدة ${toArabicIndic(sub.durationSec)} ث`,
+                                      `${subSurahTitle} · Ayah ${sub.ayahNumber} · ${sub.durationSec}s`
+                                    )}
                                   </div>
                                 </div>
 
@@ -1993,7 +2102,7 @@ export const KidsHifzSection: React.FC = () => {
                                   className="min-h-[40px] px-3.5 py-2 rounded-xl bg-[#D9B45A] text-[#1B1A17] text-xs font-bold flex items-center gap-1.5 cursor-pointer shrink-0"
                                 >
                                   {isPlayingClip ? <Square className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                                  <span>{isPlayingClip ? 'إيقاف' : 'استماع'}</span>
+                                  <span>{isPlayingClip ? t('إيقاف', 'Stop') : t('استماع', 'Listen')}</span>
                                 </button>
                               </div>
 
@@ -2009,13 +2118,13 @@ export const KidsHifzSection: React.FC = () => {
                                         [sub.id]: e.target.value,
                                       }))
                                     }
-                                    placeholder="رسالة تشجيعية أو ملاحظة قصيرة للطفل..."
+                                    placeholder={t('رسالة تشجيعية أو ملاحظة قصيرة للطفل...', 'Encouraging message or short note for the child...')}
                                     className="flex-1 min-w-[160px] min-h-[38px] px-3 rounded-lg bg-[#FBF7EE] dark:bg-slate-900 border border-[#D9B45A]/25 dark:border-slate-800 text-xs text-[#1B1A17] dark:text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
                                   />
                                   <button
                                     type="button"
                                     onClick={() => handleToggleSupervisorVoiceDraft(sub.id)}
-                                    title="تسجيل توجيه صوتي قصير للطفل"
+                                    title={t('تسجيل توجيه صوتي قصير للطفل', 'Record a short voice note for the child')}
                                     className={`min-h-[38px] px-3 rounded-lg border text-xs font-bold flex items-center gap-1.5 cursor-pointer shrink-0 ${
                                       isSupRecording
                                         ? 'bg-rose-600 border-rose-400 text-white'
@@ -2027,10 +2136,10 @@ export const KidsHifzSection: React.FC = () => {
                                     {isSupRecording ? <Square className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
                                     <span>
                                       {isSupRecording
-                                        ? 'إيقاف'
+                                        ? t('إيقاف', 'Stop')
                                         : hasSupAudio
-                                        ? 'تم تسجيل التوجيه'
-                                        : 'رد صوتي'}
+                                        ? t('تم تسجيل التوجيه', 'Voice Note Ready')
+                                        : t('رد صوتي', 'Voice Reply')}
                                     </span>
                                   </button>
                                   {isSupRecording && (
@@ -2046,7 +2155,7 @@ export const KidsHifzSection: React.FC = () => {
                                     className="flex-1 min-h-[40px] px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
                                   >
                                     <Star className="w-3.5 h-3.5 fill-white" />
-                                    <span>اعتماد الإتقان (+نجوم)</span>
+                                    <span>{t('اعتماد الإتقان (+نجوم)', 'Approve Mastery (+Stars)')}</span>
                                   </button>
                                   <button
                                     type="button"
@@ -2055,7 +2164,7 @@ export const KidsHifzSection: React.FC = () => {
                                     className="min-h-[40px] px-3 py-1.5 rounded-xl bg-amber-100 dark:bg-amber-500/20 hover:bg-amber-200 dark:hover:bg-amber-500/30 border border-amber-400/50 text-amber-900 dark:text-amber-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                                   >
                                     <RotateCcw className="w-3.5 h-3.5" />
-                                    <span>طلب إعادة لطيفة</span>
+                                    <span>{t('طلب إعادة لطيفة', 'Gentle Retry')}</span>
                                   </button>
                                 </div>
                               </div>
@@ -2076,10 +2185,10 @@ export const KidsHifzSection: React.FC = () => {
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-base font-bold text-[#1B1A17] dark:text-[#F6EFDD] flex items-center gap-2">
               <Users className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
-              <span>ملفات الأطفال على هذا الجهاز</span>
+              <span>{t('ملفات الأطفال على هذا الجهاز', 'Child Profiles on This Device')}</span>
             </h2>
             <span className="text-xs text-[#6B6251] dark:text-slate-400 tabular-nums">
-              {toArabicIndic(state.profiles.length)} ملفات
+              {t(`${toArabicIndic(state.profiles.length)} ملفات`, `${state.profiles.length} ${state.profiles.length === 1 ? 'profile' : 'profiles'}`)}
             </span>
           </div>
 
@@ -2087,6 +2196,7 @@ export const KidsHifzSection: React.FC = () => {
             {state.profiles.map((prof) => {
               const isSelected = prof.id === activeProfile.id;
               const pSurah = SURAHS_LIST.find((s) => s.number === prof.dailyWird.surahNumber);
+              const pSurahTitle = pSurah ? getSurahFullTitle(pSurah, lang) : '';
               return (
                 <div
                   key={prof.id}
@@ -2099,7 +2209,7 @@ export const KidsHifzSection: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => commitState((prev) => ({ ...prev, activeProfileId: prof.id }))}
-                    className="flex-1 text-right flex items-center gap-3 cursor-pointer min-w-0"
+                    className="flex-1 text-start flex items-center gap-3 cursor-pointer min-w-0"
                   >
                     <span
                       className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
@@ -2111,10 +2221,12 @@ export const KidsHifzSection: React.FC = () => {
                       {renderAvatarIcon(prof.avatarId, 'w-5 h-5')}
                     </span>
                     <span className="min-w-0">
-                      <span className="block font-bold text-sm truncate">{prof.name}</span>
+                      <span className="block font-bold text-sm truncate">{displayKidName(prof.name)}</span>
                       <span className={`block text-[11px] tabular-nums truncate ${isSelected ? 'text-[#E5DCC5]' : 'text-[#6B6251] dark:text-slate-400'}`}>
-                        {toArabicIndic(prof.stars)} نجمة · سورة {pSurah?.name || ''}
-                        {prof.remoteLink ? ` · حلقة #${prof.remoteLink.circleCode}` : ''}
+                        {t(
+                          `${toArabicIndic(prof.stars)} نجمة · ${pSurahTitle}${prof.remoteLink ? ` · حلقة #${prof.remoteLink.circleCode}` : ''}`,
+                          `${prof.stars} stars · ${pSurahTitle}${prof.remoteLink ? ` · Circle #${prof.remoteLink.circleCode}` : ''}`
+                        )}
                       </span>
                     </span>
                   </button>
@@ -2130,8 +2242,8 @@ export const KidsHifzSection: React.FC = () => {
                           ),
                         }));
                       }}
-                      title="فك ارتباط هذا الملف بالحلقة عن بُعد"
-                      aria-label={`فك ارتباط ${prof.name} بالحلقة`}
+                      title={t('فك ارتباط هذا الملف بالحلقة عن بُعد', 'Unlink this profile from remote circle')}
+                      aria-label={t(`فك ارتباط ${displayKidName(prof.name)} بالحلقة`, `Unlink ${displayKidName(prof.name)} from circle`)}
                       className="min-w-[36px] min-h-[36px] rounded-lg flex items-center justify-center text-amber-500 dark:text-amber-300 hover:text-amber-600 dark:hover:text-amber-200 hover:bg-amber-500/15 cursor-pointer shrink-0"
                     >
                       <LogOut className="w-4 h-4" />
@@ -2153,7 +2265,7 @@ export const KidsHifzSection: React.FC = () => {
                           };
                         });
                       }}
-                      aria-label={`حذف ملف ${prof.name}`}
+                      aria-label={t(`حذف ملف ${displayKidName(prof.name)}`, `Delete ${displayKidName(prof.name)} profile`)}
                       className="min-w-[36px] min-h-[36px] rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-500 dark:hover:text-rose-400 hover:bg-rose-500/15 cursor-pointer shrink-0"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -2170,27 +2282,30 @@ export const KidsHifzSection: React.FC = () => {
               type="text"
               value={newKidName}
               onChange={(e) => setNewKidName(e.target.value)}
-              placeholder="اسم الطفل الجديد (مثلاً: مريم أو يوسف)..."
-              aria-label="اسم الطفل الجديد"
+              placeholder={t('اسم الطفل الجديد (مثلاً: مريم أو يوسف)...', 'New child name (e.g. Maryam or Yusuf)...')}
+              aria-label={t('اسم الطفل الجديد', 'New child name')}
               className="flex-1 min-h-[44px] px-4 py-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-sm text-[#1B1A17] dark:text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
             />
             <div className="flex items-center gap-1.5">
-              {KIDS_AVATARS.map((av) => (
-                <button
-                  key={av.id}
-                  type="button"
-                  onClick={() => setNewKidAvatar(av.id)}
-                  title={av.label}
-                  aria-label={av.label}
-                  className={`min-w-[42px] min-h-[42px] rounded-xl border flex items-center justify-center cursor-pointer transition-colors ${
-                    newKidAvatar === av.id
-                      ? 'bg-[#D9B45A] text-[#1B1A17] border-[#D9B45A]'
-                      : 'bg-white dark:bg-slate-950 text-[#6B6251] dark:text-slate-300 border-[#D9B45A]/25 dark:border-slate-800 hover:border-[#D9B45A]'
-                  }`}
-                >
-                  {renderAvatarIcon(av.id, 'w-4 h-4')}
-                </button>
-              ))}
+              {KIDS_AVATARS.map((av) => {
+                const avLabel = getKidAvatarDisplayLabel(av.id, lang);
+                return (
+                  <button
+                    key={av.id}
+                    type="button"
+                    onClick={() => setNewKidAvatar(av.id)}
+                    title={avLabel}
+                    aria-label={avLabel}
+                    className={`min-w-[42px] min-h-[42px] rounded-xl border flex items-center justify-center cursor-pointer transition-colors ${
+                      newKidAvatar === av.id
+                        ? 'bg-[#D9B45A] text-[#1B1A17] border-[#D9B45A]'
+                        : 'bg-white dark:bg-slate-950 text-[#6B6251] dark:text-slate-300 border-[#D9B45A]/25 dark:border-slate-800 hover:border-[#D9B45A]'
+                    }`}
+                  >
+                    {renderAvatarIcon(av.id, 'w-4 h-4')}
+                  </button>
+                );
+              })}
             </div>
             <button
               type="submit"
@@ -2198,7 +2313,7 @@ export const KidsHifzSection: React.FC = () => {
               className="min-h-[44px] px-5 py-2 rounded-xl bg-[#1F3A6E] hover:bg-[#2E5499] disabled:opacity-45 border border-[#648CD4]/45 text-[#F6EFDD] font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
             >
               <Plus className="w-4 h-4" />
-              <span>إضافة طفل</span>
+              <span>{t('إضافة طفل', 'Add Child')}</span>
             </button>
           </form>
         </div>
@@ -2206,11 +2321,11 @@ export const KidsHifzSection: React.FC = () => {
         {/* Daily Wird Settings */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f] border border-[#D9B45A]/30 dark:border-slate-800 p-4 sm:p-6 space-y-5">
-            <h2 className="text-base font-bold text-[#1B1A17] dark:text-[#F6EFDD]">إعداد ورد اليوم والتلقين</h2>
+            <h2 className="text-base font-bold text-[#1B1A17] dark:text-[#F6EFDD]">{t('إعداد ورد اليوم والتلقين', 'Daily Wird & Guided Prompt Settings')}</h2>
 
             {/* Quick Short Surahs */}
             <div className="space-y-2">
-              <div className="text-xs font-semibold text-[#4B4539] dark:text-slate-300">اختيار سريع لقصار السور</div>
+              <div className="text-xs font-semibold text-[#4B4539] dark:text-slate-300">{t('اختيار سريع لقصار السور', 'Quick Short Surahs')}</div>
               <div className="flex flex-wrap gap-1.5">
                 {RECOMMENDED_KIDS_SURAH_NUMBERS.map((num) => {
                   const s = SURAHS_LIST.find((item) => item.number === num);
@@ -2227,7 +2342,7 @@ export const KidsHifzSection: React.FC = () => {
                           : 'bg-white dark:bg-slate-950 text-[#1B1A17] dark:text-slate-200 border-[#D9B45A]/25 dark:border-slate-800 hover:border-[#D9B45A]'
                       }`}
                     >
-                      {s.name}
+                      {getSurahDisplayName(s, lang)}
                     </button>
                   );
                 })}
@@ -2238,7 +2353,7 @@ export const KidsHifzSection: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="sm:col-span-3 space-y-1.5">
                 <label htmlFor="kids-surah-select" className="block text-xs font-semibold text-[#4B4539] dark:text-slate-300">
-                  أو اختر من جميع السور (١١٤)
+                  {t('أو اختر من جميع السور (١١٤)', 'Or choose from all 114 Surahs')}
                 </label>
                 <select
                   id="kids-surah-select"
@@ -2248,7 +2363,10 @@ export const KidsHifzSection: React.FC = () => {
                 >
                   {SURAHS_LIST.map((s) => (
                     <option key={s.number} value={s.number} className="bg-white text-[#1B1A17] dark:bg-slate-900 dark:text-[#F6EFDD]">
-                      {toArabicIndic(s.number)}. سورة {s.name} ({toArabicIndic(s.numberOfAyahs)} آية)
+                      {t(
+                        `${toArabicIndic(s.number)}. سورة ${s.name} (${toArabicIndic(s.numberOfAyahs)} آية)`,
+                        `${s.number}. Surah ${s.englishName} (${s.numberOfAyahs} Ayahs)`
+                      )}
                     </option>
                   ))}
                 </select>
@@ -2256,7 +2374,7 @@ export const KidsHifzSection: React.FC = () => {
 
               <div className="space-y-1.5">
                 <label htmlFor="kids-start-ayah" className="block text-xs font-semibold text-[#4B4539] dark:text-slate-300">
-                  من الآية
+                  {t('من الآية', 'From Ayah')}
                 </label>
                 <input
                   id="kids-start-ayah"
@@ -2271,7 +2389,7 @@ export const KidsHifzSection: React.FC = () => {
 
               <div className="space-y-1.5">
                 <label htmlFor="kids-end-ayah" className="block text-xs font-semibold text-[#4B4539] dark:text-slate-300">
-                  إلى الآية
+                  {t('إلى الآية', 'To Ayah')}
                 </label>
                 <input
                   id="kids-end-ayah"
@@ -2286,7 +2404,7 @@ export const KidsHifzSection: React.FC = () => {
 
               <div className="space-y-1.5">
                 <label htmlFor="kids-reciter-select" className="block text-xs font-semibold text-[#4B4539] dark:text-slate-300">
-                  القارئ المعلم
+                  {t('القارئ المعلم', 'Teacher Reciter')}
                 </label>
                 <select
                   id="kids-reciter-select"
@@ -2296,7 +2414,7 @@ export const KidsHifzSection: React.FC = () => {
                 >
                   {RECITERS_LIST.map((r) => (
                     <option key={r.id} value={r.id} className="bg-white text-[#1B1A17] dark:bg-slate-900 dark:text-[#F6EFDD]">
-                      {r.name}
+                      {getReciterDisplayName(r, lang)}
                     </option>
                   ))}
                 </select>
@@ -2306,7 +2424,7 @@ export const KidsHifzSection: React.FC = () => {
             {/* Repeat Count & Pause Duration */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <div className="text-xs font-semibold text-[#4B4539] dark:text-slate-300">تكرار كل آية</div>
+                <div className="text-xs font-semibold text-[#4B4539] dark:text-slate-300">{t('تكرار كل آية', 'Repeat per Ayah')}</div>
                 <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/25 dark:border-slate-800">
                   {([3, 5, 7] as KidsRepeatCount[]).map((cnt) => (
                     <button
@@ -2319,20 +2437,20 @@ export const KidsHifzSection: React.FC = () => {
                           : 'text-[#6B6251] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white'
                       }`}
                     >
-                      {toArabicIndic(cnt)} مرات
+                      {t(`${toArabicIndic(cnt)} مرات`, `${cnt}×`)}
                     </button>
                   ))}
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <div className="text-xs font-semibold text-[#4B4539] dark:text-slate-300">مهلة الصمت للترديد</div>
+                <div className="text-xs font-semibold text-[#4B4539] dark:text-slate-300">{t('مهلة الصمت للترديد', 'Repeat Pause Duration')}</div>
                 <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/25 dark:border-slate-800">
                   {(
                     [
-                      { id: 'short', label: 'قصيرة' },
-                      { id: 'medium', label: 'متوسطة' },
-                      { id: 'long', label: 'طويلة' },
+                      { id: 'short', label: t('قصيرة', 'Short') },
+                      { id: 'medium', label: t('متوسطة', 'Medium') },
+                      { id: 'long', label: t('طويلة', 'Long') },
                     ] as { id: KidsDelayMode; label: string }[]
                   ).map((mode) => (
                     <button
@@ -2363,8 +2481,8 @@ export const KidsHifzSection: React.FC = () => {
                     : 'bg-white dark:bg-slate-950 border-[#D9B45A]/25 dark:border-slate-800 text-[#4B4539] dark:text-slate-300'
                 }`}
               >
-                <span>الانتقال التلقائي للآية التالية</span>
-                <span>{currentWird.autoAdvanceAyah ? 'مفعل' : 'يدوي'}</span>
+                <span>{t('الانتقال التلقائي للآية التالية', 'Auto-Advance to Next Ayah')}</span>
+                <span>{currentWird.autoAdvanceAyah ? t('مفعل', 'On') : t('يدوي', 'Manual')}</span>
               </button>
 
               <button
@@ -2378,8 +2496,8 @@ export const KidsHifzSection: React.FC = () => {
                     : 'bg-white dark:bg-slate-950 border-[#D9B45A]/25 dark:border-slate-800 text-[#4B4539] dark:text-slate-300'
                 }`}
               >
-                <span>أصوات التشجيع اللطيفة</span>
-                <span>{activeProfile.soundEffectsEnabled ? 'مفعلة' : 'مكتومة'}</span>
+                <span>{t('أصوات التشجيع اللطيفة', 'Gentle Reward Sounds')}</span>
+                <span>{activeProfile.soundEffectsEnabled ? t('مفعلة', 'On') : t('مكتومة', 'Muted')}</span>
               </button>
             </div>
           </div>
@@ -2388,7 +2506,7 @@ export const KidsHifzSection: React.FC = () => {
           <div className="rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f] border border-[#D9B45A]/30 dark:border-slate-800 p-4 sm:p-6 space-y-4 flex flex-col">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-base font-bold text-[#1B1A17] dark:text-[#F6EFDD]">
-                اعتماد آيات الورد · سورة {surahMeta.name}
+                {t(`اعتماد آيات الورد · سورة ${surahMeta.name}`, `Approve Wird Ayahs · ${getSurahFullTitle(surahMeta, lang)}`)}
               </h2>
               <button
                 type="button"
@@ -2396,14 +2514,14 @@ export const KidsHifzSection: React.FC = () => {
                 className="min-h-[38px] px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
               >
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>اعتماد الورد كاملاً</span>
+                <span>{t('اعتماد الورد كاملاً', 'Approve Entire Wird')}</span>
               </button>
             </div>
 
             {recordedAudioUrl && (
               <div className="p-3 rounded-xl bg-[#1F3A6E] dark:bg-[#142038] border border-[#D9B45A]/35 flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-xs font-bold text-[#F6EFDD]">آخر تسجيل للطفل للمراجعة</div>
+                  <div className="text-xs font-bold text-[#F6EFDD]">{t('آخر تسجيل للطفل للمراجعة', 'Latest Child Recording for Review')}</div>
                   <div className="text-[11px] text-[#E5DCC5] dark:text-slate-300 truncate">{recordedAyahLabel}</div>
                 </div>
                 <button
@@ -2412,12 +2530,12 @@ export const KidsHifzSection: React.FC = () => {
                   className="min-h-[40px] px-4 py-2 rounded-xl bg-[#D9B45A] text-[#1B1A17] text-xs font-bold flex items-center gap-1.5 cursor-pointer shrink-0"
                 >
                   {isPlayingRecorded ? <Square className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                  <span>{isPlayingRecorded ? 'إيقاف' : 'استماع'}</span>
+                  <span>{isPlayingRecorded ? t('إيقاف', 'Stop') : t('استماع', 'Listen')}</span>
                 </button>
               </div>
             )}
 
-            <div className="space-y-2 max-h-[340px] overflow-y-auto pr-1">
+            <div className="space-y-2 max-h-[340px] overflow-y-auto pe-1">
               {wirdAyahs.map((ayah) => {
                 const key = makeAyahKey(currentWird.surahNumber, ayah.numberInSurah);
                 const mastered = activeProfile.masteredAyahKeys.includes(key);
@@ -2432,32 +2550,32 @@ export const KidsHifzSection: React.FC = () => {
                     <div className="min-w-0 flex-1 space-y-1">
                       <div className="flex items-center gap-2 text-xs text-[#6B6251] dark:text-slate-400 tabular-nums">
                         <span className="font-bold text-[#8A6418] dark:text-[#D9B45A]">
-                          الآية {toArabicIndic(ayah.numberInSurah)}
+                          {t(`الآية ${toArabicIndic(ayah.numberInSurah)}`, `Ayah ${ayah.numberInSurah}`)}
                         </span>
                         <span aria-hidden="true">·</span>
-                        <span>كررها {toArabicIndic(cyclesDone)} مرة</span>
+                        <span>{t(`كررها ${toArabicIndic(cyclesDone)} مرة`, `Repeated ${cyclesDone}×`)}</span>
                         {retryFlagged && (
                           <>
                             <span aria-hidden="true">·</span>
-                            <span className="text-amber-700 dark:text-amber-300 font-semibold">يحتاج إعادة</span>
+                            <span className="text-amber-700 dark:text-amber-300 font-semibold">{t('يحتاج إعادة', 'Needs Retry')}</span>
                           </>
                         )}
                       </div>
-                      <p className="font-quran text-lg text-[#1B1A17] dark:text-[#F6EFDD] truncate">{ayah.text}</p>
+                      <p dir="rtl" lang="ar" className="font-quran text-lg text-[#1B1A17] dark:text-[#F6EFDD] text-right truncate">{ayah.text}</p>
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         type="button"
                         onClick={() => handleRequestRetryAyah(ayah.numberInSurah)}
-                        title="طلب إعادة لطيفة لهذه الآية"
+                        title={t('طلب إعادة لطيفة لهذه الآية', 'Request a gentle retry for this Ayah')}
                         className={`min-h-[38px] px-2.5 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer transition-colors ${
                           retryFlagged
                             ? 'bg-amber-100 dark:bg-amber-500/20 border-amber-400/50 text-amber-900 dark:text-amber-200'
                             : 'bg-[#FBF7EE] dark:bg-slate-900 border-[#D9B45A]/25 dark:border-slate-800 text-[#4B4539] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white'
                         }`}
                       >
-                        إعادة
+                        {t('إعادة', 'Retry')}
                       </button>
                       <button
                         type="button"
@@ -2469,7 +2587,7 @@ export const KidsHifzSection: React.FC = () => {
                         }`}
                       >
                         <Star className={`w-3.5 h-3.5 ${mastered ? 'fill-emerald-500 dark:fill-emerald-300' : ''}`} />
-                        <span>{mastered ? 'متقنة' : 'اعتماد'}</span>
+                        <span>{mastered ? t('متقنة', 'Mastered') : t('اعتماد', 'Approve')}</span>
                       </button>
                     </div>
                   </div>
@@ -2512,15 +2630,18 @@ export const KidsHifzSection: React.FC = () => {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h1 className="text-base sm:text-lg font-bold text-[#F6EFDD] font-kufi truncate">
-                {activeProfile.name}
+                {displayKidName(activeProfile.name)}
               </h1>
               <span className="text-xs text-[#D9B45A] font-bold tabular-nums flex items-center gap-1 shrink-0">
                 <Star className="w-4 h-4 fill-[#D9B45A]" />
-                {toArabicIndic(activeProfile.stars)}
+                {formatLocalizedDigits(activeProfile.stars, lang)}
               </span>
             </div>
             <div className="text-xs text-[#E5DCC5] dark:text-slate-300 tabular-nums">
-              سورة {surahMeta.name} · أتممت {toArabicIndic(wirdMasteredCount)} من {toArabicIndic(wirdTotalCount)} آيات اليوم
+              {t(
+                `سورة ${surahMeta.name} · أتممت ${toArabicIndic(wirdMasteredCount)} من ${toArabicIndic(wirdTotalCount)} آيات اليوم`,
+                `Surah ${surahMeta.englishName} · Mastered ${wirdMasteredCount} of ${wirdTotalCount} Ayahs today`
+              )}
             </div>
           </div>
         </div>
@@ -2534,7 +2655,7 @@ export const KidsHifzSection: React.FC = () => {
               className="min-h-[44px] px-3.5 py-2 rounded-xl bg-emerald-950/60 hover:bg-emerald-950 border border-emerald-400/50 text-emerald-100 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap"
             >
               <RefreshCw className={`w-4 h-4 ${isSyncingKidRemote ? 'animate-spin' : ''}`} />
-              <span>مزامنة الحلقة</span>
+              <span>{t('مزامنة الحلقة', 'Sync Circle')}</span>
             </button>
           ) : (
             <button
@@ -2547,7 +2668,7 @@ export const KidsHifzSection: React.FC = () => {
               className="min-h-[44px] px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 dark:bg-[#1F3A6E]/80 dark:hover:bg-[#1F3A6E] border border-[#648CD4]/45 text-[#F6EFDD] text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap"
             >
               <Link2 className="w-4 h-4 text-[#D9B45A]" />
-              <span>انضمام لحلقة بكود</span>
+              <span>{t('انضمام لحلقة بكود', 'Join Circle with Code')}</span>
             </button>
           )}
 
@@ -2556,7 +2677,11 @@ export const KidsHifzSection: React.FC = () => {
             onClick={() =>
               updateActiveProfile((p) => ({ ...p, soundEffectsEnabled: !p.soundEffectsEnabled }))
             }
-            aria-label={activeProfile.soundEffectsEnabled ? 'كتم أصوات التشجيع' : 'تفعيل أصوات التشجيع'}
+            aria-label={
+              activeProfile.soundEffectsEnabled
+                ? t('كتم أصوات التشجيع', 'Mute reward sounds')
+                : t('تفعيل أصوات التشجيع', 'Enable reward sounds')
+            }
             className="min-w-[44px] min-h-[44px] rounded-xl bg-white/10 dark:bg-slate-900/90 border border-white/20 dark:border-slate-700 text-[#F6EFDD] hover:text-[#D9B45A] flex items-center justify-center cursor-pointer transition-colors"
           >
             {activeProfile.soundEffectsEnabled ? (
@@ -2572,7 +2697,7 @@ export const KidsHifzSection: React.FC = () => {
             className="min-h-[44px] px-4 py-2 rounded-xl bg-white/10 dark:bg-slate-900/90 hover:bg-white/20 dark:hover:bg-slate-800 border border-[#D9B45A]/45 text-[#F6EFDD] text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors whitespace-nowrap"
           >
             <Lock className="w-4 h-4 text-[#D9B45A]" />
-            <span>بوابة المشرف</span>
+            <span>{t('بوابة المشرف', 'Supervisor Gate')}</span>
           </button>
         </div>
       </div>
@@ -2583,12 +2708,17 @@ export const KidsHifzSection: React.FC = () => {
           <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-200 font-semibold">
             <Radio className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <span>
-              مرتبط بحلقة: <strong className="text-[#1B1A17] dark:text-[#F6EFDD]">{activeProfile.remoteLink.circleTitle || 'حلقة التحفيظ'}</strong>
+              {t('مرتبط بحلقة:', 'Connected to Circle:')}{' '}
+              <strong className="text-[#1B1A17] dark:text-[#F6EFDD]">
+                {activeProfile.remoteLink.circleTitle || t('حلقة التحفيظ', 'Hifz Circle')}
+              </strong>
             </span>
             {activeProfile.remoteLink.supervisorName && (
               <>
                 <span aria-hidden="true">·</span>
-                <span className="text-[#6B6251] dark:text-slate-300">بإشراف {activeProfile.remoteLink.supervisorName}</span>
+                <span className="text-[#6B6251] dark:text-slate-300">
+                  {t(`بإشراف ${activeProfile.remoteLink.supervisorName}`, `Supervisor: ${activeProfile.remoteLink.supervisorName}`)}
+                </span>
               </>
             )}
           </div>
@@ -2611,7 +2741,7 @@ export const KidsHifzSection: React.FC = () => {
               key={ayahNum}
               type="button"
               onClick={() => handleSelectAyah(ayahNum)}
-              aria-label={`الانتقال إلى الآية ${ayahNum}`}
+              aria-label={t(`الانتقال إلى الآية ${ayahNum}`, `Go to Ayah ${ayahNum}`)}
               className={`min-w-[46px] min-h-[46px] px-3 rounded-2xl border font-bold text-sm tabular-nums flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                 isCurrent
                   ? 'bg-[#D9B45A] text-[#1B1A17] border-[#8A6418] dark:border-[#F6EFDD] scale-105 shadow-lg'
@@ -2629,7 +2759,7 @@ export const KidsHifzSection: React.FC = () => {
                     : ''
                 }`}
               />
-              <span>{toArabicIndic(ayahNum)}</span>
+              <span>{formatLocalizedDigits(ayahNum, lang)}</span>
             </button>
           );
         })}
@@ -2639,19 +2769,19 @@ export const KidsHifzSection: React.FC = () => {
       {isLoadingSurah ? (
         <div className="rounded-3xl bg-[#FBF7EE] dark:bg-[#10161f] border border-[#D9B45A]/30 dark:border-slate-800 p-16 flex flex-col items-center justify-center space-y-3">
           <div className="w-12 h-12 rounded-full border-3 border-[#D9B45A] border-t-transparent animate-spin" />
-          <p className="text-sm text-[#4B4539] dark:text-slate-300 font-semibold">جارٍ تجهيز درس الحفظ…</p>
+          <p className="text-sm text-[#4B4539] dark:text-slate-300 font-semibold">{t('جارٍ تجهيز درس الحفظ…', 'Preparing your Hifz lesson…')}</p>
         </div>
       ) : surahLoadError || !activeAyah ? (
         <div className="rounded-3xl bg-rose-50 dark:bg-rose-950/25 border border-rose-300 dark:border-rose-500/35 p-10 text-center flex flex-col items-center space-y-4">
           <AlertCircle className="w-10 h-10 text-rose-500 dark:text-rose-400" />
-          <p className="text-sm text-rose-900 dark:text-rose-100">{surahLoadError || 'تعذر العثور على الآيات'}</p>
+          <p className="text-sm text-rose-900 dark:text-rose-100">{surahLoadError || t('تعذر العثور على الآيات', 'Could not find Ayahs')}</p>
           <button
             type="button"
             onClick={() => setReloadNonce((n) => n + 1)}
             className="min-h-[46px] px-6 py-2.5 rounded-xl bg-[#1F3A6E] text-[#F6EFDD] font-bold text-sm flex items-center gap-2 cursor-pointer"
           >
             <RefreshCw className="w-4 h-4" />
-            <span>إعادة المحاولة</span>
+            <span>{t('إعادة المحاولة', 'Try Again')}</span>
           </button>
         </div>
       ) : (
@@ -2659,26 +2789,29 @@ export const KidsHifzSection: React.FC = () => {
           {/* Quiet Ayah Header Metadata */}
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm text-[#4B4539] dark:text-slate-300 border-b border-[#D9B45A]/20 dark:border-slate-800/80 pb-3">
             <div className="flex items-center gap-2 font-semibold">
-              <span className="text-[#8A6418] dark:text-[#D9B45A] font-bold">سورة {surahMeta.name}</span>
+              <span className="text-[#8A6418] dark:text-[#D9B45A] font-bold">{getSurahFullTitle(surahMeta, lang)}</span>
               <span aria-hidden="true">·</span>
               <span className="tabular-nums">
-                الآية {toArabicIndic(activeAyah.numberInSurah)} من {toArabicIndic(currentWird.endAyah)}
+                {t(
+                  `الآية ${toArabicIndic(activeAyah.numberInSurah)} من ${toArabicIndic(currentWird.endAyah)}`,
+                  `Ayah ${activeAyah.numberInSurah} of ${currentWird.endAyah}`
+                )}
               </span>
               <span aria-hidden="true">·</span>
-              <span>القارئ: {selectedReciter.name}</span>
+              <span>{t(`القارئ: ${selectedReciter.name}`, `Reciter: ${getReciterDisplayName(selectedReciter, lang)}`)}</span>
             </div>
 
             <div className="flex items-center gap-2 font-bold">
               {isCurrentAyahMastered && (
                 <span className="text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
                   <Star className="w-4 h-4 fill-emerald-500 dark:fill-emerald-400 text-emerald-500 dark:text-emerald-400" />
-                  <span>نجمة مضيئة</span>
+                  <span>{t('نجمة مضيئة', 'Shining Star')}</span>
                 </span>
               )}
               {isCurrentAyahRetryRequested && (
                 <span className="text-amber-800 dark:text-amber-300 flex items-center gap-1">
                   <RotateCcw className="w-4 h-4" />
-                  <span>لنكررها معاً يا بطل</span>
+                  <span>{t('لنكررها معاً يا بطل', "Let's repeat it together, champion")}</span>
                 </span>
               )}
             </div>
@@ -2688,6 +2821,7 @@ export const KidsHifzSection: React.FC = () => {
           <div className="py-4 sm:py-6 px-3 sm:px-6 rounded-2xl bg-[#F6EFDD] text-[#1B1A17] text-center shadow-inner border border-[#D9B45A]/35">
             <p
               dir="rtl"
+              lang="ar"
               className="font-quran text-3xl sm:text-5xl leading-[2.2] sm:leading-[2.3] select-none"
             >
               {activeAyahWords.map((word, idx) => {
@@ -2718,7 +2852,10 @@ export const KidsHifzSection: React.FC = () => {
           {/* Interactive Central Listen -> Repeat Stage */}
           <div className="flex flex-col items-center justify-center space-y-4">
             <div className="text-xs sm:text-sm font-bold text-[#4B4539] dark:text-slate-300 tabular-nums">
-              الدورة {toArabicIndic(currentCycle)} من {toArabicIndic(currentWird.repeatCount)}
+              {t(
+                `الدورة ${toArabicIndic(currentCycle)} من ${toArabicIndic(currentWird.repeatCount)}`,
+                `Round ${currentCycle} of ${currentWird.repeatCount}`
+              )}
             </div>
 
             <button
@@ -2737,9 +2874,12 @@ export const KidsHifzSection: React.FC = () => {
               {promptPhase === 'listening' && (
                 <>
                   <Headphones className="w-12 h-12 text-emerald-300" />
-                  <span className="text-base sm:text-lg font-bold">استمع جيداً</span>
+                  <span className="text-base sm:text-lg font-bold">{t('استمع جيداً', 'Listen Carefully')}</span>
                   <span className="text-xs text-emerald-200 tabular-nums">
-                    {toArabicIndic(Math.round(listenProgressRatio * 100))}٪ · اضغط للإيقاف
+                    {t(
+                      `${toArabicIndic(Math.round(listenProgressRatio * 100))}٪ · اضغط للإيقاف`,
+                      `${Math.round(listenProgressRatio * 100)}% · Tap to stop`
+                    )}
                   </span>
                 </>
               )}
@@ -2747,9 +2887,12 @@ export const KidsHifzSection: React.FC = () => {
               {promptPhase === 'repeating' && (
                 <>
                   <Mic className="w-12 h-12 text-sky-300" />
-                  <span className="text-base sm:text-lg font-bold">دورك الآن… ردِّد</span>
+                  <span className="text-base sm:text-lg font-bold">{t('دورك الآن… ردِّد', 'Your turn… Repeat')}</span>
                   <span className="text-sm font-bold text-sky-200 tabular-nums">
-                    {toArabicIndic(repeatCountdownSec)} ثانية ({toArabicIndic(Math.round(repeatProgressRatio * 100))}٪)
+                    {t(
+                      `${toArabicIndic(repeatCountdownSec)} ثانية (${toArabicIndic(Math.round(repeatProgressRatio * 100))}٪)`,
+                      `${repeatCountdownSec}s (${Math.round(repeatProgressRatio * 100)}%)`
+                    )}
                   </span>
                 </>
               )}
@@ -2757,16 +2900,16 @@ export const KidsHifzSection: React.FC = () => {
               {promptPhase === 'celebrating' && (
                 <>
                   <Sparkles className="w-12 h-12 text-[#1B1A17]" />
-                  <span className="text-lg font-bold">أحسنت يا بطل!</span>
-                  <span className="text-xs font-semibold">اضغط لإعادة التدريب</span>
+                  <span className="text-lg font-bold">{t('أحسنت يا بطل!', 'Well Done, Champion!')}</span>
+                  <span className="text-xs font-semibold">{t('اضغط لإعادة التدريب', 'Tap to practice again')}</span>
                 </>
               )}
 
               {promptPhase === 'idle' && (
                 <>
                   <Play className="w-12 h-12 text-[#D9B45A] fill-[#D9B45A]" />
-                  <span className="text-base sm:text-lg font-bold">ابدأ التلقين</span>
-                  <span className="text-xs text-slate-200">استماع وترديد آلي</span>
+                  <span className="text-base sm:text-lg font-bold">{t('ابدأ التلقين', 'Start Prompt')}</span>
+                  <span className="text-xs text-slate-200">{t('استماع وترديد آلي', 'Auto listen & repeat')}</span>
                 </>
               )}
             </button>
@@ -2777,7 +2920,7 @@ export const KidsHifzSection: React.FC = () => {
                 onClick={handleFinishRepeatTurnNow}
                 className="min-h-[44px] px-5 py-2 rounded-xl bg-sky-100 dark:bg-sky-500/20 hover:bg-sky-200 dark:hover:bg-sky-500/30 border border-sky-400/50 text-sky-900 dark:text-sky-100 text-xs font-bold cursor-pointer transition-colors"
               >
-                انتهيت من الترديد الآن ← التالي
+                {t('انتهيت من الترديد الآن ← التالي', 'Done repeating → Next')}
               </button>
             )}
 
@@ -2804,7 +2947,7 @@ export const KidsHifzSection: React.FC = () => {
                   isActive={isRecordingVoice}
                   mediaStream={activeChildStream}
                   tone="rose"
-                  label="أسجّل صوتك يا بطل... اقرأ الآن"
+                  label={t('أسجّل صوتك يا بطل... اقرأ الآن', 'Recording your voice, champion... Read now')}
                 />
               </div>
             </div>
@@ -2818,8 +2961,8 @@ export const KidsHifzSection: React.FC = () => {
                   <Sparkles className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
                   <span>
                     {isKidVoiceChecking
-                      ? 'أنا أسمعك الآن يا بطل… اقرأ الآية بصوت جميل!'
-                      : 'نتيجة تسميعك الآن:'}
+                      ? t('أنا أسمعك الآن يا بطل… اقرأ الآية بصوت جميل!', "I'm listening, champion… Recite clearly!")
+                      : t('نتيجة تسميعك الآن:', 'Your recitation result:')}
                   </span>
                 </span>
                 <div className="flex items-center gap-2">
@@ -2832,14 +2975,17 @@ export const KidsHifzSection: React.FC = () => {
                   )}
                   {kidVoiceAccuracy !== null && (
                     <span className="px-2.5 py-0.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/20 border border-emerald-400 dark:border-emerald-500/45 text-emerald-800 dark:text-emerald-200 font-bold">
-                      الدقة: {toArabicIndic(kidVoiceAccuracy)}٪
+                      {t(`الدقة: ${toArabicIndic(kidVoiceAccuracy)}٪`, `Accuracy: ${kidVoiceAccuracy}%`)}
                     </span>
                   )}
                 </div>
               </div>
               {kidVoiceTranscript && (
                 <p className="text-xs text-[#4B4539] dark:text-slate-300 leading-relaxed">
-                  سمعت منك: <strong className="text-[#1B1A17] dark:text-[#F6EFDD]">{kidVoiceTranscript}</strong>
+                  {t('سمعت منك:', 'Heard:')}{' '}
+                  <strong dir="rtl" lang="ar" className="text-[#1B1A17] dark:text-[#F6EFDD]">
+                    {kidVoiceTranscript}
+                  </strong>
                 </p>
               )}
             </div>
@@ -2853,8 +2999,12 @@ export const KidsHifzSection: React.FC = () => {
               onClick={() => activeAyah && handleSelectAyah(activeAyah.numberInSurah - 1)}
               className="min-h-[54px] px-4 py-3 rounded-2xl bg-white dark:bg-slate-950 hover:bg-[#F3E9D2] dark:hover:bg-slate-900 disabled:opacity-35 border border-[#D9B45A]/30 dark:border-slate-800 text-[#1B1A17] dark:text-[#F6EFDD] font-bold text-sm flex items-center justify-center gap-2 cursor-pointer"
             >
-              <ChevronRight className="w-5 h-5 text-[#8A6418] dark:text-[#D9B45A]" />
-              <span>السابقة</span>
+              {isEnglish ? (
+                <ChevronLeft className="w-5 h-5 text-[#8A6418] dark:text-[#D9B45A]" />
+              ) : (
+                <ChevronRight className="w-5 h-5 text-[#8A6418] dark:text-[#D9B45A]" />
+              )}
+              <span>{t('السابقة', 'Previous')}</span>
             </button>
 
             <button
@@ -2863,7 +3013,7 @@ export const KidsHifzSection: React.FC = () => {
               className="min-h-[54px] px-4 py-3 rounded-2xl bg-white dark:bg-slate-950 hover:bg-[#F3E9D2] dark:hover:bg-slate-900 border border-[#D9B45A]/30 dark:border-slate-800 text-[#1B1A17] dark:text-[#F6EFDD] font-bold text-sm flex items-center justify-center gap-2 cursor-pointer"
             >
               <RotateCcw className="w-5 h-5 text-[#8A6418] dark:text-[#D9B45A]" />
-              <span>إعادة الآية</span>
+              <span>{t('إعادة الآية', 'Repeat Ayah')}</span>
             </button>
 
             {isVoiceCheckSupported && (
@@ -2877,7 +3027,7 @@ export const KidsHifzSection: React.FC = () => {
                 }`}
               >
                 {isKidVoiceChecking ? <Square className="w-5 h-5" /> : <Sparkles className="w-5 h-5 text-[#8A6418] dark:text-[#D9B45A]" />}
-                <span>{isKidVoiceChecking ? 'إيقاف السماع' : 'سمِّع لي الآن'}</span>
+                <span>{isKidVoiceChecking ? t('إيقاف السماع', 'Stop Check') : t('سمِّع لي الآن', 'Check Me')}</span>
               </button>
             )}
 
@@ -2891,7 +3041,7 @@ export const KidsHifzSection: React.FC = () => {
               }`}
             >
               {isRecordingVoice ? <Square className="w-5 h-5" /> : <Mic className="w-5 h-5 text-[#D9B45A]" />}
-              <span>{isRecordingVoice ? 'إيقاف التسجيل' : 'سجِّل صوتك'}</span>
+              <span>{isRecordingVoice ? t('إيقاف التسجيل', 'Stop Rec') : t('سجِّل صوتك', 'Record Voice')}</span>
             </button>
 
             <button
@@ -2900,8 +3050,12 @@ export const KidsHifzSection: React.FC = () => {
               onClick={() => activeAyah && handleSelectAyah(activeAyah.numberInSurah + 1)}
               className="min-h-[54px] px-4 py-3 rounded-2xl bg-white dark:bg-slate-950 hover:bg-[#F3E9D2] dark:hover:bg-slate-900 disabled:opacity-35 border border-[#D9B45A]/30 dark:border-slate-800 text-[#1B1A17] dark:text-[#F6EFDD] font-bold text-sm flex items-center justify-center gap-2 cursor-pointer"
             >
-              <span>التالية</span>
-              <ChevronLeft className="w-5 h-5 text-[#8A6418] dark:text-[#D9B45A]" />
+              <span>{t('التالية', 'Next')}</span>
+              {isEnglish ? (
+                <ChevronRight className="w-5 h-5 text-[#8A6418] dark:text-[#D9B45A]" />
+              ) : (
+                <ChevronLeft className="w-5 h-5 text-[#8A6418] dark:text-[#D9B45A]" />
+              )}
             </button>
           </div>
 
@@ -2918,7 +3072,8 @@ export const KidsHifzSection: React.FC = () => {
               {recordedAudioUrl && (
                 <div className="p-3.5 rounded-2xl bg-[#1F3A6E] dark:bg-[#142038] border border-[#648CD4]/40 flex flex-wrap items-center justify-between gap-3">
                   <div className="text-xs sm:text-sm text-[#F6EFDD] font-semibold">
-                    تسجيلك الصوتي: <span className="text-[#D9B45A]">{recordedAyahLabel}</span>
+                    {t('تسجيلك الصوتي:', 'Your recording:')}{' '}
+                    <span className="text-[#D9B45A]">{recordedAyahLabel}</span>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <button
@@ -2927,7 +3082,11 @@ export const KidsHifzSection: React.FC = () => {
                       className="min-h-[42px] px-4 py-2 rounded-xl bg-[#D9B45A] text-[#1B1A17] font-bold text-xs flex items-center gap-2 cursor-pointer"
                     >
                       {isPlayingRecorded ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                      <span>{isPlayingRecorded ? 'إيقاف الصوت' : 'اسمع صوتك'}</span>
+                      <span>
+                        {isPlayingRecorded
+                          ? t('إيقاف الصوت', 'Stop Audio')
+                          : t('اسمع صوتك', 'Listen')}
+                      </span>
                     </button>
 
                     {activeProfile.remoteLink ? (
@@ -2938,7 +3097,11 @@ export const KidsHifzSection: React.FC = () => {
                         className="min-h-[42px] px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-2 cursor-pointer"
                       >
                         <Send className="w-4 h-4" />
-                        <span>{isSendingSubmission ? 'جارٍ الإرسال…' : 'إرسال التسميع للمشرف'}</span>
+                        <span>
+                          {isSendingSubmission
+                            ? t('جارٍ الإرسال…', 'Sending…')
+                            : t('إرسال التسميع للمشرف', 'Send to Supervisor')}
+                        </span>
                       </button>
                     ) : (
                       <button
@@ -2950,7 +3113,7 @@ export const KidsHifzSection: React.FC = () => {
                         className="min-h-[42px] px-3.5 py-2 rounded-xl bg-white/10 dark:bg-slate-900 hover:bg-white/20 dark:hover:bg-slate-800 border border-[#648CD4]/45 text-[#F6EFDD] font-bold text-xs flex items-center gap-1.5 cursor-pointer"
                       >
                         <Link2 className="w-3.5 h-3.5 text-[#D9B45A]" />
-                        <span>ربط بحلقة لإرسال التسميع</span>
+                        <span>{t('ربط بحلقة لإرسال التسميع', 'Link Circle to Send')}</span>
                       </button>
                     )}
                   </div>
@@ -2970,6 +3133,10 @@ export const KidsHifzSection: React.FC = () => {
           {activeProfile.remoteLink && kidRemoteSubmissions.length > 0 && (() => {
             const latestSub = kidRemoteSubmissions[0];
             const subSurah = SURAHS_LIST.find((s) => s.number === latestSub.surahNumber);
+            const subSurahLabel = subSurah
+              ? getSurahFullTitle(subSurah, lang)
+              : `${t('سورة', 'Surah')} ${formatLocalizedDigits(latestSub.surahNumber, lang)}`;
+            const subAyahLabel = formatLocalizedDigits(latestSub.ayahNumber, lang);
             const isPlayingSupAudio = playingRemoteAudioId === `sup-${latestSub.id}`;
             return (
               <div
@@ -2992,10 +3159,19 @@ export const KidsHifzSection: React.FC = () => {
                     )}
                     <span>
                       {latestSub.status === 'approved'
-                        ? `ما شاء الله! اعتمد المشرف تسميعك (سورة ${subSurah?.name || ''} · الآية ${toArabicIndic(latestSub.ayahNumber)})`
+                        ? t(
+                            `ما شاء الله! اعتمد المشرف تسميعك (${subSurahLabel} · الآية ${subAyahLabel})`,
+                            `MashaAllah! Approved by supervisor (${subSurahLabel} · Ayah ${subAyahLabel})`
+                          )
                         : latestSub.status === 'retry'
-                        ? `توجيه لطيف من المشرف (سورة ${subSurah?.name || ''} · الآية ${toArabicIndic(latestSub.ayahNumber)})`
-                        : `تم إرسال تسميع سورة ${subSurah?.name || ''} (الآية ${toArabicIndic(latestSub.ayahNumber)}) وبانتظار المشرف`}
+                        ? t(
+                            `توجيه لطيف من المشرف (${subSurahLabel} · الآية ${subAyahLabel})`,
+                            `Gentle guidance from supervisor (${subSurahLabel} · Ayah ${subAyahLabel})`
+                          )
+                        : t(
+                            `تم إرسال تسميع ${subSurahLabel} (الآية ${subAyahLabel}) وبانتظار المشرف`,
+                            `Sent ${subSurahLabel} (Ayah ${subAyahLabel}) — awaiting review`
+                          )}
                     </span>
                   </div>
 
@@ -3011,14 +3187,20 @@ export const KidsHifzSection: React.FC = () => {
                       className="min-h-[38px] px-3.5 py-1.5 rounded-xl bg-[#D9B45A] text-[#1B1A17] text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                     >
                       {isPlayingSupAudio ? <Square className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                      <span>{isPlayingSupAudio ? 'إيقاف رسالة المشرف' : 'اسمع تشجيع المشرف'}</span>
+                      <span>
+                        {isPlayingSupAudio
+                          ? t('إيقاف رسالة المشرف', 'Stop Feedback')
+                          : t('اسمع تشجيع المشرف', 'Hear Encouragement')}
+                      </span>
                     </button>
                   )}
                 </div>
 
                 {latestSub.supervisorFeedbackText && (
                   <p className="text-xs sm:text-sm text-[#4B4539] dark:text-slate-200 leading-relaxed">
-                    «{latestSub.supervisorFeedbackText}»
+                    {isEnglish
+                      ? `"${latestSub.supervisorFeedbackText}"`
+                      : `«${latestSub.supervisorFeedbackText}»`}
                   </p>
                 )}
               </div>
@@ -3035,9 +3217,17 @@ export const KidsHifzSection: React.FC = () => {
           </div>
           <div className="flex-1 min-w-0 space-y-1.5">
             <div className="flex items-center justify-between text-xs sm:text-sm">
-              <span className="font-bold text-[#1B1A17] dark:text-[#F6EFDD]">حديقة الحفظ: {gardenStage.stageName}</span>
+              <span className="font-bold text-[#1B1A17] dark:text-[#F6EFDD]">
+                {t(
+                  `حديقة الحفظ: ${getGardenStageDisplayName(gardenStage.level, lang)}`,
+                  `Hifz Garden: ${getGardenStageDisplayName(gardenStage.level, lang)}`
+                )}
+              </span>
               <span className="text-emerald-700 dark:text-emerald-300 font-bold tabular-nums">
-                المستوى {toArabicIndic(gardenStage.level)}
+                {t(
+                  `المستوى ${formatLocalizedDigits(gardenStage.level, lang)}`,
+                  `Level ${formatLocalizedDigits(gardenStage.level, lang)}`
+                )}
               </span>
             </div>
             <div className="h-2.5 rounded-full bg-[#EFE7D4] dark:bg-slate-900 overflow-hidden">
@@ -3047,30 +3237,40 @@ export const KidsHifzSection: React.FC = () => {
               />
             </div>
             <div className="text-[11px] text-[#6B6251] dark:text-slate-400 tabular-nums">
-              {toArabicIndic(activeProfile.stars)} نجمة مكتسبة · الهدف التالي {toArabicIndic(gardenStage.nextMilestone)} نجمة
+              {t(
+                `${formatLocalizedDigits(activeProfile.stars, lang)} نجمة مكتسبة · الهدف التالي ${formatLocalizedDigits(gardenStage.nextMilestone, lang)} نجمة`,
+                `${formatLocalizedDigits(activeProfile.stars, lang)} stars earned · Next goal ${formatLocalizedDigits(gardenStage.nextMilestone, lang)} stars`
+              )}
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 sm:border-r sm:border-[#D9B45A]/20 dark:sm:border-slate-800 sm:pr-4">
+        <div className="flex items-center gap-3 sm:border-s sm:border-[#D9B45A]/20 dark:sm:border-slate-800 sm:ps-4">
           <div className="w-14 h-14 rounded-2xl bg-[#1F3A6E] dark:bg-[#142038] border border-[#D9B45A]/35 flex items-center justify-center text-[#D9B45A] shrink-0">
             <Award className="w-7 h-7" />
           </div>
           <div className="min-w-0 flex-1 space-y-1">
             <div className="text-xs sm:text-sm font-bold text-[#1B1A17] dark:text-[#F6EFDD] tabular-nums">
-              أوسمة السور المكتملة ({toArabicIndic(activeProfile.completedSurahs.length)})
+              {t(
+                `أوسمة السور المكتملة (${formatLocalizedDigits(activeProfile.completedSurahs.length, lang)})`,
+                `Completed Surah Badges (${formatLocalizedDigits(activeProfile.completedSurahs.length, lang)})`
+              )}
             </div>
             {activeProfile.completedSurahs.length === 0 ? (
               <p className="text-[11px] text-[#6B6251] dark:text-slate-400">
-                أكمل جميع آيات السورة لتضيء هنا بوسام ذهبي خاص بك
+                {t(
+                  'أكمل جميع آيات السورة لتضيء هنا بوسام ذهبي خاص بك',
+                  'Complete all ayat of a Surah to unlock your golden badge here'
+                )}
               </p>
             ) : (
               <div className="flex flex-wrap gap-1.5 text-xs text-[#8A6418] dark:text-[#D9B45A] font-semibold">
                 {activeProfile.completedSurahs.map((sNum) => {
                   const s = SURAHS_LIST.find((x) => x.number === sNum);
+                  const surahBadgeName = s ? getSurahDisplayName(s, lang) : formatLocalizedDigits(sNum, lang);
                   return (
                     <span key={sNum}>
-                      وسام {s?.name || sNum}
+                      {t(`وسام ${surahBadgeName}`, `${surahBadgeName} Badge`)}
                     </span>
                   );
                 })}
@@ -3085,7 +3285,7 @@ export const KidsHifzSection: React.FC = () => {
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="بوابة المشرف"
+          aria-label={t('بوابة المشرف', 'Supervisor Gate')}
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150"
         >
           <form
@@ -3095,12 +3295,12 @@ export const KidsHifzSection: React.FC = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-[#8A6418] dark:text-[#D9B45A] font-bold text-sm">
                 <Lock className="w-4 h-4" />
-                <span>بوابة المشرف وولي الأمر</span>
+                <span>{t('بوابة المشرف وولي الأمر', 'Parent & Supervisor Gate')}</span>
               </div>
               <button
                 type="button"
                 onClick={() => setIsGateModalOpen(false)}
-                aria-label="إغلاق"
+                aria-label={t('إغلاق', 'Close')}
                 className="min-w-[36px] min-h-[36px] rounded-lg flex items-center justify-center text-[#6B6251] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white hover:bg-[#F3E9D2] dark:hover:bg-slate-800 cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -3108,11 +3308,14 @@ export const KidsHifzSection: React.FC = () => {
             </div>
 
             <p className="text-xs text-[#4B4539] dark:text-slate-300 leading-relaxed">
-              للدخول إلى إعدادات الورد واعتماد حفظ الطفل، يرجى الإجابة عن السؤال التالي:
+              {t(
+                'للدخول إلى إعدادات الورد واعتماد حفظ الطفل، يرجى الإجابة عن السؤال التالي:',
+                'To enter Wird settings and approve memorization, please answer:'
+              )}
             </p>
 
             <div className="p-4 rounded-xl bg-[#1F3A6E] dark:bg-[#142038] border border-[#648CD4]/45 dark:border-slate-700 text-center text-lg font-bold text-[#F6EFDD]">
-              {gateChallenge.questionText}
+              {formatParentGateQuestion(gateChallenge, lang)}
             </div>
 
             <input
@@ -3124,8 +3327,8 @@ export const KidsHifzSection: React.FC = () => {
                 setGateInput(e.target.value);
                 setGateError(null);
               }}
-              placeholder="اكتب الناتج بالأرقام..."
-              aria-label="إجابة سؤال المشرف"
+              placeholder={t('اكتب الناتج بالأرقام...', 'Enter the answer...')}
+              aria-label={t('إجابة سؤال المشرف', 'Supervisor gate answer')}
               className="w-full min-h-[46px] px-4 py-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/35 dark:border-slate-700 text-center text-base font-bold text-[#1B1A17] dark:text-[#F6EFDD] tabular-nums outline-none focus:border-[#D9B45A]"
             />
 
@@ -3139,13 +3342,13 @@ export const KidsHifzSection: React.FC = () => {
                 onClick={() => setIsGateModalOpen(false)}
                 className="flex-1 min-h-[44px] rounded-xl bg-white dark:bg-slate-900 border border-[#D9B45A]/25 dark:border-slate-800 text-[#4B4539] dark:text-slate-300 text-xs font-bold cursor-pointer"
               >
-                إلغاء
+                {t('إلغاء', 'Cancel')}
               </button>
               <button
                 type="submit"
                 className="flex-1 min-h-[44px] rounded-xl bg-[#D9B45A] hover:bg-[#c9a349] text-[#1B1A17] text-xs font-bold cursor-pointer"
               >
-                دخول اللوحة
+                {t('دخول اللوحة', 'Unlock Panel')}
               </button>
             </div>
           </form>
@@ -3157,7 +3360,7 @@ export const KidsHifzSection: React.FC = () => {
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="انضمام لحلقة مشرف بكود"
+          aria-label={t('انضمام لحلقة مشرف بكود', 'Join Supervisor Circle by Code')}
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150"
         >
           <form
@@ -3167,12 +3370,12 @@ export const KidsHifzSection: React.FC = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-[#8A6418] dark:text-[#D9B45A] font-bold text-sm">
                 <Link2 className="w-4 h-4" />
-                <span>انضمام لحلقة المشرف</span>
+                <span>{t('انضمام لحلقة المشرف', 'Join Supervisor Circle')}</span>
               </div>
               <button
                 type="button"
                 onClick={() => setIsJoinCircleModalOpen(false)}
-                aria-label="إغلاق"
+                aria-label={t('إغلاق', 'Close')}
                 className="min-w-[36px] min-h-[36px] rounded-lg flex items-center justify-center text-[#6B6251] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white hover:bg-[#F3E9D2] dark:hover:bg-slate-800 cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -3180,12 +3383,15 @@ export const KidsHifzSection: React.FC = () => {
             </div>
 
             <p className="text-xs text-[#4B4539] dark:text-slate-300 leading-relaxed">
-              أدخل كود الحلقة المكون من ٦ أرقام الذي أرسله لك المعلم أو ولي الأمر ليصلك الورد اليومي وتستطيع إرسال تسميعك الصوتي.
+              {t(
+                'أدخل كود الحلقة المكون من ٦ أرقام الذي أرسله لك المعلم أو ولي الأمر ليصلك الورد اليومي وتستطيع إرسال تسميعك الصوتي.',
+                'Enter the 6-digit circle code sent by your teacher or parent to receive daily Wird and send voice recitations.'
+              )}
             </p>
 
             <div className="space-y-1.5">
               <label htmlFor="kid-join-code" className="block text-xs font-semibold text-[#4B4539] dark:text-slate-300">
-                كود الحلقة (٦ أرقام)
+                {t('كود الحلقة (٦ أرقام)', 'Circle Code (6 digits)')}
               </label>
               <input
                 id="kid-join-code"
@@ -3198,7 +3404,7 @@ export const KidsHifzSection: React.FC = () => {
                   setJoinCircleCodeInput(e.target.value);
                   setJoinError(null);
                 }}
-                placeholder="مثال: 482910"
+                placeholder={t('مثال: 482910', 'e.g. 482910')}
                 className="w-full min-h-[46px] px-4 py-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/35 dark:border-slate-700 text-center text-lg font-bold tracking-widest text-[#8A6418] dark:text-[#D9B45A] tabular-nums outline-none focus:border-[#D9B45A]"
                 dir="ltr"
               />
@@ -3206,14 +3412,14 @@ export const KidsHifzSection: React.FC = () => {
 
             <div className="space-y-1.5">
               <label htmlFor="kid-join-name" className="block text-xs font-semibold text-[#4B4539] dark:text-slate-300">
-                اسم البطل في الحلقة
+                {t('اسم البطل في الحلقة', "Child's Name in Circle")}
               </label>
               <input
                 id="kid-join-name"
                 type="text"
                 value={joinChildNameInput}
                 onChange={(e) => setJoinChildNameInput(e.target.value)}
-                placeholder="اسم الطفل..."
+                placeholder={t('اسم الطفل...', "Child's name...")}
                 className="w-full min-h-[44px] px-4 py-2 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/35 dark:border-slate-700 text-sm text-[#1B1A17] dark:text-[#F6EFDD] outline-none focus:border-[#D9B45A]"
               />
             </div>
@@ -3228,14 +3434,14 @@ export const KidsHifzSection: React.FC = () => {
                 onClick={() => setIsJoinCircleModalOpen(false)}
                 className="flex-1 min-h-[44px] rounded-xl bg-white dark:bg-slate-900 border border-[#D9B45A]/25 dark:border-slate-800 text-[#4B4539] dark:text-slate-300 text-xs font-bold cursor-pointer"
               >
-                إلغاء
+                {t('إلغاء', 'Cancel')}
               </button>
               <button
                 type="submit"
                 disabled={isJoiningCircle}
                 className="flex-1 min-h-[44px] rounded-xl bg-[#D9B45A] hover:bg-[#c9a349] disabled:opacity-50 text-[#1B1A17] text-xs font-bold cursor-pointer"
               >
-                {isJoiningCircle ? 'جارٍ الربط…' : 'انضمام الآن'}
+                {isJoiningCircle ? t('جارٍ الربط…', 'Linking…') : t('انضمام الآن', 'Join Now')}
               </button>
             </div>
           </form>

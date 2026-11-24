@@ -1,5 +1,6 @@
 import React from 'react';
 import { PartClaim } from '../../data/khatmaApiService';
+import { formatLocalizedDigits, getJuzLabel, useLanguage } from '../../utils/i18n';
 
 interface KhatmaRingProps {
   parts: PartClaim[];
@@ -51,6 +52,7 @@ function buildRingArcPath(
  * - Outline: available Juz
  */
 export const KhatmaRing: React.FC<KhatmaRingProps> = ({ parts, size = 252, onSelectJuz }) => {
+  const { lang, t } = useLanguage();
   const cx = 140;
   const cy = 140;
   const innerR = 74;
@@ -68,7 +70,10 @@ export const KhatmaRing: React.FC<KhatmaRingProps> = ({ parts, size = 252, onSel
         height={size}
         viewBox="0 0 280 280"
         role="img"
-        aria-label={`خاتم الختمة: مكتمل ${completedCount} من 30 جزءاً`}
+        aria-label={t(
+          `خاتم الختمة: مكتمل ${completedCount} من 30 جزءاً`,
+          `Khatma Ring: ${completedCount} of 30 Juz completed`
+        )}
         className="overflow-visible text-[#1B1A17] dark:text-[#F6EFDD]"
       >
         {/* Subtle inner compass hairline */}
@@ -117,14 +122,14 @@ export const KhatmaRing: React.FC<KhatmaRingProps> = ({ parts, size = 252, onSel
             >
               <title>
                 {part
-                  ? `${part.juzName}${
+                  ? `${getJuzLabel(juzNumber, lang)}${
                       isCompleted
-                        ? ` — مكتمل (${part.claimedBy || ''})`
+                        ? ` — ${t('مكتمل', 'Completed')} (${part.claimedBy || ''})`
                         : isClaimed
-                        ? ` — محجوز (${part.claimedBy})`
-                        : ' — شاغر'
+                        ? ` — ${t('محجوز', 'Claimed')} (${part.claimedBy})`
+                        : ` — ${t('شاغر', 'Available')}`
                     }`
-                  : `الجزء ${juzNumber}`}
+                  : getJuzLabel(juzNumber, lang)}
               </title>
               <path
                 d={pathData}
@@ -169,7 +174,10 @@ export const KhatmaRing: React.FC<KhatmaRingProps> = ({ parts, size = 252, onSel
           fill="currentColor"
           style={{ fontVariantNumeric: 'tabular-nums' }}
         >
-          {toArabicIndic(completedCount)} من ٣٠
+          {t(
+            `${formatLocalizedDigits(completedCount, lang)} من ٣٠`,
+            `${completedCount} / 30`
+          )}
         </text>
         <text
           x={cx}
@@ -180,8 +188,14 @@ export const KhatmaRing: React.FC<KhatmaRingProps> = ({ parts, size = 252, onSel
           fillOpacity="0.68"
         >
           {claimedCount - completedCount > 0
-            ? `قيد القراءة: ${toArabicIndic(claimedCount - completedCount)}`
-            : `متاح: ${toArabicIndic(30 - claimedCount)}`}
+            ? t(
+                `قيد القراءة: ${formatLocalizedDigits(claimedCount - completedCount, lang)}`,
+                `Reading: ${claimedCount - completedCount}`
+              )
+            : t(
+                `متاح: ${formatLocalizedDigits(30 - claimedCount, lang)}`,
+                `Available: ${30 - claimedCount}`
+              )}
         </text>
       </svg>
 
@@ -189,15 +203,15 @@ export const KhatmaRing: React.FC<KhatmaRingProps> = ({ parts, size = 252, onSel
       <div className="flex items-center justify-center gap-4 text-xs text-[#5C5549] dark:text-slate-300">
         <span className="inline-flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-xs bg-[#D9B45A] inline-block" aria-hidden="true" />
-          <span>مكتمل</span>
+          <span>{t('مكتمل', 'Completed')}</span>
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-xs bg-[#2E5499] inline-block" aria-hidden="true" />
-          <span>محجوز</span>
+          <span>{t('محجوز', 'Claimed')}</span>
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-xs border border-[#8A6418]/50 dark:border-slate-500 inline-block" aria-hidden="true" />
-          <span>متاح</span>
+          <span>{t('متاح', 'Available')}</span>
         </span>
       </div>
     </div>

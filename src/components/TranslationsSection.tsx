@@ -24,7 +24,8 @@ import {
   Volume2,
   X,
 } from 'lucide-react';
-import { SURAHS_LIST } from '../data/quranMetadata';
+import { SURAHS_LIST, getRevelationTypeLabel, getSurahDisplayName } from '../data/quranMetadata';
+import { formatLocalizedDigits, useLanguage } from '../utils/i18n';
 import { toArabicIndic } from './khatma/KhatmaRing';
 import {
   MAX_TRANSLATION_FONT_SIZE,
@@ -192,6 +193,9 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
   onNavigateToAyah,
   onShareVerse,
 }) => {
+  const { lang, dir, t } = useLanguage();
+  const langRef = useRef(lang);
+  langRef.current = lang;
   const initialPrefs = useMemo(() => loadTranslationPrefs(), []);
 
   const [subTab, setSubTab] = useState<SectionSubTab>('reader');
@@ -309,7 +313,9 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
             setErrorMsg(
               err instanceof Error
                 ? err.message
-                : 'تعذر تحميل مقارنة اللغات لهذه السورة حالياً، يرجى المحاولة مجدداً.'
+                : langRef.current === 'en'
+                  ? 'Unable to load language comparison for this Surah right now. Please try again.'
+                  : 'تعذر تحميل مقارنة اللغات لهذه السورة حالياً، يرجى المحاولة مجدداً.'
             );
             setIsLoading(false);
           }
@@ -328,7 +334,9 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
             setErrorMsg(
               err instanceof Error
                 ? err.message
-                : 'تعذر تحميل ترجمة هذه السورة حالياً، يرجى المحاولة مجدداً.'
+                : langRef.current === 'en'
+                  ? 'Unable to load translation for this Surah right now. Please try again.'
+                  : 'تعذر تحميل ترجمة هذه السورة حالياً، يرجى المحاولة مجدداً.'
             );
             setIsLoading(false);
           }
@@ -409,7 +417,9 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
           : [
               verse.arabicText,
               verse.translationText,
-              `— سورة ${surahNameAr} (${toArabicIndic(verse.ayahNumber)}) · ${edition.nativeTitle}`,
+              lang === 'en'
+                ? `— Surah ${surahNameEn} (${surahNum}:${verse.ayahNumber}) · ${edition.nativeTitle}`
+                : `— سورة ${surahNameAr} (${toArabicIndic(verse.ayahNumber)}) · ${edition.nativeTitle}`,
             ];
 
       try {
@@ -429,6 +439,7 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
       currentSurahMeta.englishName,
       currentSurahMeta.name,
       displayMode,
+      lang,
       selectedSurahNumber,
     ]
   );
@@ -487,20 +498,35 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
     if (res.aborted) {
       setStorageNotice({
         type: 'error',
-        text: `تم إيقاف التحميل عند ${toArabicIndic(updatedSet.size)} من ١١٤ سورة.`,
+        text: t(
+          `تم إيقاف التحميل عند ${toArabicIndic(updatedSet.size)} من ١١٤ سورة.`,
+          `Download stopped at ${updatedSet.size} of 114 Surahs.`
+        ),
       });
     } else if (res.failed === 0) {
       setStorageNotice({
         type: 'success',
-        text: `اكتمل تحميل جميع السور (١١٤) للـ${currentEdition.arabicTitle} للاستخدام دون إنترنت.`,
+        text: t(
+          `اكتمل تحميل جميع السور (١١٤) للـ${currentEdition.arabicTitle} للاستخدام دون إنترنت.`,
+          `Downloaded all 114 Surahs for ${currentEdition.nativeTitle} for offline reading.`
+        ),
       });
     } else {
       setStorageNotice({
         type: 'error',
-        text: `تم حفظ ${toArabicIndic(res.completed)} سورة وتعذر تحميل ${toArabicIndic(res.failed)} سورة؛ يمكنك إعادة المحاولة لاحقاً.`,
+        text: t(
+          `تم حفظ ${toArabicIndic(res.completed)} سورة وتعذر تحميل ${toArabicIndic(res.failed)} سورة؛ يمكنك إعادة المحاولة لاحقاً.`,
+          `Saved ${res.completed} Surahs; ${res.failed} failed. You can retry later.`
+        ),
       });
     }
-  }, [currentEdition.arabicTitle, isDownloadingOffline, selectedEditionId]);
+  }, [
+    currentEdition.arabicTitle,
+    currentEdition.nativeTitle,
+    isDownloadingOffline,
+    selectedEditionId,
+    t,
+  ]);
 
   const handleImportJsonFile = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -517,7 +543,10 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
         setReloadNonce((n) => n + 1);
         setStorageNotice({
           type: 'success',
-          text: `تم استيراد واعتماد سورة ${imported.meta.name} (${imported.edition.arabicTitle}) بنجاح (${toArabicIndic(imported.verses.length)} آية).`,
+          text: t(
+            `تم استيراد واعتماد سورة ${imported.meta.name} (${imported.edition.arabicTitle}) بنجاح (${toArabicIndic(imported.verses.length)} آية).`,
+            `Imported and verified Surah ${imported.meta.englishName} (${imported.edition.nativeTitle}) successfully (${imported.verses.length} verses).`
+          ),
         });
       } catch (err) {
         setStorageNotice({
@@ -525,11 +554,14 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
           text:
             err instanceof Error
               ? err.message
-              : 'تعذر قراءة ملف JSON؛ تأكد من مطابقته للصيغة المعتمدة.',
+              : t(
+                  'تعذر قراءة ملف JSON؛ تأكد من مطابقته للصيغة المعتمدة.',
+                  'Unable to read JSON file; please verify it matches the required schema.'
+                ),
         });
       }
     },
-    []
+    [t]
   );
 
   const renderVerseActionBar = (
@@ -563,8 +595,8 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
             }}
             aria-label={
               isThisVersePlaying
-                ? `إيقاف تلاوة الآية ${verse.ayahNumber}`
-                : `استماع إلى الآية ${verse.ayahNumber}`
+                ? t(`إيقاف تلاوة الآية ${verse.ayahNumber}`, `Pause verse ${verse.ayahNumber}`)
+                : t(`استماع إلى الآية ${verse.ayahNumber}`, `Listen to verse ${verse.ayahNumber}`)
             }
             className={`min-h-[38px] px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
               isThisVersePlaying
@@ -575,12 +607,12 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
             {isThisVersePlaying ? (
               <>
                 <Pause className="w-3.5 h-3.5 shrink-0" />
-                {!compact && <span>إيقاف</span>}
+                {!compact && <span>{t('إيقاف', 'Pause')}</span>}
               </>
             ) : (
               <>
                 <Volume2 className="w-3.5 h-3.5 text-[#D9B45A] shrink-0" />
-                {!compact && <span>استماع</span>}
+                {!compact && <span>{t('استماع', 'Listen')}</span>}
               </>
             )}
           </button>
@@ -591,8 +623,8 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
           onClick={() => handleToggleFavorite(verse)}
           aria-label={
             isFav
-              ? `إزالة الآية ${verse.ayahNumber} من المفضلة`
-              : `حفظ الآية ${verse.ayahNumber} في المفضلة`
+              ? t(`إزالة الآية ${verse.ayahNumber} من المفضلة`, `Remove verse ${verse.ayahNumber} from favorites`)
+              : t(`حفظ الآية ${verse.ayahNumber} في المفضلة`, `Save verse ${verse.ayahNumber} to favorites`)
           }
           className={`min-h-[38px] min-w-[38px] px-2.5 py-1.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
             isFav
@@ -601,7 +633,11 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
           }`}
         >
           <Heart className={`w-3.5 h-3.5 shrink-0 ${isFav ? 'fill-current' : ''}`} />
-          {!compact && <span className="hidden sm:inline">{isFav ? 'محفوظة' : 'مفضلة'}</span>}
+          {!compact && (
+            <span className="hidden sm:inline">
+              {isFav ? t('محفوظة', 'Saved') : t('مفضلة', 'Favorite')}
+            </span>
+          )}
         </button>
 
         {onShareVerse && (
@@ -615,31 +651,39 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                 edition: currentEdition,
               })
             }
-            aria-label={`مشاركة بطاقة الآية ${verse.ayahNumber} مع الترجمة`}
+            aria-label={t(
+              `مشاركة بطاقة الآية ${verse.ayahNumber} مع الترجمة`,
+              `Share verse ${verse.ayahNumber} card with translation`
+            )}
             className="min-h-[38px] min-w-[38px] px-2.5 py-1.5 rounded-xl border border-[#8A6418]/25 dark:border-[#D9B45A]/25 hover:bg-[#EFE6D1] dark:hover:bg-[#10161f] text-xs font-semibold text-[#1B1A17] dark:text-[#E9E3D3] flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
           >
             <Share2 className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A] shrink-0" />
-            {!compact && <span className="hidden sm:inline">بطاقة</span>}
+            {!compact && <span className="hidden sm:inline">{t('بطاقة', 'Card')}</span>}
           </button>
         )}
 
         <button
           type="button"
           onClick={() => handleCopyVerse(verse)}
-          aria-label={`نسخ الآية ${verse.ayahNumber} والترجمة`}
+          aria-label={t(
+            `نسخ الآية ${verse.ayahNumber} والترجمة`,
+            `Copy verse ${verse.ayahNumber} and translation`
+          )}
           className="min-h-[38px] min-w-[38px] px-2.5 py-1.5 rounded-xl border border-[#8A6418]/25 dark:border-[#D9B45A]/25 hover:bg-[#EFE6D1] dark:hover:bg-[#10161f] text-xs font-semibold text-[#1B1A17] dark:text-[#E9E3D3] flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
         >
           {isCopied ? (
             <>
               <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
               {!compact && (
-                <span className="text-emerald-700 dark:text-emerald-300">تم النسخ</span>
+                <span className="text-emerald-700 dark:text-emerald-300">
+                  {t('تم النسخ', 'Copied')}
+                </span>
               )}
             </>
           ) : (
             <>
               <Copy className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A] shrink-0" />
-              {!compact && <span className="hidden sm:inline">نسخ</span>}
+              {!compact && <span className="hidden sm:inline">{t('نسخ', 'Copy')}</span>}
             </>
           )}
         </button>
@@ -648,11 +692,14 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
           <button
             type="button"
             onClick={() => onNavigateToAyah(selectedSurahNumber, verse.ayahNumber)}
-            aria-label={`فتح الآية ${verse.ayahNumber} في المصحف`}
+            aria-label={t(
+              `فتح الآية ${verse.ayahNumber} في المصحف`,
+              `Open verse ${verse.ayahNumber} in Mus'haf`
+            )}
             className="min-h-[38px] px-2.5 py-1.5 rounded-xl border border-[#8A6418]/25 dark:border-[#D9B45A]/25 hover:bg-[#EFE6D1] dark:hover:bg-[#10161f] text-xs font-semibold text-[#1B1A17] dark:text-[#E9E3D3] flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
           >
             <BookOpen className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A] shrink-0" />
-            <span className="hidden md:inline">المصحف</span>
+            <span className="hidden md:inline">{t('المصحف', "Mus'haf")}</span>
           </button>
         )}
       </div>
@@ -673,13 +720,16 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-xs font-bold text-[#8A6418] dark:text-[#D9B45A]">
               <Globe className="w-4 h-4 shrink-0" />
-              <span>مكتبة بيان للترجمات المعتمدة</span>
+              <span>{t('مكتبة بيان للترجمات المعتمدة', 'Bayan Verified Translations Library')}</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold font-kufi text-[#1B1A17] dark:text-[#F6EFDD] tracking-tight">
-              ترجمات معاني القرآن الكريم
+              {t('ترجمات معاني القرآن الكريم', 'Quran Meaning Translations')}
             </h1>
             <p className="text-xs sm:text-sm text-[#5C5549] dark:text-slate-300 leading-relaxed max-w-2xl">
-              اقرأ النص العربي بالرسم العثماني مقترناً بترجمة موثوقة للمعاني بهوية المصحف المقابل أو المقارَن، مع الحفظ في المفضلة والعمل دون إنترنت.
+              {t(
+                'اقرأ النص العربي بالرسم العثماني مقترناً بترجمة موثوقة للمعاني بهوية المصحف المقابل أو المقارَن، مع الحفظ في المفضلة والعمل دون إنترنت.',
+                "Read the Arabic Uthmani script alongside trusted meaning translations in a side-by-side Mus'haf spread or comparison view, with favorites and offline support."
+              )}
             </p>
           </div>
 
@@ -687,7 +737,7 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
           <div className="flex flex-wrap items-center gap-2 shrink-0">
             <div
               role="tablist"
-              aria-label="أقسام الترجمات"
+              aria-label={t('أقسام الترجمات', 'Translation sections')}
               className="inline-flex rounded-2xl p-1 bg-[#EFE6D1]/85 dark:bg-[#0b1018] border border-[#8A6418]/25 dark:border-[#D9B45A]/25"
             >
               <button
@@ -702,7 +752,7 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                 }`}
               >
                 <BookOpen className="w-3.5 h-3.5 text-[#D9B45A]" />
-                <span>قراءة السورة</span>
+                <span>{t('قراءة السورة', 'Read Surah')}</span>
               </button>
               <button
                 type="button"
@@ -716,7 +766,9 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                 }`}
               >
                 <Heart className="w-3.5 h-3.5 text-[#D9B45A]" />
-                <span>المفضلة ({toArabicIndic(favorites.length)})</span>
+                <span>
+                  {t('المفضلة', 'Favorites')} ({formatLocalizedDigits(favorites.length, lang)})
+                </span>
               </button>
             </div>
 
@@ -727,7 +779,10 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                 className="lg:hidden min-h-[44px] px-4 py-2 rounded-2xl bg-[#1F3A6E] hover:bg-[#2E5499] text-[#F6EFDD] font-bold text-xs flex items-center gap-2 whitespace-nowrap shrink-0 shadow cursor-pointer"
               >
                 <List className="w-4 h-4 text-[#D9B45A]" />
-                <span>السورة ({toArabicIndic(selectedSurahNumber)} · {currentSurahMeta.name})</span>
+                <span>
+                  {t('السورة', 'Surah')} ({formatLocalizedDigits(selectedSurahNumber, lang)} ·{' '}
+                  {getSurahDisplayName(currentSurahMeta, lang)})
+                </span>
               </button>
             )}
           </div>
@@ -737,6 +792,14 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
         <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {TRANSLATION_EDITIONS.map((edition) => {
             const isSelected = edition.id === currentEdition.id;
+            const cardHeading =
+              lang === 'en'
+                ? edition.langCode === 'sv'
+                  ? 'Swedish Translation'
+                  : edition.langCode === 'en'
+                    ? 'English Translation'
+                    : edition.arabicTitle
+                : edition.arabicTitle;
             return (
               <button
                 key={edition.id}
@@ -747,14 +810,14 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                     setDisplayMode('split');
                   }
                 }}
-                className={`min-h-[44px] p-3.5 rounded-2xl border text-right transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                className={`min-h-[44px] p-3.5 rounded-2xl border text-start transition-all cursor-pointer flex flex-col justify-between gap-2 ${
                   isSelected
                     ? 'bg-[#1F3A6E] dark:bg-[#1F3A6E]/90 border-[#D9B45A] text-[#F6EFDD] shadow-md'
                     : 'bg-[#FBF7EE]/90 dark:bg-[#151d29]/85 border-[#8A6418]/25 dark:border-[#D9B45A]/25 text-[#1B1A17] dark:text-[#E9E3D3] hover:border-[#8A6418]/60 dark:hover:border-[#D9B45A]/60'
                 }`}
               >
                 <div className="flex items-center justify-between gap-2 w-full">
-                  <span className="font-bold text-sm font-kufi">{edition.arabicTitle}</span>
+                  <span className="font-bold text-sm font-kufi">{cardHeading}</span>
                   <span
                     className={`text-[11px] font-bold uppercase tracking-wider ${
                       isSelected
@@ -790,20 +853,27 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
             type="button"
             onClick={() => setIsStoragePanelOpen((v) => !v)}
             aria-expanded={isStoragePanelOpen}
-            className={`min-h-[44px] p-3.5 rounded-2xl border text-right transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+            className={`min-h-[44px] p-3.5 rounded-2xl border text-start transition-all cursor-pointer flex flex-col justify-between gap-2 ${
               isStoragePanelOpen
                 ? 'bg-[#EFE6D1] dark:bg-[#0b1018] border-[#8A6418] dark:border-[#D9B45A] text-[#1B1A17] dark:text-[#F6EFDD]'
                 : 'bg-[#FBF7EE]/90 dark:bg-[#151d29]/85 border-[#8A6418]/25 dark:border-[#D9B45A]/25 text-[#1B1A17] dark:text-[#E9E3D3] hover:border-[#8A6418]/60 dark:hover:border-[#D9B45A]/60'
             }`}
           >
             <div className="flex items-center justify-between gap-2 w-full">
-              <span className="font-bold text-sm font-kufi">دون إنترنت والملفات</span>
+              <span className="font-bold text-sm font-kufi">
+                {t('دون إنترنت والملفات', 'Offline & Files')}
+              </span>
               <HardDriveDownload className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A] shrink-0" />
             </div>
             <div className="flex items-center justify-between gap-2 text-xs text-[#5C5549] dark:text-slate-400 tabular-nums w-full">
-              <span>محفوظ حالياً: {toArabicIndic(cachedSurahsCount)} / ١١٤ سورة</span>
+              <span>
+                {t(
+                  `محفوظ حالياً: ${formatLocalizedDigits(cachedSurahsCount, lang)} / ١١٤ سورة`,
+                  `Cached: ${formatLocalizedDigits(cachedSurahsCount, lang)} / 114 Surahs`
+                )}
+              </span>
               <span className="font-bold text-[#1F3A6E] dark:text-[#D9B45A]">
-                {isStoragePanelOpen ? 'إخفاء' : 'إدارة'}
+                {isStoragePanelOpen ? t('إخفاء', 'Hide') : t('إدارة', 'Manage')}
               </span>
             </div>
           </button>
@@ -815,10 +885,16 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
               <div className="space-y-1">
                 <h3 className="text-xs sm:text-sm font-bold text-[#1B1A17] dark:text-[#F6EFDD]">
-                  حفظ {currentEdition.arabicTitle} دون إنترنت واستيراد JSON مراجَع
+                  {t(
+                    `حفظ ${currentEdition.arabicTitle} دون إنترنت واستيراد JSON مراجَع`,
+                    `Save ${currentEdition.nativeTitle} offline & import verified JSON`
+                  )}
                 </h3>
                 <p className="text-xs text-[#5C5549] dark:text-slate-400">
-                  يمكنك تنزيل كامل القرآن (١١٤ سورة) للعمل في السفر دون شبكة، أو اعتماد ملف JSON مدقَّق يدوياً لأي سورة.
+                  {t(
+                    'يمكنك تنزيل كامل القرآن (١١٤ سورة) للعمل في السفر دون شبكة، أو اعتماد ملف JSON مدقَّق يدوياً لأي سورة.',
+                    'Download all 114 Surahs for offline reading on the go, or import a manually verified JSON file for any Surah.'
+                  )}
                 </p>
               </div>
 
@@ -835,8 +911,14 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                   <Download className="w-4 h-4 text-[#D9B45A]" />
                   <span>
                     {isDownloadingOffline
-                      ? `إيقاف (${toArabicIndic(offlineProgress?.completed || 0)}/١١٤)`
-                      : `تحميل المصحف (${currentEdition.langCode.toUpperCase()})`}
+                      ? t(
+                          `إيقاف (${formatLocalizedDigits(offlineProgress?.completed || 0, lang)}/١١٤)`,
+                          `Stop (${formatLocalizedDigits(offlineProgress?.completed || 0, lang)}/114)`
+                        )
+                      : t(
+                          `تحميل المصحف (${currentEdition.langCode.toUpperCase()})`,
+                          `Download All (${currentEdition.langCode.toUpperCase()})`
+                        )}
                   </span>
                 </button>
 
@@ -853,7 +935,7 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                   className="min-h-[42px] px-4 py-2 rounded-xl border border-[#8A6418]/35 dark:border-[#D9B45A]/35 bg-[#EFE6D1]/70 dark:bg-[#151d29] hover:bg-[#EFE6D1] dark:hover:bg-[#10161f] text-xs font-bold text-[#1B1A17] dark:text-[#F6EFDD] flex items-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   <FileJson className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
-                  <span>استيراد ملف JSON</span>
+                  <span>{t('استيراد ملف JSON', 'Import JSON File')}</span>
                 </button>
               </div>
             </div>
@@ -876,9 +958,12 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                   />
                 </div>
                 <div className="flex items-center justify-between text-[11px] text-[#5C5549] dark:text-slate-400 tabular-nums">
-                  <span>جارٍ حفظ السور في قاعدة البيانات المحلية…</span>
                   <span>
-                    {toArabicIndic(offlineProgress.completed)} / {toArabicIndic(offlineProgress.total)}
+                    {t('جارٍ حفظ السور في قاعدة البيانات المحلية…', 'Saving Surahs to local storage…')}
+                  </span>
+                  <span>
+                    {formatLocalizedDigits(offlineProgress.completed, lang)} /{' '}
+                    {formatLocalizedDigits(offlineProgress.total, lang)}
                   </span>
                 </div>
               </div>
@@ -897,7 +982,7 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                 <button
                   type="button"
                   onClick={() => setStorageNotice(null)}
-                  aria-label="إغلاق الرسالة"
+                  aria-label={t('إغلاق الرسالة', 'Dismiss notice')}
                   className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -914,14 +999,20 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
           <div className="rounded-3xl bg-[#FBF7EE] dark:bg-[#151d29] border border-[#8A6418]/25 dark:border-[#D9B45A]/25 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-bold font-kufi text-[#1B1A17] dark:text-[#F6EFDD]">
-                الآيات المحفوظة في مفضلة الترجمات
+                {t('الآيات المحفوظة في مفضلة الترجمات', 'Saved Translation Favorites')}
               </h2>
               <p className="text-xs text-[#5C5549] dark:text-slate-400 mt-0.5">
-                جميع الآيات التي حفظتها بالسويدية أو الإنجليزية جاهزة للمراجعة والاستماع والمشاركة.
+                {t(
+                  'جميع الآيات التي حفظتها بالسويدية أو الإنجليزية جاهزة للمراجعة والاستماع والمشاركة.',
+                  'All verses you saved in Swedish or English, ready to review, listen, and share.'
+                )}
               </p>
             </div>
             <span className="text-xs font-bold text-[#8A6418] dark:text-[#D9B45A] tabular-nums">
-              {toArabicIndic(favorites.length)} آية محفوظة
+              {t(
+                `${toArabicIndic(favorites.length)} آية محفوظة`,
+                `${favorites.length} saved verses`
+              )}
             </span>
           </div>
 
@@ -929,17 +1020,20 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
             <div className="rounded-3xl bg-[#FBF7EE] dark:bg-[#151d29] border border-[#8A6418]/25 dark:border-[#D9B45A]/25 p-12 text-center space-y-3">
               <Heart className="w-8 h-8 text-[#8A6418] dark:text-[#D9B45A] mx-auto opacity-75" />
               <p className="text-sm font-bold text-[#1B1A17] dark:text-[#F6EFDD]">
-                لا توجد آيات في المفضلة بعد
+                {t('لا توجد آيات في المفضلة بعد', 'No saved verses yet')}
               </p>
               <p className="text-xs text-[#5C5549] dark:text-slate-400 max-w-md mx-auto">
-                اضغط على أيقونة القلب بجانب أي آية أثناء القراءة لحفظها مع ترجمتها هنا للوصول السريع.
+                {t(
+                  'اضغط على أيقونة القلب بجانب أي آية أثناء القراءة لحفظها مع ترجمتها هنا للوصول السريع.',
+                  'Tap the heart icon next to any verse while reading to save it with its translation here.'
+                )}
               </p>
               <button
                 type="button"
                 onClick={() => setSubTab('reader')}
                 className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#1F3A6E] hover:bg-[#2E5499] text-[#F6EFDD] font-bold text-xs cursor-pointer"
               >
-                العودة لقراءة السورة
+                {t('العودة لقراءة السورة', 'Back to Surah Reader')}
               </button>
             </div>
           ) : (
@@ -955,15 +1049,15 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                     <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-[#8A6418]/15 dark:border-[#D9B45A]/15">
                       <div className="flex items-center gap-2 text-xs">
                         <BayanRubElHizbBadge
-                          label={toArabicIndic(fav.ayahNumber)}
+                          label={formatLocalizedDigits(fav.ayahNumber, lang)}
                           sizeClass="w-7 h-7 text-[11px]"
                         />
                         <span className="font-bold text-[#8A6418] dark:text-[#D9B45A] tabular-nums">
-                          سورة {fav.surahName}
+                          {lang === 'en' ? `Surah ${fav.englishName}` : `سورة ${fav.surahName}`}
                         </span>
                         <span aria-hidden="true" className="text-[#5C5549] dark:text-slate-500">·</span>
                         <span className="text-[#5C5549] dark:text-slate-400">
-                          {fav.editionTitle}
+                          {lang === 'en' ? editionObj.nativeTitle : fav.editionTitle}
                         </span>
                       </div>
 
@@ -975,7 +1069,7 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                             className="min-h-[38px] px-3 py-1.5 rounded-xl bg-[#1F3A6E] hover:bg-[#2E5499] text-[#F6EFDD] text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
                           >
                             <Volume2 className="w-3.5 h-3.5 text-[#D9B45A]" />
-                            <span>استماع</span>
+                            <span>{t('استماع', 'Listen')}</span>
                           </button>
                         )}
 
@@ -998,7 +1092,7 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                             className="min-h-[38px] px-2.5 py-1.5 rounded-xl border border-[#8A6418]/25 dark:border-[#D9B45A]/25 hover:bg-[#EFE6D1] dark:hover:bg-[#10161f] text-xs font-semibold text-[#1B1A17] dark:text-[#E9E3D3] flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
                           >
                             <Share2 className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
-                            <span>بطاقة</span>
+                            <span>{t('بطاقة', 'Card')}</span>
                           </button>
                         )}
 
@@ -1022,12 +1116,14 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                           {isCopied ? (
                             <>
                               <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                              <span className="text-emerald-700 dark:text-emerald-300">تم النسخ</span>
+                              <span className="text-emerald-700 dark:text-emerald-300">
+                                {t('تم النسخ', 'Copied')}
+                              </span>
                             </>
                           ) : (
                             <>
                               <Copy className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
-                              <span>نسخ</span>
+                              <span>{t('نسخ', 'Copy')}</span>
                             </>
                           )}
                         </button>
@@ -1040,7 +1136,7 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                           }}
                           className="min-h-[38px] px-2.5 py-1.5 rounded-xl border border-[#8A6418]/25 dark:border-[#D9B45A]/25 hover:bg-[#EFE6D1] dark:hover:bg-[#10161f] text-xs font-semibold text-[#1B1A17] dark:text-[#E9E3D3] cursor-pointer whitespace-nowrap shrink-0"
                         >
-                          فتح السورة
+                          {t('فتح السورة', 'Open Surah')}
                         </button>
 
                         <button
@@ -1060,7 +1156,7 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                             });
                             setFavorites(next);
                           }}
-                          aria-label="حذف من المفضلة"
+                          aria-label={t('حذف من المفضلة', 'Remove from favorites')}
                           className="min-h-[38px] min-w-[38px] rounded-xl border border-rose-500/25 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-600 dark:text-rose-400 flex items-center justify-center cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -1100,21 +1196,24 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
             <div className="p-3.5 border-b border-[#8A6418]/20 dark:border-[#D9B45A]/20 space-y-2.5 bg-[#EFE6D1]/70 dark:bg-[#0b1018]">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold font-kufi text-[#1B1A17] dark:text-[#F6EFDD]">
-                  فهرس السور ({toArabicIndic(114)})
+                  {t(`فهرس السور (${toArabicIndic(114)})`, 'Surah Index (114)')}
                 </span>
                 <span className="text-[11px] text-[#8A6418] dark:text-[#D9B45A] font-bold uppercase">
                   {currentEdition.langCode}
                 </span>
               </div>
               <div className="relative">
-                <Search className="w-4 h-4 text-[#5C5549] dark:text-slate-400 absolute right-3 top-3" />
+                <Search className="w-4 h-4 text-[#5C5549] dark:text-slate-400 absolute start-3 top-3" />
                 <input
                   type="text"
                   value={surahQuery}
                   onChange={(e) => setSurahQuery(e.target.value)}
-                  placeholder="ابحث بالعربية أو English أو الرقم..."
-                  aria-label="البحث في فهرس السور"
-                  className="w-full min-h-[40px] pr-9 pl-3 py-1.5 rounded-xl bg-[#FBF7EE] dark:bg-[#10161f] border border-[#8A6418]/30 dark:border-[#D9B45A]/25 text-xs text-[#1B1A17] dark:text-[#F6EFDD] outline-none focus:border-[#8A6418] dark:focus:border-[#D9B45A]"
+                  placeholder={t(
+                    'ابحث بالعربية أو English أو الرقم...',
+                    'Search Arabic, English, or number...'
+                  )}
+                  aria-label={t('البحث في فهرس السور', 'Search Surah index')}
+                  className="w-full min-h-[40px] ps-9 pe-3 py-1.5 rounded-xl bg-[#FBF7EE] dark:bg-[#10161f] border border-[#8A6418]/30 dark:border-[#D9B45A]/25 text-xs text-[#1B1A17] dark:text-[#F6EFDD] outline-none focus:border-[#8A6418] dark:focus:border-[#D9B45A]"
                 />
               </div>
             </div>
@@ -1127,7 +1226,7 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                     key={s.number}
                     type="button"
                     onClick={() => handleSelectSurah(s.number)}
-                    className={`w-full min-h-[48px] px-3 py-2 rounded-2xl border text-right transition-all flex items-center justify-between gap-2 cursor-pointer ${
+                    className={`w-full min-h-[48px] px-3 py-2 rounded-2xl border text-start transition-all flex items-center justify-between gap-2 cursor-pointer ${
                       isSelected
                         ? 'bg-[#1F3A6E] dark:bg-[#1F3A6E]/90 border-[#D9B45A] text-[#F6EFDD] shadow-sm'
                         : 'bg-transparent border-transparent hover:bg-[#EFE6D1]/70 dark:hover:bg-[#10161f]/80 text-[#1B1A17] dark:text-[#E9E3D3]'
@@ -1135,19 +1234,22 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <BayanRubElHizbBadge
-                        label={toArabicIndic(s.number)}
+                        label={formatLocalizedDigits(s.number, lang)}
                         active={isSelected}
                         sizeClass="w-8 h-8 text-[11px]"
                       />
                       <div className="min-w-0">
-                        <div className="font-bold text-xs truncate">سورة {s.name}</div>
+                        <div className="font-bold text-xs truncate">
+                          {lang === 'en' ? s.englishName : `سورة ${s.name}`}
+                        </div>
                         <div
                           className={`text-[11px] truncate ${
                             isSelected ? 'text-[#E9E3D3]/85' : 'text-[#5C5549] dark:text-slate-400'
                           }`}
-                          dir="ltr"
                         >
-                          {s.englishName} · {s.englishNameTranslation}
+                          {lang === 'en'
+                            ? `${s.englishNameTranslation} · ${s.name}`
+                            : `${s.englishName} · ${s.englishNameTranslation}`}
                         </div>
                       </div>
                     </div>
@@ -1156,14 +1258,17 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                         isSelected ? 'text-[#D9B45A]' : 'text-[#5C5549] dark:text-slate-400'
                       }`}
                     >
-                      {toArabicIndic(s.numberOfAyahs)}
+                      {formatLocalizedDigits(s.numberOfAyahs, lang)}
                     </span>
                   </button>
                 );
               })}
               {filteredSurahs.length === 0 && (
                 <div className="p-6 text-center text-xs text-[#5C5549] dark:text-slate-400">
-                  لا توجد سورة مطابقة لـ «{surahQuery}»
+                  {t(
+                    `لا توجد سورة مطابقة لـ «${surahQuery}»`,
+                    `No Surah matches "${surahQuery}"`
+                  )}
                 </div>
               )}
             </div>
@@ -1178,14 +1283,30 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                 <div className="flex flex-wrap items-center gap-2">
                   <div
                     role="group"
-                    aria-label="نمط العرض"
+                    aria-label={t('نمط العرض', 'Display mode')}
                     className="inline-flex flex-wrap rounded-xl p-1 bg-[#EFE6D1]/80 dark:bg-[#0b1018] border border-[#8A6418]/25 dark:border-[#D9B45A]/25 gap-1"
                   >
                     {[
-                      { id: 'split' as const, label: 'عمودان متقابلان', icon: Columns },
-                      { id: 'bilingual' as const, label: 'متتالي', icon: List },
-                      { id: 'compare' as const, label: 'مقارنة اللغات', icon: Layers },
-                      { id: 'translation-only' as const, label: 'الترجمة فقط', icon: Globe },
+                      {
+                        id: 'split' as const,
+                        label: t('عمودان متقابلان', 'Side-by-Side'),
+                        icon: Columns,
+                      },
+                      {
+                        id: 'bilingual' as const,
+                        label: t('متتالي', 'Stacked'),
+                        icon: List,
+                      },
+                      {
+                        id: 'compare' as const,
+                        label: t('مقارنة اللغات', 'Compare All'),
+                        icon: Layers,
+                      },
+                      {
+                        id: 'translation-only' as const,
+                        label: t('الترجمة فقط', 'Translation Only'),
+                        icon: Globe,
+                      },
                     ].map((mode) => {
                       const Icon = mode.icon;
                       const active = displayMode === mode.id;
@@ -1213,19 +1334,19 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                       type="button"
                       onClick={() => setFontSize((f) => clampTranslationFontSize(f - 1))}
                       disabled={fontSize <= MIN_TRANSLATION_FONT_SIZE}
-                      aria-label="تصغير خط الترجمة"
+                      aria-label={t('تصغير خط الترجمة', 'Decrease translation font size')}
                       className="min-w-[36px] min-h-[36px] rounded-lg flex items-center justify-center text-[#1B1A17] dark:text-[#F6EFDD] hover:bg-[#FBF7EE] dark:hover:bg-[#151d29] disabled:opacity-35 cursor-pointer"
                     >
                       <Minus className="w-3.5 h-3.5" />
                     </button>
                     <span className="px-2 text-xs font-bold text-[#8A6418] dark:text-[#D9B45A]">
-                      {toArabicIndic(fontSize)}
+                      {formatLocalizedDigits(fontSize, lang)}
                     </span>
                     <button
                       type="button"
                       onClick={() => setFontSize((f) => clampTranslationFontSize(f + 1))}
                       disabled={fontSize >= MAX_TRANSLATION_FONT_SIZE}
-                      aria-label="تكبير خط الترجمة"
+                      aria-label={t('تكبير خط الترجمة', 'Increase translation font size')}
                       className="min-w-[36px] min-h-[36px] rounded-lg flex items-center justify-center text-[#1B1A17] dark:text-[#F6EFDD] hover:bg-[#FBF7EE] dark:hover:bg-[#151d29] disabled:opacity-35 cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" />
@@ -1236,21 +1357,21 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                 {/* Verse search + Auto-follow toggle + Mushaf link */}
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="relative flex-1 min-w-[200px] sm:w-64">
-                    <Search className="w-4 h-4 text-[#5C5549] dark:text-slate-400 absolute right-3 top-3" />
+                    <Search className="w-4 h-4 text-[#5C5549] dark:text-slate-400 absolute start-3 top-3" />
                     <input
                       type="text"
                       value={verseQuery}
                       onChange={(e) => setVerseQuery(e.target.value)}
-                      placeholder="ابحث داخل السورة..."
-                      aria-label="البحث في آيات السورة"
-                      className="w-full min-h-[40px] pr-9 pl-8 py-1.5 rounded-xl bg-[#F6EFDD]/60 dark:bg-[#10161f] border border-[#8A6418]/25 dark:border-[#D9B45A]/25 text-xs text-[#1B1A17] dark:text-[#F6EFDD] outline-none focus:border-[#8A6418] dark:focus:border-[#D9B45A]"
+                      placeholder={t('ابحث داخل السورة...', 'Search within Surah...')}
+                      aria-label={t('البحث في آيات السورة', 'Search Surah verses')}
+                      className="w-full min-h-[40px] ps-9 pe-8 py-1.5 rounded-xl bg-[#F6EFDD]/60 dark:bg-[#10161f] border border-[#8A6418]/25 dark:border-[#D9B45A]/25 text-xs text-[#1B1A17] dark:text-[#F6EFDD] outline-none focus:border-[#8A6418] dark:focus:border-[#D9B45A]"
                     />
                     {verseQuery && (
                       <button
                         type="button"
                         onClick={() => setVerseQuery('')}
-                        aria-label="مسح البحث"
-                        className="absolute left-2 top-2 min-w-[26px] min-h-[26px] rounded-lg flex items-center justify-center text-[#5C5549] dark:text-slate-400 hover:bg-[#EFE6D1] dark:hover:bg-[#151d29] cursor-pointer"
+                        aria-label={t('مسح البحث', 'Clear search')}
+                        className="absolute end-2 top-2 min-w-[26px] min-h-[26px] rounded-lg flex items-center justify-center text-[#5C5549] dark:text-slate-400 hover:bg-[#EFE6D1] dark:hover:bg-[#151d29] cursor-pointer"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -1266,7 +1387,10 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                         : 'border-[#8A6418]/25 dark:border-[#D9B45A]/20 text-[#5C5549] dark:text-slate-400'
                     }`}
                   >
-                    تتبع التلاوة: {autoFollowAudio ? 'مفعل' : 'متوقف'}
+                    {t(
+                      `تتبع التلاوة: ${autoFollowAudio ? 'مفعل' : 'متوقف'}`,
+                      `Auto-Follow: ${autoFollowAudio ? 'On' : 'Off'}`
+                    )}
                   </button>
 
                   {onNavigateToAyah && (
@@ -1276,7 +1400,7 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                       className="min-h-[40px] px-3 py-1.5 rounded-xl border border-[#8A6418]/35 dark:border-[#D9B45A]/35 bg-[#EFE6D1]/70 dark:bg-[#0b1018] hover:bg-[#EFE6D1] dark:hover:bg-[#10161f] text-[#1B1A17] dark:text-[#F6EFDD] font-bold text-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
                     >
                       <BookOpen className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
-                      <span>فتح في المصحف</span>
+                      <span>{t('فتح في المصحف', "Open in Mus'haf")}</span>
                     </button>
                   )}
                 </div>
@@ -1288,7 +1412,10 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
               <div className="p-14 text-center rounded-3xl bg-[#FBF7EE] dark:bg-[#151d29] border border-[#8A6418]/25 dark:border-[#D9B45A]/25 flex flex-col items-center justify-center space-y-3">
                 <div className="w-9 h-9 rounded-full border-2 border-[#8A6418] dark:border-[#D9B45A] border-t-transparent animate-spin" />
                 <p className="text-xs font-medium text-[#5C5549] dark:text-slate-300">
-                  جارٍ تجهيز {displayMode === 'compare' ? 'مقارنة الترجمات' : currentEdition.arabicTitle} لسورة {currentSurahMeta.name}…
+                  {t(
+                    `جارٍ تجهيز ${displayMode === 'compare' ? 'مقارنة الترجمات' : currentEdition.arabicTitle} لسورة ${currentSurahMeta.name}…`,
+                    `Loading ${displayMode === 'compare' ? 'language comparison' : currentEdition.nativeTitle} for Surah ${currentSurahMeta.englishName}…`
+                  )}
                 </p>
               </div>
             ) : errorMsg ? (
@@ -1305,7 +1432,7 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                   className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#1F3A6E] hover:bg-[#2E5499] text-[#F6EFDD] font-bold text-xs flex items-center gap-2 cursor-pointer"
                 >
                   <RefreshCw className="w-4 h-4 text-[#D9B45A]" />
-                  <span>إعادة المحاولة</span>
+                  <span>{t('إعادة المحاولة', 'Retry')}</span>
                 </button>
               </div>
             ) : (
@@ -1318,7 +1445,11 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                     {/* Signature Bayan Mushaf Surah Cartouche (matches QuranReader.tsx) */}
                     <div className="inline-block relative px-6 sm:px-10 py-2.5 max-w-full rounded-2xl border shadow-inner bg-[#D9B45A]/15 border-[#8A6418]/45 text-[#1B1A17] dark:bg-gradient-to-r dark:from-[#1F3A6E]/45 dark:via-[#D9B45A]/15 dark:to-[#1F3A6E]/45 dark:border-[#D9B45A]/45 dark:text-[#F6EFDD]">
                       <div className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-3">
-                        <h2 className="font-kufi text-2xl sm:text-3xl font-bold tracking-wide">
+                        <h2
+                          dir="rtl"
+                          lang="ar"
+                          className="font-kufi text-2xl sm:text-3xl font-bold tracking-wide"
+                        >
                           سُورَةُ {currentSurahMeta.name}
                         </h2>
                         <span className="hidden sm:inline text-[#8A6418]/60 dark:text-[#D9B45A]/70">—</span>
@@ -1332,16 +1463,20 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                       <div className="flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 mt-1.5 text-xs text-[#5C5549] dark:text-[#E9E3D3]/80 font-sans tabular-nums">
                         <span>{currentSurahMeta.englishNameTranslation}</span>
                         <span aria-hidden="true">·</span>
-                        <span>{currentSurahMeta.revelationTypeAr}</span>
+                        <span>{getRevelationTypeLabel(currentSurahMeta.revelationType, lang)}</span>
                         <span aria-hidden="true">·</span>
                         <span>
-                          الآيات {toArabicIndic(1)}–{toArabicIndic(currentSurahMeta.numberOfAyahs)}
+                          {lang === 'en'
+                            ? `Verses 1–${currentSurahMeta.numberOfAyahs}`
+                            : `الآيات ${toArabicIndic(1)}–${toArabicIndic(currentSurahMeta.numberOfAyahs)}`}
                         </span>
                         {displayMode !== 'compare' && (
                           <>
                             <span aria-hidden="true">·</span>
                             <span className="font-semibold text-[#8A6418] dark:text-[#D9B45A]">
-                              {currentEdition.sourceLabel}
+                              {lang === 'en'
+                                ? `${currentEdition.translatorName} (Verified)`
+                                : currentEdition.sourceLabel}
                             </span>
                           </>
                         )}
@@ -1353,7 +1488,11 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                       <div className="pt-1 space-y-1.5">
                         <BayanCalligraphicDivider />
                         {displayMode !== 'translation-only' && (
-                          <p className="font-quran text-2xl sm:text-3xl leading-relaxed text-[#8A6418] dark:text-[#D9B45A]">
+                          <p
+                            dir="rtl"
+                            lang="ar"
+                            className="font-quran text-2xl sm:text-3xl leading-relaxed text-[#8A6418] dark:text-[#D9B45A]"
+                          >
                             بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ
                           </p>
                         )}
@@ -1372,16 +1511,22 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
 
                 {filteredVerses.length === 0 ? (
                   <div className="p-10 text-center rounded-2xl bg-[#FBF7EE] dark:bg-[#151d29] border border-[#8A6418]/25 dark:border-[#D9B45A]/20 text-xs text-[#5C5549] dark:text-slate-400">
-                    لم يتم العثور على آيات مطابقة لعبارة «{verseQuery}» في سورة {currentSurahMeta.name}.
+                    {t(
+                      `لم يتم العثور على آيات مطابقة لعبارة «${verseQuery}» في سورة ${currentSurahMeta.name}.`,
+                      `No verses match "${verseQuery}" in Surah ${currentSurahMeta.englishName}.`
+                    )}
                   </div>
                 ) : displayMode === 'split' ? (
                   /* ===================== MODE 1: BAYAN TWO-PAGE MANUSCRIPT SPREAD ===================== */
                   <div className="rounded-3xl bg-[#F6EFDD] dark:bg-[#10161f] border-2 border-[#8A6418]/35 dark:border-[#D9B45A]/30 p-1.5 sm:p-2 shadow-sm">
                     <div className="rounded-[20px] overflow-hidden border border-[#8A6418]/25 dark:border-[#D9B45A]/20 bg-[#FBF7EE] dark:bg-[#151d29]">
                       {/* Column Labels Header (RTL layout -> Arabic Right, Translation Left) */}
-                      <div className="grid grid-cols-2 border-b border-[#8A6418]/25 dark:border-[#D9B45A]/25 bg-[#EFE6D1]/80 dark:bg-[#0b1018] text-[11px] sm:text-xs font-bold">
+                      <div
+                        dir="rtl"
+                        className="grid grid-cols-2 border-b border-[#8A6418]/25 dark:border-[#D9B45A]/25 bg-[#EFE6D1]/80 dark:bg-[#0b1018] text-[11px] sm:text-xs font-bold"
+                      >
                         <div className="px-3 sm:px-5 py-2.5 border-e border-[#8A6418]/25 dark:border-[#D9B45A]/25 text-right font-kufi text-[#8A6418] dark:text-[#D9B45A]">
-                          النص العربي · الرسم العثماني
+                          {t('النص العربي · الرسم العثماني', 'Arabic Text · Uthmani Script')}
                         </div>
                         <div
                           dir={currentEdition.dir}
@@ -1414,7 +1559,7 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                               }`}
                             >
                               {/* Side-by-Side Columns: Arabic Right | Translation Left */}
-                              <div className="grid grid-cols-2 items-stretch">
+                              <div dir="rtl" className="grid grid-cols-2 items-stretch">
                                 {/* Right Column: Pure Arabic Uthmani Text */}
                                 <div
                                   dir="rtl"
@@ -1448,7 +1593,7 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                                       currentEdition.dir === 'ltr' ? 'text-left' : 'text-right'
                                     }`}
                                   >
-                                    <span className="font-bold text-[#8A6418] dark:text-[#D9B45A] mr-1.5 tabular-nums">
+                                    <span className="font-bold text-[#8A6418] dark:text-[#D9B45A] me-1.5 tabular-nums">
                                       {verse.ayahNumber}.
                                     </span>
                                     {verse.translationText}
@@ -1459,9 +1604,12 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                               {/* Quiet Action Bar on Row Footer */}
                               <div className="px-3 sm:px-5 py-2 bg-[#EFE6D1]/40 dark:bg-[#0b1018]/65 border-t border-[#8A6418]/15 dark:border-[#D9B45A]/15 flex items-center justify-between gap-2">
                                 <span className="text-[11px] font-semibold text-[#5C5549] dark:text-slate-400 tabular-nums">
-                                  الآية {toArabicIndic(verse.ayahNumber)}
+                                  {t(
+                                    `الآية ${toArabicIndic(verse.ayahNumber)}`,
+                                    `Ayah ${verse.ayahNumber}`
+                                  )}
                                   {typeof verse.page === 'number' && verse.page > 0
-                                    ? ` · ص ${toArabicIndic(verse.page)}`
+                                    ? ` · ${t('ص', 'p.')} ${formatLocalizedDigits(verse.page, lang)}`
                                     : ''}
                                 </span>
                                 {renderVerseActionBar(verse, true)}
@@ -1496,12 +1644,14 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                           <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-[#8A6418]/15 dark:border-[#D9B45A]/15">
                             <div className="flex items-center gap-2">
                               <BayanRubElHizbBadge
-                                label={toArabicIndic(verse.ayahNumber)}
+                                label={formatLocalizedDigits(verse.ayahNumber, lang)}
                                 active={isThisVersePlaying}
                                 sizeClass="w-7 h-7 text-[11px]"
                               />
                               <span className="text-xs font-bold text-[#8A6418] dark:text-[#D9B45A] tabular-nums">
-                                سورة {currentSurahMeta.name}
+                                {lang === 'en'
+                                  ? `Surah ${currentSurahMeta.englishName}`
+                                  : `سورة ${currentSurahMeta.name}`}
                               </span>
                             </div>
                             {renderVerseActionBar(verse)}
@@ -1576,16 +1726,17 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                           <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-[#8A6418]/15 dark:border-[#D9B45A]/15">
                             <div className="flex items-center gap-2 text-xs tabular-nums">
                               <BayanRubElHizbBadge
-                                label={toArabicIndic(verse.ayahNumber)}
+                                label={formatLocalizedDigits(verse.ayahNumber, lang)}
                                 active={isThisVersePlaying}
                                 sizeClass="w-7 h-7 text-[11px]"
                               />
                               <span className="font-bold text-[#8A6418] dark:text-[#D9B45A]">
-                                {toArabicIndic(selectedSurahNumber)}:{toArabicIndic(verse.ayahNumber)}
+                                {formatLocalizedDigits(selectedSurahNumber, lang)}:
+                                {formatLocalizedDigits(verse.ayahNumber, lang)}
                               </span>
                               {typeof verse.page === 'number' && verse.page > 0 && (
                                 <span className="text-[#5C5549] dark:text-slate-400">
-                                  · ص {toArabicIndic(verse.page)}
+                                  · {t('ص', 'p.')} {formatLocalizedDigits(verse.page, lang)}
                                 </span>
                               )}
                             </div>
@@ -1615,7 +1766,7 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                             } text-[#2D2A24] dark:text-[#E9E3D3] font-normal`}
                           >
                             {displayMode === 'translation-only' && (
-                              <span className="font-bold text-[#8A6418] dark:text-[#D9B45A] mr-2 tabular-nums">
+                              <span className="font-bold text-[#8A6418] dark:text-[#D9B45A] me-2 tabular-nums">
                                 {verse.ayahNumber}.
                               </span>
                             )}
@@ -1635,11 +1786,17 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                     onClick={() => handleSelectSurah(selectedSurahNumber - 1)}
                     className="min-h-[44px] px-4 py-2.5 rounded-2xl bg-[#FBF7EE] dark:bg-[#151d29] border border-[#8A6418]/30 dark:border-[#D9B45A]/25 hover:border-[#8A6418] dark:hover:border-[#D9B45A] text-xs font-bold text-[#1B1A17] dark:text-[#F6EFDD] flex items-center gap-2 disabled:opacity-40 cursor-pointer"
                   >
-                    <ChevronRight className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
+                    {dir === 'rtl' ? (
+                      <ChevronRight className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
+                    ) : (
+                      <ChevronLeft className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
+                    )}
                     <span>
                       {selectedSurahNumber > 1
-                        ? `السابقة: ${SURAHS_LIST[selectedSurahNumber - 2].name}`
-                        : 'بداية المصحف'}
+                        ? lang === 'en'
+                          ? `Prev: ${SURAHS_LIST[selectedSurahNumber - 2].englishName}`
+                          : `السابقة: ${SURAHS_LIST[selectedSurahNumber - 2].name}`
+                        : t('بداية المصحف', "Start of Mus'haf")}
                     </span>
                   </button>
 
@@ -1651,10 +1808,16 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                   >
                     <span>
                       {selectedSurahNumber < 114
-                        ? `التالية: ${SURAHS_LIST[selectedSurahNumber].name}`
-                        : 'ختام المصحف'}
+                        ? lang === 'en'
+                          ? `Next: ${SURAHS_LIST[selectedSurahNumber].englishName}`
+                          : `التالية: ${SURAHS_LIST[selectedSurahNumber].name}`
+                        : t('ختام المصحف', "End of Mus'haf")}
                     </span>
-                    <ChevronLeft className="w-4 h-4 text-[#D9B45A]" />
+                    {dir === 'rtl' ? (
+                      <ChevronLeft className="w-4 h-4 text-[#D9B45A]" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4 text-[#D9B45A]" />
+                    )}
                   </button>
                 </div>
               </div>
@@ -1673,18 +1836,18 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
           <div
             role="dialog"
             aria-modal="true"
-            aria-label="فهرس سور الترجمة"
+            aria-label={t('فهرس سور الترجمة', 'Translation Surah index')}
             className="lg:hidden fixed bottom-0 left-0 right-0 z-50 max-h-[82vh] bg-[#FBF7EE] dark:bg-[#151d29] border-t border-[#8A6418]/35 dark:border-[#D9B45A]/35 rounded-t-3xl shadow-2xl flex flex-col overflow-hidden"
           >
             <div className="w-10 h-1.5 bg-[#8A6418]/40 dark:bg-[#D9B45A]/40 rounded-full mx-auto mt-3" />
             <div className="p-4 border-b border-[#8A6418]/20 dark:border-[#D9B45A]/20 flex items-center justify-between">
               <div className="font-bold text-sm font-kufi text-[#1B1A17] dark:text-[#F6EFDD]">
-                اختيار السورة ({toArabicIndic(114)})
+                {t(`اختيار السورة (${toArabicIndic(114)})`, 'Select Surah (114)')}
               </div>
               <button
                 type="button"
                 onClick={() => setIsMobileSurahDrawerOpen(false)}
-                aria-label="إغلاق الفهرس"
+                aria-label={t('إغلاق الفهرس', 'Close index')}
                 className="min-w-[44px] min-h-[44px] rounded-xl flex items-center justify-center text-[#5C5549] dark:text-slate-300 hover:bg-[#EFE6D1] dark:hover:bg-[#10161f] cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -1693,14 +1856,17 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
 
             <div className="p-3 border-b border-[#8A6418]/20 dark:border-[#D9B45A]/20">
               <div className="relative">
-                <Search className="w-4 h-4 text-[#5C5549] dark:text-slate-400 absolute right-3 top-3" />
+                <Search className="w-4 h-4 text-[#5C5549] dark:text-slate-400 absolute start-3 top-3" />
                 <input
                   type="text"
                   value={surahQuery}
                   onChange={(e) => setSurahQuery(e.target.value)}
-                  placeholder="ابحث بالعربية أو English أو الرقم..."
-                  aria-label="بحث السورة"
-                  className="w-full min-h-[42px] pr-9 pl-3 py-2 rounded-xl bg-[#F6EFDD]/60 dark:bg-[#10161f] border border-[#8A6418]/30 dark:border-[#D9B45A]/25 text-xs text-[#1B1A17] dark:text-[#F6EFDD] outline-none focus:border-[#8A6418] dark:focus:border-[#D9B45A]"
+                  placeholder={t(
+                    'ابحث بالعربية أو English أو الرقم...',
+                    'Search Arabic, English, or number...'
+                  )}
+                  aria-label={t('بحث السورة', 'Search Surah')}
+                  className="w-full min-h-[42px] ps-9 pe-3 py-2 rounded-xl bg-[#F6EFDD]/60 dark:bg-[#10161f] border border-[#8A6418]/30 dark:border-[#D9B45A]/25 text-xs text-[#1B1A17] dark:text-[#F6EFDD] outline-none focus:border-[#8A6418] dark:focus:border-[#D9B45A]"
                 />
               </div>
             </div>
@@ -1713,7 +1879,7 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                     key={s.number}
                     type="button"
                     onClick={() => handleSelectSurah(s.number)}
-                    className={`w-full min-h-[48px] px-3 py-2.5 rounded-2xl border text-right flex items-center justify-between gap-2 cursor-pointer ${
+                    className={`w-full min-h-[48px] px-3 py-2.5 rounded-2xl border text-start flex items-center justify-between gap-2 cursor-pointer ${
                       isSelected
                         ? 'bg-[#1F3A6E] border-[#D9B45A] text-[#F6EFDD]'
                         : 'bg-[#F6EFDD]/50 dark:bg-[#10161f]/70 border-[#8A6418]/20 dark:border-[#D9B45A]/20 text-[#1B1A17] dark:text-[#E9E3D3]'
@@ -1721,24 +1887,29 @@ export const TranslationsSection: React.FC<TranslationsSectionProps> = ({
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <BayanRubElHizbBadge
-                        label={toArabicIndic(s.number)}
+                        label={formatLocalizedDigits(s.number, lang)}
                         active={isSelected}
                         sizeClass="w-8 h-8 text-[11px]"
                       />
                       <div className="min-w-0">
-                        <div className="font-bold text-xs">سورة {s.name}</div>
+                        <div className="font-bold text-xs">
+                          {lang === 'en' ? s.englishName : `سورة ${s.name}`}
+                        </div>
                         <div
-                          dir="ltr"
                           className={`text-[11px] truncate ${
                             isSelected ? 'text-[#E9E3D3]/85' : 'text-[#5C5549] dark:text-slate-400'
                           }`}
                         >
-                          {s.englishName} · {s.englishNameTranslation}
+                          {lang === 'en'
+                            ? `${s.englishNameTranslation} · ${s.name}`
+                            : `${s.englishName} · ${s.englishNameTranslation}`}
                         </div>
                       </div>
                     </div>
                     <span className="text-[11px] tabular-nums opacity-75">
-                      {toArabicIndic(s.numberOfAyahs)} آية
+                      {lang === 'en'
+                        ? `${s.numberOfAyahs} vv.`
+                        : `${toArabicIndic(s.numberOfAyahs)} آية`}
                     </span>
                   </button>
                 );

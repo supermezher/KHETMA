@@ -1,5 +1,6 @@
 import { SURAHS_LIST } from '../data/quranMetadata';
 import { safeLocalStorage } from './safeStorage';
+import type { AppLanguage } from './i18n';
 
 export const BOOKMARK_KEY_PREFIX = 'bayan_bookmark_';
 export const BOOKMARKS_META_STORAGE_KEY = 'bayan_bookmarks_meta_v1';
@@ -13,6 +14,23 @@ export const BOOKMARK_LABELS: BookmarkCategoryLabel[] = [
   'تدبر ودعاء',
   'عام',
 ];
+
+const BOOKMARK_LABELS_EN: Record<BookmarkCategoryLabel, string> = {
+  'وقف القراءة': 'Reading Stop',
+  'مراجعة الحفظ': 'Hifz Review',
+  'تدبر ودعاء': 'Tadabbur & Dua',
+  'عام': 'General',
+};
+
+export function getBookmarkDisplayLabel(
+  label: BookmarkCategoryLabel,
+  lang: AppLanguage
+): string {
+  if (lang === 'en') {
+    return BOOKMARK_LABELS_EN[label] || 'General';
+  }
+  return label;
+}
 
 export interface SavedBookmarkEntry {
   surahNumber: number;

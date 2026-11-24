@@ -4,11 +4,19 @@ import {
   TAJWEED_RULES,
   TajweedChapterId,
   TajweedRule,
+  getTajweedChapterTitle,
+  getTajweedRuleBenefit,
+  getTajweedRuleDefinition,
+  getTajweedRuleDisplayName,
+  getTajweedRuleLevel,
+  getTajweedRuleMizan,
 } from '../data/tajweedRules';
 import { RECITERS_LIST, Reciter, getAyahAudioUrl } from '../data/reciters';
+import { SURAHS_LIST, getSurahDisplayName } from '../data/quranMetadata';
 import { normalizeArabicText } from '../utils/arabicNormalize';
 import { safeLocalStorage } from '../utils/safeStorage';
-import { alignUthmaniWithTajweed, TajweedRuleType } from '../utils/tajweedParser';
+import { alignUthmaniWithTajweed, getTajweedTokenTooltip, TajweedRuleType } from '../utils/tajweedParser';
+import { formatLocalizedDigits, useLanguage } from '../utils/i18n';
 import {
   evaluateRecitationAgainstAyah,
   getSpeechRecognitionConstructor,
@@ -68,6 +76,9 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
   onNavigateToAyah,
   onPauseAudio,
 }) => {
+  const { lang, isEnglish } = useLanguage();
+  const isEnglishRef = useRef<boolean>(isEnglish);
+  isEnglishRef.current = isEnglish;
   const [activeTab, setActiveTab] = useState<EncyclopediaTab>('rules');
   const [selectedChapter, setSelectedChapter] = useState<TajweedChapterId | 'all'>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -138,7 +149,7 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
       if (selectedChapter !== 'all' && rule.chapter !== selectedChapter) return false;
       if (!q) return true;
       const haystack = normalizeArabicText(
-        `${rule.name} ${rule.nameEn} ${rule.definition} ${rule.letters.join(' ')} ${rule.mizan}`
+        `${rule.name} ${rule.nameEn} ${rule.definition} ${rule.definitionEn || ''} ${rule.letters.join(' ')} ${rule.mizan} ${rule.mizanEn || ''} ${rule.level} ${rule.levelEn || ''}`
       );
       return haystack.includes(q);
     });
@@ -297,7 +308,11 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
       };
       audioRef.current.onerror = () => {
         setPlayingExampleKey(null);
-        setAudioError('تعذر تشغيل التلاوة الصوتية حالياً.');
+        setAudioError(
+          isEnglishRef.current
+            ? 'Unable to play audio recitation right now.'
+            : 'تعذر تشغيل التلاوة الصوتية حالياً.'
+        );
       };
     }
 
@@ -317,7 +332,11 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
       .then(() => setPlayingExampleKey(key))
       .catch(() => {
         setPlayingExampleKey(null);
-        setAudioError('تعذر بدء الصوت في المتصفح.');
+        setAudioError(
+          isEnglishRef.current
+            ? 'Unable to start audio in this browser.'
+            : 'تعذر بدء الصوت في المتصفح.'
+        );
       });
   };
 
@@ -331,7 +350,9 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
     if (!RecognitionCtor) {
       setVoiceErrorByKey((prev) => ({
         ...prev,
-        [key]: 'المتصفح الحالي لا يدعم التسميع الذكي المباشر؛ يمكنك استخدام زر «سجّل وقارن» بجانبه.',
+        [key]: isEnglishRef.current
+          ? 'Live voice evaluation is not supported in this browser; try “Record & Compare” beside it.'
+          : 'المتصفح الحالي لا يدعم التسميع الذكي المباشر؛ يمكنك استخدام زر «سجّل وقارن» بجانبه.',
       }));
       return;
     }
@@ -388,17 +409,30 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
           return;
         }
         const code = ev?.error || '';
-        let msg = 'تعذر متابعة التسميع الصوتي؛ حاول مرة أخرى أو استخدم «سجّل وقارن».';
+        const en = isEnglishRef.current;
+        let msg = en
+          ? 'Could not continue voice check; try again or use “Record & Compare”.'
+          : 'تعذر متابعة التسميع الصوتي؛ حاول مرة أخرى أو استخدم «سجّل وقارن».';
         if (code === 'not-allowed' || code === 'service-not-allowed') {
-          msg = 'يرجى السماح بصلاحية الميكروفون للتطبيق الصوتي.';
+          msg = en
+            ? 'Please allow microphone permission to practice aloud.'
+            : 'يرجى السماح بصلاحية الميكروفون للتطبيق الصوتي.';
         } else if (code === 'no-speech') {
-          msg = 'لم يُلتقط صوت واضح؛ اقترب من الميكروفون وابدأ القراءة.';
+          msg = en
+            ? 'No clear speech detected; move closer to the mic and begin reciting.'
+            : 'لم يُلتقط صوت واضح؛ اقترب من الميكروفون وابدأ القراءة.';
         } else if (code === 'network') {
-          msg = 'تتعذر خدمة التعرف الصوتي دون إنترنت؛ استخدم «سجّل وقارن» لسماع نطقك.';
+          msg = en
+            ? 'Speech recognition requires internet; use “Record & Compare” to hear yourself.'
+            : 'تتعذر خدمة التعرف الصوتي دون إنترنت؛ استخدم «سجّل وقارن» لسماع نطقك.';
         } else if (code === 'audio-capture') {
-          msg = 'تعذر العثور على ميكروفون متاح في هذا الجهاز.';
+          msg = en
+            ? 'No available microphone was found on this device.'
+            : 'تعذر العثور على ميكروفون متاح في هذا الجهاز.';
         } else if (code === 'aborted') {
-          msg = 'توقفت جلسة الميكروفون؛ اضغط «طبّق بصوتك» لإعادة المحاولة.';
+          msg = en
+            ? 'Microphone session stopped; click “Practice Aloud” to try again.'
+            : 'توقفت جلسة الميكروفون؛ اضغط «طبّق بصوتك» لإعادة المحاولة.';
         }
         setVoiceErrorByKey((prev) => ({ ...prev, [key]: msg }));
         recognitionRef.current = null;
@@ -424,7 +458,9 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
       setPracticingExampleKey(null);
       setVoiceErrorByKey((prev) => ({
         ...prev,
-        [key]: 'تعذر تشغيل الميكروفون المباشر في هذا المتصفح؛ استخدم زر «سجّل وقارن».',
+        [key]: isEnglishRef.current
+          ? 'Could not start live microphone in this browser; use “Record & Compare”.'
+          : 'تعذر تشغيل الميكروفون المباشر في هذا المتصفح؛ استخدم زر «سجّل وقارن».',
       }));
     }
   };
@@ -440,7 +476,9 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
     if (!isMicSupported) {
       setVoiceErrorByKey((prev) => ({
         ...prev,
-        [key]: 'المتصفح الحالي لا يدعم التسجيل الصوتي المحلي.',
+        [key]: isEnglishRef.current
+          ? 'Local audio recording is not supported in this browser.'
+          : 'المتصفح الحالي لا يدعم التسجيل الصوتي المحلي.',
       }));
       return;
     }
@@ -494,7 +532,9 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
       stopSelfRecording();
       setVoiceErrorByKey((prev) => ({
         ...prev,
-        [key]: 'تعذر الوصول للميكروفون؛ يرجى السماح بصلاحية الصوت في المتصفح.',
+        [key]: isEnglishRef.current
+          ? 'Could not access microphone; please allow audio permission in your browser.'
+          : 'تعذر الوصول للميكروفون؛ يرجى السماح بصلاحية الصوت في المتصفح.',
       }));
     }
   };
@@ -556,14 +596,20 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
   return (
     <div className="space-y-6">
       {/* Unified Header & Section Navigation */}
-      <div className="p-5 sm:p-6 rounded-2xl bg-gradient-to-l from-[#1F3A6E]/10 via-[#FBF7EE] to-[#F6EFDD] dark:from-[#1F3A6E]/45 dark:via-[#10161f] dark:to-[#0b1018] border border-[#D9B45A]/30 shadow-xl space-y-5">
+      <div
+        className={`p-5 sm:p-6 rounded-2xl ${
+          isEnglish ? 'bg-gradient-to-r' : 'bg-gradient-to-l'
+        } from-[#1F3A6E]/10 via-[#FBF7EE] to-[#F6EFDD] dark:from-[#1F3A6E]/45 dark:via-[#10161f] dark:to-[#0b1018] border border-[#D9B45A]/30 shadow-xl space-y-5`}
+      >
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="space-y-1.5">
             <h2 className="text-xl sm:text-2xl font-bold text-[#1B1A17] dark:text-[#F6EFDD] font-kufi">
-              موسوعة التجويد التفاعلية الشاملة
+              {isEnglish ? 'Interactive Tajweed Encyclopedia' : 'موسوعة التجويد التفاعلية الشاملة'}
             </h2>
             <p className="text-xs sm:text-sm text-[#5C5549] dark:text-slate-300 max-w-2xl leading-relaxed">
-              منهج عملي متكامل يجمع أحكام التلاوة المصنّفة، وأطلس مخارج الحروف، ومختبر تشريح الآيات بالصوت، واختبارات متدرجة.
+              {isEnglish
+                ? 'A complete practical curriculum combining classified recitation rules, an articulation points atlas, a live ayah dissection lab, and graded quizzes.'
+                : 'منهج عملي متكامل يجمع أحكام التلاوة المصنّفة، وأطلس مخارج الحروف، ومختبر تشريح الآيات بالصوت، واختبارات متدرجة.'}
             </p>
           </div>
 
@@ -572,10 +618,10 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
             <div className="flex items-center justify-between text-xs tabular-nums">
               <span className="text-[#3F3A32] dark:text-slate-300 font-semibold flex items-center gap-1.5">
                 <Award className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>تقدّم الإتقان</span>
+                <span>{isEnglish ? 'Mastery Progress' : 'تقدّم الإتقان'}</span>
               </span>
               <span className="font-bold text-emerald-700 dark:text-emerald-300">
-                {masteredIds.length} / {TAJWEED_RULES.length} ({masteredPercent}%)
+                {formatLocalizedDigits(masteredIds.length, lang)} / {formatLocalizedDigits(TAJWEED_RULES.length, lang)} ({formatLocalizedDigits(masteredPercent, lang)}%)
               </span>
             </div>
             <div className="h-1.5 w-full rounded-full bg-[#EFE6D1] dark:bg-slate-900 overflow-hidden">
@@ -590,10 +636,10 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
         {/* 4-Pillar Segmented Navigation */}
         <div className="flex flex-wrap items-center gap-1.5 bg-[#EFE6D1]/80 dark:bg-slate-950 p-1.5 rounded-xl border border-[#D9B45A]/25 dark:border-slate-800">
           {[
-            { id: 'rules', label: 'مكتبة الأحكام', icon: BookOpen },
-            { id: 'makharij', label: 'أطلس المخارج والصفات', icon: Compass },
-            { id: 'lab', label: 'مختبر حلّل الآية', icon: FlaskConical },
-            { id: 'quiz', label: 'منظومة الاختبارات', icon: HelpCircle },
+            { id: 'rules', label: isEnglish ? 'Rules Library' : 'مكتبة الأحكام', icon: BookOpen },
+            { id: 'makharij', label: isEnglish ? 'Makharij & Sifat Atlas' : 'أطلس المخارج والصفات', icon: Compass },
+            { id: 'lab', label: isEnglish ? 'Ayah Dissection Lab' : 'مختبر حلّل الآية', icon: FlaskConical },
+            { id: 'quiz', label: isEnglish ? 'Quizzes & Practice' : 'منظومة الاختبارات', icon: HelpCircle },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -620,20 +666,26 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
           {[
             {
               step: 1 as const,
-              title: '١. اختر الحكم والمخرج',
-              desc: 'تعرّف على التعريف والميزان وحروف الحكم',
+              title: isEnglish ? '1. Pick Rule & Makhraj' : '١. اختر الحكم والمخرج',
+              desc: isEnglish
+                ? 'Explore its definition, timing scale, and letters'
+                : 'تعرّف على التعريف والميزان وحروف الحكم',
               onClick: () => setActiveTab('rules'),
             },
             {
               step: 2 as const,
-              title: '٢. استمع وطبّق بصوتك',
-              desc: 'قارن تلاوتك أو حلّل الكلمات داخل الآية',
+              title: isEnglish ? '2. Listen & Recite Aloud' : '٢. استمع وطبّق بصوتك',
+              desc: isEnglish
+                ? 'Compare your recitation or inspect ayah words'
+                : 'قارن تلاوتك أو حلّل الكلمات داخل الآية',
               onClick: () => setActiveTab('rules'),
             },
             {
               step: 3 as const,
-              title: '٣. اختبر وأتقِن',
-              desc: 'ثبّت إتقانك عبر الاختبار المتدرج',
+              title: isEnglish ? '3. Test & Master' : '٣. اختبر وأتقِن',
+              desc: isEnglish
+                ? 'Reinforce mastery with the graded quiz'
+                : 'ثبّت إتقانك عبر الاختبار المتدرج',
               onClick: () => setActiveTab('quiz'),
             },
           ].map((item) => {
@@ -644,7 +696,7 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                 key={item.step}
                 type="button"
                 onClick={item.onClick}
-                className={`p-2.5 rounded-xl border text-right transition-all flex items-start gap-2.5 cursor-pointer ${
+                className={`p-2.5 rounded-xl border text-start transition-all flex items-start gap-2.5 cursor-pointer ${
                   isCurrent
                     ? 'bg-[#1F3A6E] text-[#F6EFDD] border-[#D9B45A]/60 shadow-sm'
                     : isPassed
@@ -661,7 +713,7 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                       : 'bg-[#EFE6D1] dark:bg-slate-900 text-[#8A6418] dark:text-[#D9B45A]'
                   }`}
                 >
-                  {isPassed ? <Check className="w-3.5 h-3.5" /> : item.step}
+                  {isPassed ? <Check className="w-3.5 h-3.5" /> : formatLocalizedDigits(item.step, lang)}
                 </span>
                 <span className="min-w-0">
                   <span className="block text-xs font-bold">{item.title}</span>
@@ -681,20 +733,24 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
           {/* Search & Chapter Filter Bar */}
           <div className="p-4 rounded-2xl bg-[#FBF7EE] dark:bg-slate-900 border border-[#D9B45A]/25 dark:border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
             <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 text-[#5C5549] dark:text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <Search className="w-4 h-4 text-[#5C5549] dark:text-slate-400 absolute start-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="ابحث باسم الحكم أو الحرف (مثل: ق، ب، مد، إقلاب)..."
-                className="w-full min-h-[42px] py-2 pr-9 pl-8 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-xs sm:text-sm text-[#1B1A17] dark:text-white placeholder:text-[#7D7466] dark:placeholder:text-slate-500 focus:outline-none focus:border-[#D9B45A]"
+                placeholder={
+                  isEnglish
+                    ? 'Search by rule name or letter (e.g. ق, ب, Madd, Iqlab)...'
+                    : 'ابحث باسم الحكم أو الحرف (مثل: ق، ب، مد، إقلاب)...'
+                }
+                className="w-full min-h-[42px] py-2 ps-9 pe-8 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/30 dark:border-slate-800 text-xs sm:text-sm text-[#1B1A17] dark:text-white placeholder:text-[#7D7466] dark:placeholder:text-slate-500 focus:outline-none focus:border-[#D9B45A]"
               />
               {searchTerm && (
                 <button
                   type="button"
                   onClick={() => setSearchTerm('')}
-                  aria-label="مسح البحث"
-                  className="p-1 text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white absolute left-2 top-1/2 -translate-y-1/2 cursor-pointer"
+                  aria-label={isEnglish ? 'Clear search' : 'مسح البحث'}
+                  className="p-1 text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white absolute end-2 top-1/2 -translate-y-1/2 cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -711,7 +767,9 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                     : 'bg-white dark:bg-slate-950 border-[#D9B45A]/25 dark:border-slate-800 text-[#3F3A32] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white'
                 }`}
               >
-                جميع الأبواب ({TAJWEED_RULES.length})
+                {isEnglish
+                  ? `All Chapters (${formatLocalizedDigits(TAJWEED_RULES.length, lang)})`
+                  : `جميع الأبواب (${TAJWEED_RULES.length})`}
               </button>
               {TAJWEED_CHAPTERS.map((chap) => {
                 const isSelected = selectedChapter === chap.id;
@@ -726,7 +784,7 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                         : 'bg-white dark:bg-slate-950 border-[#D9B45A]/25 dark:border-slate-800 text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white'
                     }`}
                   >
-                    {chap.title}
+                    {getTajweedChapterTitle(chap, lang)}
                   </button>
                 );
               })}
@@ -739,7 +797,11 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
             <div className="lg:col-span-4 space-y-4">
               {filteredRules.length === 0 ? (
                 <div className="p-6 rounded-2xl bg-[#FBF7EE] dark:bg-slate-900 border border-[#D9B45A]/25 dark:border-slate-800 text-center space-y-3">
-                  <p className="text-xs text-[#5C5549] dark:text-slate-300">لا توجد أحكام مطابقة لبحثك «{searchTerm}».</p>
+                  <p className="text-xs text-[#5C5549] dark:text-slate-300">
+                    {isEnglish
+                      ? `No rules match “${searchTerm}”.`
+                      : `لا توجد أحكام مطابقة لبحثك «${searchTerm}».`}
+                  </p>
                   <button
                     type="button"
                     onClick={() => {
@@ -748,7 +810,7 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                     }}
                     className="py-1.5 px-3.5 rounded-lg bg-[#1F3A6E] text-[#F6EFDD] text-xs font-bold cursor-pointer"
                   >
-                    عرض كل الأحكام
+                    {isEnglish ? 'Show All Rules' : 'عرض كل الأحكام'}
                   </button>
                 </div>
               ) : (
@@ -761,8 +823,12 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                   return (
                     <div key={chap.id} className="space-y-2">
                       <div className="px-1 flex items-center justify-between text-xs">
-                        <h3 className="font-bold text-[#3F3A32] dark:text-slate-300">{chap.title}</h3>
-                        <span className="text-[#5C5549] dark:text-slate-500 tabular-nums">{chapRules.length}</span>
+                        <h3 className="font-bold text-[#3F3A32] dark:text-slate-300">
+                          {getTajweedChapterTitle(chap, lang)}
+                        </h3>
+                        <span className="text-[#5C5549] dark:text-slate-500 tabular-nums">
+                          {formatLocalizedDigits(chapRules.length, lang)}
+                        </span>
                       </div>
 
                       <div className="space-y-1.5">
@@ -774,7 +840,7 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                               key={rule.id}
                               type="button"
                               onClick={() => setSelectedRuleId(rule.id)}
-                              className={`w-full text-right p-3.5 rounded-xl border transition-colors flex items-center justify-between gap-2 cursor-pointer ${
+                              className={`w-full text-start p-3.5 rounded-xl border transition-colors flex items-center justify-between gap-2 cursor-pointer ${
                                 isSelected
                                   ? 'bg-[#1F3A6E] dark:bg-[#1F3A6E]/55 border-[#D9B45A] ring-1 ring-[#D9B45A]/45 text-[#F6EFDD]'
                                   : 'bg-[#FBF7EE] dark:bg-slate-900/60 border-[#D9B45A]/25 dark:border-slate-800 hover:border-[#D9B45A]/55 dark:hover:border-slate-700 text-[#1B1A17] dark:text-white'
@@ -787,17 +853,17 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                                 />
                                 <div className="min-w-0">
                                   <div className={`font-bold text-sm truncate ${isSelected ? 'text-[#F6EFDD]' : 'text-[#1B1A17] dark:text-white'}`}>
-                                    {rule.name}
+                                    {getTajweedRuleDisplayName(rule, lang)}
                                   </div>
                                   <div className={`text-[11px] truncate ${isSelected ? 'text-[#E9E3D3]/80' : 'text-[#5C5549] dark:text-slate-400'}`}>
-                                    {rule.level} · {rule.mizan}
+                                    {getTajweedRuleLevel(rule, lang)} · {getTajweedRuleMizan(rule, lang)}
                                   </div>
                                 </div>
                               </div>
 
                               {isMastered && (
                                 <span
-                                  title="تم إتقان الحكم"
+                                  title={isEnglish ? 'Rule mastered' : 'تم إتقان الحكم'}
                                   className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-500 dark:text-emerald-400 flex items-center justify-center shrink-0"
                                 >
                                   <Check className="w-3 h-3" />
@@ -823,13 +889,21 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                     style={{ backgroundColor: selectedRule.colorHex }}
                   />
                   <div>
-                    <h3 className="text-lg sm:text-xl font-bold text-[#1B1A17] dark:text-white">{selectedRule.name}</h3>
+                    <h3 className="text-lg sm:text-xl font-bold text-[#1B1A17] dark:text-white">
+                      {getTajweedRuleDisplayName(selectedRule, lang)}
+                    </h3>
                     <div className="text-xs text-[#5C5549] dark:text-slate-400 flex flex-wrap items-center gap-1.5 mt-0.5">
-                      <span>{chapterMeta.title}</span>
+                      <span>{getTajweedChapterTitle(chapterMeta, lang)}</span>
                       <span aria-hidden="true">·</span>
-                      <span>المستوى: {selectedRule.level}</span>
+                      <span>
+                        {isEnglish
+                          ? `Level: ${getTajweedRuleLevel(selectedRule, lang)}`
+                          : `المستوى: ${selectedRule.level}`}
+                      </span>
                       <span aria-hidden="true">·</span>
-                      <span className="text-[#8A6418] dark:text-[#D9B45A] font-semibold">{selectedRule.mizan}</span>
+                      <span className="text-[#8A6418] dark:text-[#D9B45A] font-semibold">
+                        {getTajweedRuleMizan(selectedRule, lang)}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -845,7 +919,9 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                 >
                   <Check className="w-3.5 h-3.5" />
                   <span>
-                    {masteredIds.includes(selectedRule.id) ? 'تمّ إتقانه' : 'تحديد كمتقَن'}
+                    {masteredIds.includes(selectedRule.id)
+                      ? (isEnglish ? 'Mastered' : 'تمّ إتقانه')
+                      : (isEnglish ? 'Mark as Mastered' : 'تحديد كمتقَن')}
                   </span>
                 </button>
               </div>
@@ -854,19 +930,23 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
               <div className="space-y-4">
                 <div>
                   <span className="text-xs font-bold text-[#5C5549] dark:text-slate-400 block mb-1.5">
-                    التعريف العلمي والتطبيقي:
+                    {isEnglish ? 'Scientific & Practical Definition:' : 'التعريف العلمي والتطبيقي:'}
                   </span>
                   <p className="text-[#1B1A17] dark:text-slate-200 text-sm leading-relaxed bg-white dark:bg-slate-950 p-4 rounded-xl border border-[#D9B45A]/20 dark:border-slate-800">
-                    {selectedRule.definition}
+                    {getTajweedRuleDefinition(selectedRule, lang)}
                   </p>
                 </div>
 
                 <div>
-                  <span className="text-xs font-bold text-[#5C5549] dark:text-slate-400 block mb-2">حروف الحكم:</span>
+                  <span className="text-xs font-bold text-[#5C5549] dark:text-slate-400 block mb-2">
+                    {isEnglish ? 'Rule Letters:' : 'حروف الحكم:'}
+                  </span>
                   <div className="flex flex-wrap gap-2">
                     {selectedRule.letters.map((l, i) => (
                       <span
                         key={i}
+                        dir="rtl"
+                        lang="ar"
                         className="px-3.5 py-1.5 rounded-lg bg-white dark:bg-slate-950 text-[#1B1A17] dark:text-white font-bold text-sm border border-[#D9B45A]/25 dark:border-slate-800"
                       >
                         {l}
@@ -881,8 +961,10 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-xs font-bold text-[#1B1A17] dark:text-white">
                     <Timer className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
-                    <span>ميزان الزمن والحركات التفاعلي</span>
-                    <span className="text-[#5C5549] dark:text-slate-400 font-normal">({selectedRule.beats.unit})</span>
+                    <span>{isEnglish ? 'Interactive Count & Timing Scale' : 'ميزان الزمن والحركات التفاعلي'}</span>
+                    <span className="text-[#5C5549] dark:text-slate-400 font-normal">
+                      ({isEnglish ? selectedRule.beats.unitEn || selectedRule.beats.unit : selectedRule.beats.unit})
+                    </span>
                   </div>
 
                   {selectedRule.beats.options.length > 0 && (
@@ -903,7 +985,7 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                                   : 'text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white'
                               }`}
                             >
-                              {opt}
+                              {formatLocalizedDigits(opt, lang)}
                             </button>
                           ))}
                         </div>
@@ -921,12 +1003,12 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                         {isBeatRunning ? (
                           <>
                             <Pause className="w-3.5 h-3.5 fill-current" />
-                            <span>إيقاف</span>
+                            <span>{isEnglish ? 'Stop' : 'إيقاف'}</span>
                           </>
                         ) : (
                           <>
                             <Play className="w-3.5 h-3.5 fill-current text-[#D9B45A]" />
-                            <span>ابدأ قياس الزمن</span>
+                            <span>{isEnglish ? 'Start Beat Guide' : 'ابدأ قياس الزمن'}</span>
                           </>
                         )}
                       </button>
@@ -951,21 +1033,25 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                               : 'bg-[#F6EFDD] dark:bg-slate-900 border-[#D9B45A]/20 dark:border-slate-800 text-[#5C5549] dark:text-slate-500'
                           }`}
                         >
-                          {stepNum}
+                          {formatLocalizedDigits(stepNum, lang)}
                         </div>
                       );
                     })}
                   </div>
                 )}
 
-                <p className="text-xs text-[#5C5549] dark:text-slate-400 leading-relaxed">{selectedRule.beats.note}</p>
+                <p className="text-xs text-[#5C5549] dark:text-slate-400 leading-relaxed">
+                  {isEnglish ? selectedRule.beats.noteEn || selectedRule.beats.note : selectedRule.beats.note}
+                </p>
               </div>
 
               {/* Authentic Interactive Colored Quranic Examples */}
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-xs font-bold text-[#3F3A32] dark:text-slate-300">
-                    أمثلة قرآنية تفاعلية (اضغط على أي كلمة لتحليلها):
+                    {isEnglish
+                      ? 'Interactive Quranic Examples (Click any word to inspect):'
+                      : 'أمثلة قرآنية تفاعلية (اضغط على أي كلمة لتحليلها):'}
                   </span>
 
                   <div className="flex items-center gap-2">
@@ -981,7 +1067,9 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                       >
                         <Eye className="w-3.5 h-3.5" />
                         <span>
-                          {isolateRuleColors ? 'عرض كل ألوان الآية' : 'عزل لون هذا الحكم فقط'}
+                          {isolateRuleColors
+                            ? (isEnglish ? 'Show All Colors' : 'عرض كل ألوان الآية')
+                            : (isEnglish ? 'Isolate This Rule' : 'عزل لون هذا الحكم فقط')}
                         </span>
                       </button>
                     )}
@@ -994,9 +1082,13 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                           ? 'bg-[#1F3A6E] border-[#648CD4] text-[#D9B45A]'
                           : 'bg-white dark:bg-slate-950 border-[#D9B45A]/25 dark:border-slate-800 text-[#3F3A32] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white'
                       }`}
-                      title="تبطيء سرعة الصوت لسماع الغنة والمد بوضوح"
+                      title={
+                        isEnglish
+                          ? 'Slow down audio to hear ghunnah and madd clearly'
+                          : 'تبطيء سرعة الصوت لسماع الغنة والمد بوضوح'
+                      }
                     >
-                      {playbackRate}x
+                      {formatLocalizedDigits(playbackRate, lang)}x
                     </button>
                   </div>
                 </div>
@@ -1018,6 +1110,10 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                       inspectedWord && inspectedWord.exampleIndex === exIdx
                         ? ex.words[inspectedWord.wordIndex]
                         : null;
+                    const exampleSurah = SURAHS_LIST.find((s) => s.number === ex.surahNumber);
+                    const exampleSurahLabel = exampleSurah
+                      ? getSurahDisplayName(exampleSurah, lang)
+                      : ex.surahName;
 
                     return (
                       <div
@@ -1026,7 +1122,9 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#5C5549] dark:text-slate-400">
                           <span className="font-semibold text-[#3F3A32] dark:text-slate-300 tabular-nums">
-                            سورة {ex.surahName} · آية {ex.ayahNumber}
+                            {isEnglish
+                              ? `Surah ${exampleSurahLabel} · Ayah ${formatLocalizedDigits(ex.ayahNumber, lang)}`
+                              : `سورة ${exampleSurahLabel} · آية ${ex.ayahNumber}`}
                           </span>
                           <div className="flex flex-wrap items-center gap-2">
                             {isSpeechSupported && (
@@ -1044,12 +1142,12 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                                 {isPracticingThis ? (
                                   <>
                                     <Square className="w-3 h-3 fill-current" />
-                                    <span>إيقاف التلاوة</span>
+                                    <span>{isEnglish ? 'Stop Recitation' : 'إيقاف التلاوة'}</span>
                                   </>
                                 ) : (
                                   <>
                                     <Sparkles className="w-3.5 h-3.5" />
-                                    <span>طبّق بصوتك</span>
+                                    <span>{isEnglish ? 'Practice Aloud' : 'طبّق بصوتك'}</span>
                                   </>
                                 )}
                               </button>
@@ -1068,12 +1166,12 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                                 {isRecordingThis ? (
                                   <>
                                     <Square className="w-3 h-3 fill-rose-500 text-rose-500" />
-                                    <span>إيقاف التسجيل</span>
+                                    <span>{isEnglish ? 'Stop Recording' : 'إيقاف التسجيل'}</span>
                                   </>
                                 ) : (
                                   <>
                                     <Mic className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
-                                    <span>سجّل وقارن</span>
+                                    <span>{isEnglish ? 'Record & Compare' : 'سجّل وقارن'}</span>
                                   </>
                                 )}
                               </button>
@@ -1088,12 +1186,12 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                                 {isPlayingSelf ? (
                                   <>
                                     <Pause className="w-3 h-3" />
-                                    <span>إيقاف تسجيلي</span>
+                                    <span>{isEnglish ? 'Pause Recording' : 'إيقاف تسجيلي'}</span>
                                   </>
                                 ) : (
                                   <>
                                     <Play className="w-3 h-3 fill-current" />
-                                    <span>سماع تسجيلي</span>
+                                    <span>{isEnglish ? 'Play Recording' : 'سماع تسجيلي'}</span>
                                   </>
                                 )}
                               </button>
@@ -1117,12 +1215,12 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                               {isPlayingThis ? (
                                 <>
                                   <Pause className="w-3 h-3 fill-current" />
-                                  <span>إيقاف</span>
+                                  <span>{isEnglish ? 'Pause' : 'إيقاف'}</span>
                                 </>
                               ) : (
                                 <>
                                   <Play className="w-3 h-3 fill-current text-[#D9B45A]" />
-                                  <span>استمع</span>
+                                  <span>{isEnglish ? 'Listen' : 'استمع'}</span>
                                 </>
                               )}
                             </button>
@@ -1133,7 +1231,7 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                                 onClick={() => onNavigateToAyah(ex.surahNumber, ex.ayahNumber)}
                                 className="min-h-[36px] py-1 px-2.5 rounded-lg bg-[#FBF7EE] dark:bg-slate-900 hover:bg-[#EFE6D1] dark:hover:bg-slate-800 border border-[#D9B45A]/25 dark:border-slate-700 text-xs text-[#1B1A17] dark:text-slate-200 flex items-center gap-1 cursor-pointer whitespace-nowrap"
                               >
-                                <span>في المصحف</span>
+                                <span>{isEnglish ? 'In Mus’haf' : 'في المصحف'}</span>
                                 <ExternalLink className="w-3 h-3 text-[#5C5549] dark:text-slate-400" />
                               </button>
                             )}
@@ -1141,7 +1239,11 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                         </div>
 
                         {/* Interactive Colored Uthmani Ayah */}
-                        <p className="font-quran text-2xl sm:text-3xl leading-[2.5] text-center text-[#1B1A17] dark:text-slate-100">
+                        <p
+                          dir="rtl"
+                          lang="ar"
+                          className="font-quran text-2xl sm:text-3xl leading-[2.5] text-center text-[#1B1A17] dark:text-slate-100"
+                        >
                           {ex.words.map((wordTokens, wIdx) => {
                             const isWordSelected =
                               inspectedWord?.exampleIndex === exIdx &&
@@ -1198,7 +1300,7 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                                       <span
                                         key={tIdx}
                                         className={RULE_CLASS_MAP[tok.rule] || ''}
-                                        title={tok.tooltip}
+                                        title={getTajweedTokenTooltip(tok, lang)}
                                       >
                                         {tok.text}
                                       </span>
@@ -1224,17 +1326,23 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                                 <span className="text-amber-700 dark:text-amber-200">{cardVoiceError}</span>
                               ) : isRecordingThis ? (
                                 <span className="text-rose-700 dark:text-rose-300 font-semibold">
-                                  جارٍ تسجيل صوتك للمقارنة…
+                                  {isEnglish
+                                    ? 'Recording your voice for comparison…'
+                                    : 'جارٍ تسجيل صوتك للمقارنة…'}
                                 </span>
                               ) : (
                                 <span className="text-[#3F3A32] dark:text-slate-300 truncate max-w-full sm:max-w-md">
                                   {practiceEval?.isComplete
-                                    ? 'ما شاء الله! أتممت تلاوة المثال وتطبيق الحكم بنجاح'
+                                    ? (isEnglish
+                                        ? 'Masha’Allah! You completed the example recitation accurately'
+                                        : 'ما شاء الله! أتممت تلاوة المثال وتطبيق الحكم بنجاح')
                                     : cardTranscript
-                                    ? `ما سُمع: «${cardTranscript}»`
+                                    ? (isEnglish ? `Heard: “${cardTranscript}”` : `ما سُمع: «${cardTranscript}»`)
                                     : isPracticingThis
-                                    ? 'أصغي لتلاوتك… تفضل بقراءة المثال الآن'
-                                    : 'جاهز لإعادة التدريب'}
+                                    ? (isEnglish
+                                        ? 'Listening… please recite the example now'
+                                        : 'أصغي لتلاوتك… تفضل بقراءة المثال الآن')
+                                    : (isEnglish ? 'Ready to practice again' : 'جاهز لإعادة التدريب')}
                                 </span>
                               )}
                             </div>
@@ -1244,14 +1352,16 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                                   practiceEval.isComplete ? 'text-emerald-600 dark:text-emerald-400' : 'text-[#8A6418] dark:text-[#D9B45A]'
                                 }`}
                               >
-                                مطابقة الكلمات: {practiceEval.accuracyPercent}%
+                                {isEnglish
+                                  ? `Word Match: ${formatLocalizedDigits(practiceEval.accuracyPercent, lang)}%`
+                                  : `مطابقة الكلمات: ${practiceEval.accuracyPercent}%`}
                               </span>
                             )}
                           </div>
                         )}
 
                         <p className="text-xs text-[#5C5549] dark:text-slate-300 text-center leading-relaxed">
-                          {ex.focusNote}
+                          {isEnglish ? ex.focusNoteEn || ex.focusNote : ex.focusNote}
                         </p>
 
                         {/* Inline Clicked Word Breakdown */}
@@ -1259,8 +1369,8 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                           <div className="p-3 rounded-lg bg-[#FBF7EE] dark:bg-slate-900 border border-[#D9B45A]/30 dark:border-slate-700 text-xs space-y-1.5">
                             <div className="flex items-center justify-between">
                               <span className="font-bold text-[#8A6418] dark:text-[#D9B45A]">
-                                تفصيل الكلمة:{' '}
-                                <span className="font-quran text-lg text-[#1B1A17] dark:text-white">
+                                {isEnglish ? 'Word Breakdown:' : 'تفصيل الكلمة:'}{' '}
+                                <span dir="rtl" lang="ar" className="font-quran text-lg text-[#1B1A17] dark:text-white">
                                   {selectedWordInThisEx.map((t) => t.text).join('')}
                                 </span>
                               </span>
@@ -1269,7 +1379,7 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                                 onClick={() => setInspectedWord(null)}
                                 className="text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white cursor-pointer"
                               >
-                                إغلاق
+                                {isEnglish ? 'Close' : 'إغلاق'}
                               </button>
                             </div>
                             {selectedWordInThisEx.some((t) => t.rule) ? (
@@ -1282,19 +1392,23 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                                       className="px-2.5 py-1 rounded bg-white dark:bg-slate-950 border border-[#D9B45A]/20 dark:border-slate-800 text-[#1B1A17] dark:text-slate-200"
                                     >
                                       <strong
-                                        className={`font-quran text-base ml-1 ${
+                                        dir="rtl"
+                                        lang="ar"
+                                        className={`font-quran text-base me-1 ${
                                           tok.rule ? RULE_CLASS_MAP[tok.rule] : ''
                                         }`}
                                       >
                                         {tok.text}
                                       </strong>
-                                      {tok.tooltip}
+                                      {getTajweedTokenTooltip(tok, lang)}
                                     </span>
                                   ))}
                               </div>
                             ) : (
                               <span className="text-[#5C5549] dark:text-slate-400 block">
-                                حروف هذه الكلمة تُنطق بالإظهار الأصلي دون حكم تلوين خاص.
+                                {isEnglish
+                                  ? 'Letters in this word are pronounced normally with no special Tajweed color rule.'
+                                  : 'حروف هذه الكلمة تُنطق بالإظهار الأصلي دون حكم تلوين خاص.'}
                               </span>
                             )}
                           </div>
@@ -1310,28 +1424,34 @@ export const TajweedEncyclopedia: React.FC<TajweedEncyclopediaProps> = ({
                 <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/20 border border-rose-500/25 space-y-1.5">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-rose-700 dark:text-rose-300">
                     <X className="w-4 h-4 shrink-0" />
-                    <span>خطأ شائع يُحذَر منه</span>
+                    <span>{isEnglish ? 'Common Mistake to Avoid' : 'خطأ شائع يُحذَر منه'}</span>
                   </div>
                   <p className="text-xs text-[#3F3A32] dark:text-slate-200 leading-relaxed">
-                    {selectedRule.commonMistake.mistake}
+                    {isEnglish
+                      ? selectedRule.commonMistake.mistakeEn || selectedRule.commonMistake.mistake
+                      : selectedRule.commonMistake.mistake}
                   </p>
                 </div>
 
                 <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-500/25 space-y-1.5">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300">
                     <Check className="w-4 h-4 shrink-0" />
-                    <span>الأداء الصحيح</span>
+                    <span>{isEnglish ? 'Correct Articulation' : 'الأداء الصحيح'}</span>
                   </div>
                   <p className="text-xs text-[#3F3A32] dark:text-slate-200 leading-relaxed">
-                    {selectedRule.commonMistake.correction}
+                    {isEnglish
+                      ? selectedRule.commonMistake.correctionEn || selectedRule.commonMistake.correction
+                      : selectedRule.commonMistake.correction}
                   </p>
                 </div>
               </div>
 
               {/* Practical Acoustic Benefit */}
               <div className="text-xs text-[#3F3A32] dark:text-slate-300 leading-relaxed pt-1">
-                <strong className="text-[#8A6418] dark:text-[#D9B45A]">الأثر الصوتي والجمالي: </strong>
-                {selectedRule.benefit}
+                <strong className="text-[#8A6418] dark:text-[#D9B45A]">
+                  {isEnglish ? 'Acoustic & Aesthetic Impact: ' : 'الأثر الصوتي والجمالي: '}
+                </strong>
+                {getTajweedRuleBenefit(selectedRule, lang)}
               </div>
             </div>
           </div>

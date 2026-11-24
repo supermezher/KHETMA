@@ -1,6 +1,7 @@
 import { SURAHS_LIST } from '../data/quranMetadata';
 import { safeLocalStorage } from './safeStorage';
 import type { PartClaim } from '../data/khatmaApiService';
+import type { AppLanguage } from './i18n';
 
 export const PERSONAL_KHATMA_STORAGE_KEY = 'bayan_khatma_plan';
 export const PERSONAL_KHATMA_EVENT = 'bayan:khatma-plan-updated';
@@ -40,6 +41,12 @@ export interface KhatmaPlan {
 }
 
 export const PRAYER_LABELS = ['الفجر', 'الظهر', 'العصر', 'المغرب', 'العشاء'] as const;
+export const PRAYER_LABELS_EN = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'] as const;
+
+export function getPrayerDisplayLabel(index: number, lang: AppLanguage): string {
+  const safeIdx = Math.max(0, Math.min(4, Math.floor(index)));
+  return lang === 'en' ? PRAYER_LABELS_EN[safeIdx] : PRAYER_LABELS[safeIdx];
+}
 
 // Standard Medina Mushaf Juz start/end pages (1..604)
 export const JUZ_PAGE_RANGES: Array<{ juz: number; startPage: number; endPage: number; surahsHint: string }> = [

@@ -1,6 +1,7 @@
 import { SURAHS_LIST } from '../data/quranMetadata';
 import { WordSegment } from '../data/quranService';
 import { safeLocalStorage } from './safeStorage';
+import type { AppLanguage } from './i18n';
 
 export type KidsAvatarId = 'star' | 'sprout' | 'moon' | 'crown' | 'book' | 'sun';
 export type KidsDelayMode = 'short' | 'medium' | 'long';
@@ -61,6 +62,20 @@ export const KIDS_AVATARS: { id: KidsAvatarId; label: string }[] = [
   { id: 'book', label: 'رفيق المصحف' },
   { id: 'sun', label: 'شمس الفجر' },
 ];
+
+const KIDS_AVATARS_EN: Record<KidsAvatarId, string> = {
+  star: 'Shining Star',
+  sprout: 'Hifz Sprout',
+  moon: 'Crescent Light',
+  crown: "Qur'an Crown",
+  book: "Mus'haf Companion",
+  sun: 'Dawn Sun',
+};
+
+export function getKidAvatarDisplayLabel(avatarId: KidsAvatarId, lang: AppLanguage): string {
+  if (lang === 'en') return KIDS_AVATARS_EN[avatarId] || 'Shining Star';
+  return KIDS_AVATARS.find((a) => a.id === avatarId)?.label || 'نجمة مضيئة';
+}
 
 export const RECOMMENDED_KIDS_SURAH_NUMBERS: number[] = [
   1, 114, 113, 112, 111, 110, 109, 108, 107, 106, 105, 103, 97, 94, 93,
@@ -382,7 +397,8 @@ export function resolveActiveWordIndex(
   segments: WordSegment[] | undefined,
   currentTimeMs: number,
   durationMs: number,
-  totalWords: number
+  totalWords: number,
+  wordWeights?: number[]
 ): number {
   if (totalWords <= 0) return -1;
 
@@ -418,6 +434,23 @@ export function resolveActiveWordIndex(
   }
 
   if (durationMs > 0 && currentTimeMs > 0) {
+    if (Array.isArray(wordWeights) && wordWeights.length === totalWords) {
+      // Account for typical ~8% trailing silence at the end of ayah audio and weight by syllable/letter length
+      const activeSpeechDurationMs = durationMs * 0.92;
+      const ratio = Math.max(0, Math.min(0.9999, currentTimeMs / activeSpeechDurationMs));
+      const weighted = wordWeights.map((w) => (Number.isFinite(w) && w > 0 ? w : 1) + 1.5);
+      const totalWeight = weighted.reduce((acc, v) => acc + v, 0);
+      const targetWeight = ratio * totalWeight;
+      let cumulative = 0;
+      for (let i = 0; i < weighted.length; i += 1) {
+        cumulative += weighted[i];
+        if (targetWeight < cumulative) {
+          return i;
+        }
+      }
+      return totalWords - 1;
+    }
+
     const ratio = Math.max(0, Math.min(0.999, currentTimeMs / durationMs));
     return Math.floor(ratio * totalWords);
   }
@@ -434,6 +467,16 @@ export function generateParentGateChallenge(): ParentGateChallenge {
     answer: a * b,
     questionText: `كم ناتج ضرب ${a} × ${b} ؟`,
   };
+}
+
+export function formatParentGateQuestion(
+  challenge: ParentGateChallenge,
+  lang: AppLanguage
+): string {
+  if (lang === 'en') {
+    return `What is ${challenge.a} × ${challenge.b}?`;
+  }
+  return challenge.questionText;
 }
 
 export function computeGardenStage(stars: number): {
@@ -455,6 +498,35 @@ export function computeGardenStage(stars: number): {
     return { stageName: 'نخلة مباركة', level: 4, nextMilestone: 70, progressPercent: Math.round(((stars - 35) / 35) * 100) };
   }
   return { stageName: 'بستان الحفاظ', level: 5, nextMilestone: stars, progressPercent: 100 };
+}
+
+export function getGardenStageDisplayName(level: number, lang: AppLanguage): string {
+  if (lang === 'en') {
+    switch (level) {
+      case 1:
+        return 'Good Seed';
+      case 2:
+        return 'Green Sprout';
+      case 3:
+        return 'Fruitful Sapling';
+      case 4:
+        return 'Blessed Palm';
+      default:
+        return 'Huffaz Garden';
+    }
+  }
+  switch (level) {
+    case 1:
+      return 'بذرة طيبة';
+    case 2:
+      return 'برعم أخضر';
+    case 3:
+      return 'شجيرة مثمرة';
+    case 4:
+      return 'نخلة مباركة';
+    default:
+      return 'بستان الحفاظ';
+  }
 }
 
 export function playKidEncouragementSound(kind: 'prompt' | 'star' | 'surah'): void {

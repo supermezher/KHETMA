@@ -52,36 +52,56 @@ export interface QuranSearchMatch {
 export interface TafsirEdition {
   id: string;
   name: string;
+  nameEn: string;
   description: string;
+  descriptionEn: string;
 }
 
 export const TAFSIR_EDITIONS: TafsirEdition[] = [
   {
     id: 'ar.muyassar',
     name: 'التفسير الميسر',
+    nameEn: 'Al-Muyassar',
     description: 'تفسير موجز واضح لمجمع الملك فهد',
+    descriptionEn: 'Clear concise commentary · King Fahd Complex',
   },
   {
     id: 'ar.jalalayn',
     name: 'تفسير الجلالين',
+    nameEn: 'Al-Jalalayn',
     description: 'الجلال المحلي والسيوطي · مختصر محرر',
+    descriptionEn: 'Al-Mahalli & Al-Suyuti · Classical concise tafsir',
   },
   {
     id: 'ar.waseet',
     name: 'التفسير الوسيط',
+    nameEn: 'Al-Waseet',
     description: 'د. محمد سيد طنطاوي · أسلوب أدبي معاصر',
+    descriptionEn: 'Dr. M. S. Tantawi · Contemporary literary style',
   },
   {
     id: 'ar.baghawi',
     name: 'تفسير البغوي',
+    nameEn: 'Al-Baghawi',
     description: 'معالم التنزيل · تفسير بالمأثور مختصر',
+    descriptionEn: "Ma'alim al-Tanzil · Narration-based commentary",
   },
   {
     id: 'ar.qurtubi',
     name: 'تفسير القرطبي',
+    nameEn: 'Al-Qurtubi',
     description: 'الجامع لأحكام القرآن · الفقه والاستنباط',
+    descriptionEn: 'Al-Jami li-Ahkam al-Quran · Jurisprudence & rulings',
   },
 ];
+
+export function getTafsirEditionName(edition: TafsirEdition, lang: 'ar' | 'en'): string {
+  return lang === 'en' ? edition.nameEn : edition.name;
+}
+
+export function getTafsirEditionDescription(edition: TafsirEdition, lang: 'ar' | 'en'): string {
+  return lang === 'en' ? edition.descriptionEn : edition.description;
+}
 
 const MARKS = '[\\u064B-\\u065F\\u0670\\u06D6-\\u06ED\\u200C\\u0640]*';
 const LEADING_BISMILLAH_RE = new RegExp(

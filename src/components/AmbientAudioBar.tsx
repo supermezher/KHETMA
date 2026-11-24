@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CloudRain, Wind, Moon, VolumeX, Volume2, Sparkles } from 'lucide-react';
 import { ambientAudio } from '../utils/ambientAudio';
+import { useLanguage } from '../utils/i18n';
 
 export const AmbientAudioBar: React.FC = () => {
+  const { t } = useLanguage();
   const [activeSound, setActiveSound] = useState<'rain' | 'breeze' | 'night' | 'none'>(
     () => ambientAudio.getCurrentMode() || 'none'
   );
@@ -54,14 +56,16 @@ export const AmbientAudioBar: React.FC = () => {
             ? 'bg-[#1F3A6E] border-[#648CD4]/60 text-[#D9B45A]'
             : 'bg-white dark:bg-slate-900 border-[#D9B45A]/25 dark:border-slate-800 text-[#1B1A17] dark:text-slate-300 hover:text-[#8A6418] dark:hover:text-white hover:border-[#8A6418]/40 dark:hover:border-slate-700'
         }`}
-        title="أجواء التدبر والتركيز (أصوات طبيعية هادئة)"
-        aria-label="أجواء التدبر والتركيز"
+        title={t('أجواء التدبر والتركيز (أصوات طبيعية هادئة)', 'Ambient focus atmosphere (calm natural sounds)')}
+        aria-label={t('أجواء التدبر والتركيز', 'Ambient focus sounds')}
       >
         {activeSound === 'rain' && <CloudRain className="w-3.5 h-3.5" />}
         {activeSound === 'breeze' && <Wind className="w-3.5 h-3.5" />}
         {activeSound === 'night' && <Moon className="w-3.5 h-3.5" />}
         {activeSound === 'none' && <Volume2 className="w-3.5 h-3.5 text-[#8A6418] dark:text-slate-400" />}
-        <span className="hidden xl:inline">{activeSound !== 'none' ? 'أجواء التدبر' : 'أجواء هادئة'}</span>
+        <span className="hidden xl:inline">
+          {activeSound !== 'none' ? t('أجواء التدبر', 'Ambient On') : t('أجواء هادئة', 'Ambient')}
+        </span>
       </button>
 
       {isOpen && (
@@ -69,7 +73,7 @@ export const AmbientAudioBar: React.FC = () => {
           <div className="flex items-center justify-between text-xs font-bold text-[#1B1A17] dark:text-[#F6EFDD]">
             <span className="flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
-              أصوات الطبيعة للخشوع
+              {t('أصوات الطبيعة للخشوع', 'Calm Ambient Sounds')}
             </span>
             {activeSound !== 'none' && (
               <button
@@ -81,7 +85,7 @@ export const AmbientAudioBar: React.FC = () => {
                 className="text-[11px] text-rose-600 dark:text-rose-400 hover:opacity-80 flex items-center gap-0.5 cursor-pointer"
               >
                 <VolumeX className="w-3 h-3" />
-                إيقاف
+                {t('إيقاف', 'Stop')}
               </button>
             )}
           </div>
@@ -97,7 +101,7 @@ export const AmbientAudioBar: React.FC = () => {
               }`}
             >
               <CloudRain className="w-4 h-4" />
-              <span>مطر خفيف</span>
+              <span>{t('مطر خفيف', 'Light Rain')}</span>
             </button>
 
             <button
@@ -110,7 +114,7 @@ export const AmbientAudioBar: React.FC = () => {
               }`}
             >
               <Wind className="w-4 h-4" />
-              <span>حفيف شجر</span>
+              <span>{t('حفيف شجر', 'Forest Breeze')}</span>
             </button>
 
             <button
@@ -123,14 +127,14 @@ export const AmbientAudioBar: React.FC = () => {
               }`}
             >
               <Moon className="w-4 h-4" />
-              <span>سكينة الليل</span>
+              <span>{t('سكينة الليل', 'Night Calm')}</span>
             </button>
           </div>
 
           {activeSound !== 'none' && (
             <div className="pt-2 border-t border-[#D9B45A]/20 dark:border-slate-800">
               <div className="flex justify-between text-[11px] text-[#5C5549] dark:text-slate-400 mb-1 tabular-nums">
-                <span>مستوى الصوت</span>
+                <span>{t('مستوى الصوت', 'Volume')}</span>
                 <span>{volume}%</span>
               </div>
               <input

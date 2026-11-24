@@ -17,13 +17,13 @@ import {
   validateAndParseUserBackup,
   restoreUserBackupData
 } from '../utils/userBackup';
-import { toArabicIndic } from './khatma/KhatmaRing';
 import {
   getDailyWirdSummary,
   KhatmaPlan,
   loadPersonalKhatmaPlan,
   PERSONAL_KHATMA_EVENT,
 } from '../utils/personalKhatma';
+import { formatAppNumber, formatLocalizedDigits, useLanguage } from '../utils/i18n';
 
 interface FaithAnalyticsProps {
   onClose?: () => void;
@@ -31,6 +31,7 @@ interface FaithAnalyticsProps {
 }
 
 export const FaithAnalytics: React.FC<FaithAnalyticsProps> = ({ onBackupRestored }) => {
+  const { lang, isEnglish, t } = useLanguage();
   const [stats, setStats] = useState<FaithStats>(() => loadFaithStats());
   const [heatmapData, setHeatmapData] = useState<HeatmapDay[]>(() =>
     generateRealHeatmapData(stats.history)
@@ -84,8 +85,20 @@ export const FaithAnalytics: React.FC<FaithAnalyticsProps> = ({ onBackupRestored
     setIsDownloadingQuran(false);
     setBackupMessage(
       res.failed === 0
-        ? { type: 'ok', text: `تم حفظ المصحف الكامل (${res.completed} سورة) محلياً للعمل دون اتصال.` }
-        : { type: 'err', text: `تم حفظ ${res.completed} سورة وتعذر تحميل ${res.failed} سورة بسبب الشبكة.` }
+        ? {
+            type: 'ok',
+            text: t(
+              `تم حفظ المصحف الكامل (${res.completed} سورة) محلياً للعمل دون اتصال.`,
+              `Saved the complete Mus'haf (${res.completed} Surahs) locally for offline access.`
+            ),
+          }
+        : {
+            type: 'err',
+            text: t(
+              `تم حفظ ${res.completed} سورة وتعذر تحميل ${res.failed} سورة بسبب الشبكة.`,
+              `Saved ${res.completed} Surahs; ${res.failed} failed to download due to network issues.`
+            ),
+          }
     );
   };
 
@@ -98,7 +111,13 @@ export const FaithAnalytics: React.FC<FaithAnalyticsProps> = ({ onBackupRestored
     link.download = `bayan-backup-${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     URL.revokeObjectURL(url);
-    setBackupMessage({ type: 'ok', text: 'تم تنزيل ملف النسخ الاحتياطي لبياناتك بنجاح.' });
+    setBackupMessage({
+      type: 'ok',
+      text: t(
+        'تم تنزيل ملف النسخ الاحتياطي لبياناتك بنجاح.',
+        'Your backup file was downloaded successfully.'
+      ),
+    });
   };
 
   const handleImportBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -108,14 +127,27 @@ export const FaithAnalytics: React.FC<FaithAnalyticsProps> = ({ onBackupRestored
       const text = await file.text();
       const parsed = validateAndParseUserBackup(text);
       if (!parsed.ok) {
-        setBackupMessage({ type: 'err', text: parsed.error });
+        setBackupMessage({
+          type: 'err',
+          text: isEnglish
+            ? parsed.error.includes('JSON')
+              ? 'Could not read the file: please choose a valid JSON backup.'
+              : 'Invalid backup file format or not a Bayan backup.'
+            : parsed.error,
+        });
         return;
       }
       // Show explicit confirmation before overwriting existing notes, bookmarks, or SRS progress
       setPendingBackup(parsed.data);
       setBackupMessage(null);
     } catch {
-      setBackupMessage({ type: 'err', text: 'حدث خطأ أثناء قراءة ملف النسخة الاحتياطية.' });
+      setBackupMessage({
+        type: 'err',
+        text: t(
+          'حدث خطأ أثناء قراءة ملف النسخة الاحتياطية.',
+          'An error occurred while reading the backup file.'
+        ),
+      });
     } finally {
       e.target.value = '';
     }
@@ -133,15 +165,27 @@ export const FaithAnalytics: React.FC<FaithAnalyticsProps> = ({ onBackupRestored
         counts.persistedOk
           ? {
               type: 'ok',
-              text: `تمت الاستعادة بنجاح: ${counts.notesCount} خواطر، ${counts.bookmarksCount} علامات، ${counts.srsCount} بطاقة حفظ.`
+              text: t(
+                `تمت الاستعادة بنجاح: ${counts.notesCount} خواطر، ${counts.bookmarksCount} علامات، ${counts.srsCount} بطاقة حفظ.`,
+                `Restored successfully: ${counts.notesCount} notes, ${counts.bookmarksCount} bookmarks, ${counts.srsCount} Hifz cards.`
+              ),
             }
           : {
               type: 'err',
-              text: 'تم استرجاع النسخة في الجلسة ولكن امتلأت سعة تخزين المتصفح المحلية — قد لا تُحفظ بعض الحقول بعد التحديث.'
+              text: t(
+                'تم استرجاع النسخة في الجلسة ولكن امتلأت سعة تخزين المتصفح المحلية — قد لا تُحفظ بعض الحقول بعد التحديث.',
+                'Restored in session, but browser local storage quota is full — some fields may not persist after refresh.'
+              ),
             }
       );
     } catch {
-      setBackupMessage({ type: 'err', text: 'تعذر إتمام استعادة النسخة الاحتياطية.' });
+      setBackupMessage({
+        type: 'err',
+        text: t(
+          'تعذر إتمام استعادة النسخة الاحتياطية.',
+          'Could not complete backup restoration.'
+        ),
+      });
     } finally {
       setIsRestoringBackup(false);
     }
@@ -172,13 +216,21 @@ export const FaithAnalytics: React.FC<FaithAnalyticsProps> = ({ onBackupRestored
           <div>
             <div className="inline-flex items-center gap-2 text-[#8A6418] dark:text-[#D9B45A] text-xs font-bold mb-2">
               <Trophy className="w-3.5 h-3.5" />
-              <span>لوحة الإنجاز الإيماني وسجل الورد الفعلي</span>
+              <span>{t('لوحة الإنجاز الإيماني وسجل الورد الفعلي', 'Faith Progress & Daily Wird Log')}</span>
             </div>
-            <h2 className="text-xl sm:text-2xl font-bold text-[#1B1A17] dark:text-[#F6EFDD] mb-1 font-kufi">
+            <h2 dir="rtl" lang="ar" className="text-xl sm:text-2xl font-bold text-[#1B1A17] dark:text-[#F6EFDD] mb-1 font-kufi">
               ﴿ وَفِي ذَٰلِكَ فَلْيَتَنَافَسِ الْمُتَنَافِسُونَ ﴾
             </h2>
+            {isEnglish && (
+              <p className="text-xs italic text-[#8A6418] dark:text-[#D9B45A] mb-1.5">
+                “So for this let the competitors compete.” (Al-Mutaffifin 83:26)
+              </p>
+            )}
             <p className="font-naskh text-sm sm:text-base text-[#5C5549] dark:text-slate-300 max-w-xl leading-relaxed">
-              قال رسول الله ﷺ: «أَحَبُّ الأعمالِ إلى اللهِ أَدْوَمُها وإنْ قَلَّ». تُسجل هذه اللوحة وردك القرآني الحقيقي يوماً بيوم لتبني عادة إيمانية راسخة.
+              {t(
+                'قال رسول الله ﷺ: «أَحَبُّ الأعمالِ إلى اللهِ أَدْوَمُها وإنْ قَلَّ». تُسجل هذه اللوحة وردك القرآني الحقيقي يوماً بيوم لتبني عادة إيمانية راسخة.',
+                'The Prophet ﷺ said: “The most beloved deeds to Allah are those that are most consistent, even if small.” This dashboard records your real daily Qur’an reading.'
+              )}
             </p>
           </div>
 
@@ -188,9 +240,12 @@ export const FaithAnalytics: React.FC<FaithAnalyticsProps> = ({ onBackupRestored
             </div>
             <div>
               <div className="text-2xl font-extrabold text-[#1B1A17] dark:text-[#F6EFDD] font-mono tabular-nums">
-                {toArabicIndic(stats.streakDays)} {stats.streakDays === 1 ? 'يوم' : 'أيام'}
+                {formatLocalizedDigits(stats.streakDays, lang)}{' '}
+                {t(stats.streakDays === 1 ? 'يوم' : 'أيام', stats.streakDays === 1 ? 'Day' : 'Days')}
               </div>
-              <div className="text-xs text-[#5C5549] dark:text-slate-400">سلسلة الورد المتصل الحقيقي</div>
+              <div className="text-xs text-[#5C5549] dark:text-slate-400">
+                {t('سلسلة الورد المتصل الحقيقي', 'Real Daily Reading Streak')}
+              </div>
             </div>
           </div>
         </div>
@@ -200,48 +255,64 @@ export const FaithAnalytics: React.FC<FaithAnalyticsProps> = ({ onBackupRestored
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <div className="p-4 rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f]/90 border border-[#8A6418]/25 dark:border-slate-800 shadow-md">
           <div className="flex items-center justify-between text-[#5C5549] dark:text-slate-400 mb-2">
-            <span className="text-xs font-semibold">مجموع الآيات المقروءة</span>
+            <span className="text-xs font-semibold">{t('مجموع الآيات المقروءة', 'Total Ayahs Read')}</span>
             <BookOpen className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
           </div>
-          <div className="text-2xl font-bold text-[#1B1A17] dark:text-[#F6EFDD] font-mono tabular-nums">{stats.totalAyahs.toLocaleString('ar-SA')}</div>
+          <div className="text-2xl font-bold text-[#1B1A17] dark:text-[#F6EFDD] font-mono tabular-nums">{formatAppNumber(stats.totalAyahs, lang)}</div>
           <div className="text-[11px] text-[#8A6418] dark:text-[#D9B45A] mt-1 flex items-center gap-1 tabular-nums">
             <TrendingUp className="w-3 h-3" />
-            <span>+{toArabicIndic(stats.thisWeekAyahs)} آية هذا الأسبوع</span>
+            <span>
+              {t(
+                `+${formatLocalizedDigits(stats.thisWeekAyahs, lang)} آية هذا الأسبوع`,
+                `+${formatLocalizedDigits(stats.thisWeekAyahs, lang)} Ayahs this week`
+              )}
+            </span>
           </div>
         </div>
 
         <div className="p-4 rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f]/90 border border-[#8A6418]/25 dark:border-slate-800 shadow-md">
           <div className="flex items-center justify-between text-[#5C5549] dark:text-slate-400 mb-2">
-            <span className="text-xs font-semibold">الختمات المكتملة</span>
+            <span className="text-xs font-semibold">{t('الختمات المكتملة', 'Completed Khatmas')}</span>
             <CheckCircle className="w-4 h-4 text-[#1F3A6E] dark:text-[#648CD4]" />
           </div>
           <div className="text-2xl font-bold text-[#1B1A17] dark:text-[#F6EFDD] font-mono tabular-nums">
-            {toArabicIndic(stats.completedKhatmas)} {stats.completedKhatmas === 1 ? 'ختمة' : 'ختمات'}
+            {formatLocalizedDigits(stats.completedKhatmas, lang)}{' '}
+            {t(
+              stats.completedKhatmas === 1 ? 'ختمة' : 'ختمات',
+              stats.completedKhatmas === 1 ? 'Khatma' : 'Khatmas'
+            )}
           </div>
           <div className="text-[11px] text-[#5C5549] dark:text-slate-400 mt-1 tabular-nums">
-            الختمة الحالية: {toArabicIndic(khatmaPercentage)}% (صفحة {toArabicIndic(stats.currentKhatmaPage)})
+            {t(
+              `الختمة الحالية: ${formatLocalizedDigits(khatmaPercentage, lang)}% (صفحة ${formatLocalizedDigits(stats.currentKhatmaPage, lang)})`,
+              `Current: ${formatLocalizedDigits(khatmaPercentage, lang)}% (Page ${formatLocalizedDigits(stats.currentKhatmaPage, lang)})`
+            )}
           </div>
         </div>
 
         <div className="p-4 rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f]/90 border border-[#8A6418]/25 dark:border-slate-800 shadow-md">
           <div className="flex items-center justify-between text-[#5C5549] dark:text-slate-400 mb-2">
-            <span className="text-xs font-semibold">دقائق التلاوة والاستماع</span>
+            <span className="text-xs font-semibold">{t('دقائق التلاوة والاستماع', 'Reading & Listening Time')}</span>
             <Clock className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
           </div>
-          <div className="text-2xl font-bold text-[#1B1A17] dark:text-[#F6EFDD] font-mono tabular-nums">{toArabicIndic(stats.totalMinutes)} دقيقة</div>
+          <div className="text-2xl font-bold text-[#1B1A17] dark:text-[#F6EFDD] font-mono tabular-nums">
+            {formatLocalizedDigits(stats.totalMinutes, lang)} {t('دقيقة', 'min')}
+          </div>
           <div className="text-[11px] text-[#5C5549] dark:text-slate-400 mt-1">
-            من وقتك المبارك مع كتاب الله
+            {t('من وقتك المبارك مع كتاب الله', 'Of blessed time with the Book of Allah')}
           </div>
         </div>
 
         <div className="p-4 rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f]/90 border border-[#8A6418]/25 dark:border-slate-800 shadow-md">
           <div className="flex items-center justify-between text-[#5C5549] dark:text-slate-400 mb-2">
-            <span className="text-xs font-semibold">خواطر التدبر</span>
+            <span className="text-xs font-semibold">{t('خواطر التدبر', 'Tadabbur Reflections')}</span>
             <Calendar className="w-4 h-4 text-[#1F3A6E] dark:text-[#648CD4]" />
           </div>
-          <div className="text-2xl font-bold text-[#1B1A17] dark:text-[#F6EFDD] font-mono tabular-nums">{toArabicIndic(journalNotesCount)} تدبراً</div>
+          <div className="text-2xl font-bold text-[#1B1A17] dark:text-[#F6EFDD] font-mono tabular-nums">
+            {formatLocalizedDigits(journalNotesCount, lang)} {t('تدبراً', journalNotesCount === 1 ? 'Note' : 'Notes')}
+          </div>
           <div className="text-[11px] text-[#1F3A6E] dark:text-[#648CD4] mt-1">
-            مسجلة في مفكرتك الخاصة
+            {t('مسجلة في مفكرتك الخاصة', 'Saved in your personal journal')}
           </div>
         </div>
       </div>
@@ -255,7 +326,7 @@ export const FaithAnalytics: React.FC<FaithAnalyticsProps> = ({ onBackupRestored
               <div className="flex items-center gap-2">
                 <Flame className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
                 <h3 className="font-bold text-sm sm:text-base text-[#1B1A17] dark:text-[#F6EFDD] font-kufi">
-                  مؤشر وِردك اليومي الموحّد
+                  {t('مؤشر وِردك اليومي الموحّد', 'Unified Daily Wird Progress')}
                 </h3>
               </div>
               <span
@@ -266,16 +337,24 @@ export const FaithAnalytics: React.FC<FaithAnalyticsProps> = ({ onBackupRestored
                 }`}
               >
                 {wird.isTodayComplete
-                  ? `✓ أتممت ورد اليوم (${toArabicIndic(wird.todayPagesRead)}/${toArabicIndic(wird.dailyTargetPages)})`
-                  : `اليوم: ${toArabicIndic(wird.todayPagesRead)} من ${toArabicIndic(wird.dailyTargetPages)} صفحة (${toArabicIndic(wird.todayPercent)}٪)`}
+                  ? t(
+                      `✓ أتممت ورد اليوم (${formatLocalizedDigits(wird.todayPagesRead, lang)}/${formatLocalizedDigits(wird.dailyTargetPages, lang)})`,
+                      `✓ Today's Wird complete (${wird.todayPagesRead}/${wird.dailyTargetPages})`
+                    )
+                  : t(
+                      `اليوم: ${formatLocalizedDigits(wird.todayPagesRead, lang)} من ${formatLocalizedDigits(wird.dailyTargetPages, lang)} صفحة (${formatLocalizedDigits(wird.todayPercent, lang)}٪)`,
+                      `Today: ${wird.todayPagesRead} of ${wird.dailyTargetPages} pages (${wird.todayPercent}%)`
+                    )}
               </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs tabular-nums">
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-[#5C5549] dark:text-slate-300">
-                  <span>إنجاز اليوم</span>
-                  <span className="font-bold text-[#8A6418] dark:text-[#D9B45A]">{toArabicIndic(wird.todayPercent)}٪</span>
+                  <span>{t('إنجاز اليوم', "Today's Progress")}</span>
+                  <span className="font-bold text-[#8A6418] dark:text-[#D9B45A]">
+                    {formatLocalizedDigits(wird.todayPercent, lang)}{isEnglish ? '%' : '٪'}
+                  </span>
                 </div>
                 <div className="w-full h-2.5 rounded-full bg-[#E5DBBF] dark:bg-slate-950 border border-[#8A6418]/20 dark:border-slate-800 overflow-hidden">
                   <div
@@ -291,8 +370,15 @@ export const FaithAnalytics: React.FC<FaithAnalyticsProps> = ({ onBackupRestored
 
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-[#5C5549] dark:text-slate-300">
-                  <span>إجمالي الختمة ({toArabicIndic(wird.completedPages)} / {toArabicIndic(wird.totalPages)} صفحة)</span>
-                  <span className="font-bold text-emerald-700 dark:text-emerald-300">{toArabicIndic(wird.totalPercent)}٪</span>
+                  <span>
+                    {t(
+                      `إجمالي الختمة (${formatLocalizedDigits(wird.completedPages, lang)} / ${formatLocalizedDigits(wird.totalPages, lang)} صفحة)`,
+                      `Khatma Total (${wird.completedPages} / ${wird.totalPages} pages)`
+                    )}
+                  </span>
+                  <span className="font-bold text-emerald-700 dark:text-emerald-300">
+                    {formatLocalizedDigits(wird.totalPercent, lang)}{isEnglish ? '%' : '٪'}
+                  </span>
                 </div>
                 <div className="w-full h-2.5 rounded-full bg-[#E5DBBF] dark:bg-slate-950 border border-[#8A6418]/20 dark:border-slate-800 overflow-hidden">
                   <div
@@ -312,21 +398,24 @@ export const FaithAnalytics: React.FC<FaithAnalyticsProps> = ({ onBackupRestored
           <div>
             <h3 className="font-bold text-[#1B1A17] dark:text-[#F6EFDD] text-base flex items-center gap-2">
               <Calendar className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
-              <span>سجل النشاط والتلاوة الفعلي (365 يوماً)</span>
+              <span>{t('سجل النشاط والتلاوة الفعلي (365 يوماً)', 'Actual Recitation Activity Log (365 Days)')}</span>
             </h3>
             <p className="text-xs text-[#5C5549] dark:text-slate-400">
-              كل مربع يمثل يوماً حقيقياً، وتزداد إضاءة المربع بتزايد عدد الآيات التي قرأتها في ذلك اليوم
+              {t(
+                'كل مربع يمثل يوماً حقيقياً، وتزداد إضاءة المربع بتزايد عدد الآيات التي قرأتها في ذلك اليوم',
+                'Each cell represents an actual calendar day; brighter colors reflect more Ayahs read that day.'
+              )}
             </p>
           </div>
 
           <div className="flex items-center gap-1.5 text-xs text-[#5C5549] dark:text-slate-400">
-            <span>أقل</span>
+            <span>{t('أقل', 'Less')}</span>
             <div className="w-3 h-3 rounded-xs bg-[#E8DFC8] border border-[#8A6418]/20 dark:bg-slate-800/80 dark:border-slate-700" />
             <div className="w-3 h-3 rounded-xs bg-[#D6E1F4] border border-[#8FAAD9]/60 dark:bg-[#172848] dark:border-[#2E5499]/40" />
             <div className="w-3 h-3 rounded-xs bg-[#4E74B8] dark:bg-[#2E5499]" />
             <div className="w-3 h-3 rounded-xs bg-[#B6903B]" />
             <div className="w-3 h-3 rounded-xs bg-[#D9B45A]" />
-            <span>أكثر</span>
+            <span>{t('أكثر', 'More')}</span>
           </div>
         </div>
 
@@ -348,10 +437,13 @@ export const FaithAnalytics: React.FC<FaithAnalyticsProps> = ({ onBackupRestored
         <div className="mt-3 text-xs text-[#5C5549] dark:text-slate-400 h-5 flex items-center tabular-nums">
           {hoveredDay ? (
             <span className="text-[#8A6418] dark:text-[#D9B45A] font-medium">
-              {hoveredDay.date}: قرأت {hoveredDay.ayahCount} آية كريمة ({hoveredDay.minutes} دقيقة)
+              {t(
+                `${hoveredDay.date}: قرأت ${hoveredDay.ayahCount} آية كريمة (${hoveredDay.minutes} دقيقة)`,
+                `${hoveredDay.date}: Read ${hoveredDay.ayahCount} Ayahs (${hoveredDay.minutes} min)`
+              )}
             </span>
           ) : (
-            <span>مرر المؤشر فوق المربعات لعرض نشاطك المسجل في ذلك اليوم</span>
+            <span>{t('مرر المؤشر فوق المربعات لعرض نشاطك المسجل في ذلك اليوم', 'Hover over squares to view your recorded activity for that day')}</span>
           )}
         </div>
       </div>
@@ -363,14 +455,17 @@ export const FaithAnalytics: React.FC<FaithAnalyticsProps> = ({ onBackupRestored
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-[#1B1A17] dark:text-[#F6EFDD] text-sm flex items-center gap-2">
               <HardDriveDownload className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
-              <span>حفظ المصحف الكامل دون اتصال (IndexedDB)</span>
+              <span>{t("حفظ المصحف الكامل دون اتصال (IndexedDB)", "Save Full Mus'haf Offline (IndexedDB)")}</span>
             </h3>
             <span className="text-xs text-[#8A6418] dark:text-[#D9B45A] font-mono tabular-nums">
-              {toArabicIndic(cachedSurahsCount)} / ١١٤ سورة
+              {formatLocalizedDigits(cachedSurahsCount, lang)} / {formatLocalizedDigits(114, lang)} {t('سورة', 'Surahs')}
             </span>
           </div>
           <p className="text-xs text-[#5C5549] dark:text-slate-400 leading-relaxed">
-            قم بتنزيل نصوص المصحف الكامل بالرسم العثماني والتجويد والتفسير الميسر محلياً للبحث والقراءة بلا إنترنت.
+            {t(
+              'قم بتنزيل نصوص المصحف الكامل بالرسم العثماني والتجويد والتفسير الميسر محلياً للبحث والقراءة بلا إنترنت.',
+              "Download the full Uthmani Mus'haf text, Tajweed markup, and Al-Muyassar Tafsir locally for offline search and reading."
+            )}
           </p>
 
           {downloadProgress && isDownloadingQuran && (
@@ -382,7 +477,10 @@ export const FaithAnalytics: React.FC<FaithAnalyticsProps> = ({ onBackupRestored
                 />
               </div>
               <div className="text-[11px] text-[#5C5549] dark:text-slate-400 tabular-nums">
-                تم تحميل {downloadProgress.completed} من {downloadProgress.total} سورة...
+                {t(
+                  `تم تحميل ${downloadProgress.completed} من ${downloadProgress.total} سورة...`,
+                  `Downloaded ${downloadProgress.completed} of ${downloadProgress.total} Surahs...`
+                )}
               </div>
             </div>
           )}
@@ -396,10 +494,10 @@ export const FaithAnalytics: React.FC<FaithAnalyticsProps> = ({ onBackupRestored
             <HardDriveDownload className="w-4 h-4" />
             <span>
               {isDownloadingQuran
-                ? 'جارٍ التنزيل المحلي...'
+                ? t('جارٍ التنزيل المحلي...', 'Downloading locally...')
                 : cachedSurahsCount >= 114
-                  ? 'تحديث النسخة المحلية الكاملة (١١٤ سورة)'
-                  : 'تنزيل المصحف الكامل للعمل دون اتصال'}
+                  ? t('تحديث النسخة المحلية الكاملة (١١٤ سورة)', 'Update Full Offline Copy (114 Surahs)')
+                  : t('تنزيل المصحف الكامل للعمل دون اتصال', "Download Full Mus'haf for Offline Use")}
             </span>
           </button>
         </div>
@@ -408,10 +506,13 @@ export const FaithAnalytics: React.FC<FaithAnalyticsProps> = ({ onBackupRestored
         <div className="p-5 rounded-3xl bg-[#FBF7EE] dark:bg-[#10161f]/90 border border-[#8A6418]/25 dark:border-slate-800 shadow-lg space-y-3">
           <h3 className="font-bold text-[#1B1A17] dark:text-[#F6EFDD] text-sm flex items-center gap-2">
             <Download className="w-4 h-4 text-[#1F3A6E] dark:text-[#648CD4]" />
-            <span>النسخ الاحتياطي والاستعادة لبياناتك</span>
+            <span>{t('النسخ الاحتياطي والاستعادة لبياناتك', 'Backup & Restore Your Data')}</span>
           </h3>
           <p className="text-xs text-[#5C5549] dark:text-slate-400 leading-relaxed">
-            احفظ نسخة من مفكرة التدبر، العلامات المرجعية، تفضيلات المصحف، خطة الحفظ المتباعد، وسجل الختمات في ملف JSON أو استعدها على جهاز آخر.
+            {t(
+              'احفظ نسخة من مفكرة التدبر، العلامات المرجعية، تفضيلات المصحف، خطة الحفظ المتباعد، وسجل الختمات في ملف JSON أو استعدها على جهاز آخر.',
+              "Export your Tadabbur notes, bookmarks, Mus'haf preferences, SRS Hifz cards, and Khatma logs to a JSON file or restore them on another device."
+            )}
           </p>
 
           <div className="grid grid-cols-2 gap-2.5 pt-1">
@@ -421,7 +522,7 @@ export const FaithAnalytics: React.FC<FaithAnalyticsProps> = ({ onBackupRestored
               className="min-h-[42px] py-2.5 px-3 rounded-xl bg-[#EFE6D1] hover:bg-[#E4D7BA] dark:bg-slate-800 dark:hover:bg-slate-700 border border-[#8A6418]/25 dark:border-slate-700 text-[#1B1A17] dark:text-[#F6EFDD] text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
             >
               <Download className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
-              <span>تصدير نسخة (.json)</span>
+              <span>{t('تصدير نسخة (.json)', 'Export Backup (.json)')}</span>
             </button>
 
             <button
@@ -430,7 +531,7 @@ export const FaithAnalytics: React.FC<FaithAnalyticsProps> = ({ onBackupRestored
               className="min-h-[42px] py-2.5 px-3 rounded-xl bg-[#EFE6D1] hover:bg-[#E4D7BA] dark:bg-slate-800 dark:hover:bg-slate-700 border border-[#8A6418]/25 dark:border-slate-700 text-[#1B1A17] dark:text-[#F6EFDD] text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
             >
               <Upload className="w-3.5 h-3.5 text-[#1F3A6E] dark:text-[#648CD4]" />
-              <span>استيراد واستعادة</span>
+              <span>{t('استيراد واستعادة', 'Import & Restore')}</span>
             </button>
 
             <input
@@ -447,22 +548,32 @@ export const FaithAnalytics: React.FC<FaithAnalyticsProps> = ({ onBackupRestored
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2 text-xs font-bold text-[#8A6418] dark:text-[#D9B45A]">
                   <ShieldAlert className="w-4 h-4 shrink-0" />
-                  <span>تأكيد استبدال البيانات الحالية</span>
+                  <span>{t('تأكيد استبدال البيانات الحالية', 'Confirm Replacing Current Data')}</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setPendingBackup(null)}
-                  aria-label="إلغاء الاستعادة"
+                  aria-label={t('إلغاء الاستعادة', 'Cancel Restore')}
                   className="p-1 text-[#5C5549] hover:text-[#1B1A17] dark:text-slate-400 dark:hover:text-white cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
               <p className="text-[11px] text-[#5C5549] dark:text-slate-300 leading-relaxed">
-                سيتم استعادة{' '}
-                <strong>{pendingBackup.journalNotes.length}</strong> خواطر،{' '}
-                <strong>{Object.keys(pendingBackup.bookmarks).length}</strong> علامات مرجعية، و
-                <strong>{Object.keys(pendingBackup.memorizationSrs).length}</strong> بطاقة حفظ فوق السجلات الحالية.
+                {t(
+                  <>
+                    سيتم استعادة{' '}
+                    <strong>{pendingBackup.journalNotes.length}</strong> خواطر،{' '}
+                    <strong>{Object.keys(pendingBackup.bookmarks).length}</strong> علامات مرجعية، و
+                    <strong>{Object.keys(pendingBackup.memorizationSrs).length}</strong> بطاقة حفظ فوق السجلات الحالية.
+                  </>,
+                  <>
+                    This will restore{' '}
+                    <strong>{pendingBackup.journalNotes.length}</strong> notes,{' '}
+                    <strong>{Object.keys(pendingBackup.bookmarks).length}</strong> bookmarks, and{' '}
+                    <strong>{Object.keys(pendingBackup.memorizationSrs).length}</strong> Hifz SRS cards over current records.
+                  </>
+                )}
               </p>
               <div className="flex items-center gap-2">
                 <button
@@ -471,14 +582,16 @@ export const FaithAnalytics: React.FC<FaithAnalyticsProps> = ({ onBackupRestored
                   disabled={isRestoringBackup}
                   className="flex-1 min-h-[38px] py-1.5 px-3 rounded-xl bg-[#D9B45A] hover:bg-[#e3be69] text-[#1B1A17] text-xs font-bold transition-colors cursor-pointer disabled:opacity-60"
                 >
-                  {isRestoringBackup ? 'جارٍ الاستعادة...' : 'تأكيد الاستعادة الآن'}
+                  {isRestoringBackup
+                    ? t('جارٍ الاستعادة...', 'Restoring...')
+                    : t('تأكيد الاستعادة الآن', 'Confirm Restore')}
                 </button>
                 <button
                   type="button"
                   onClick={() => setPendingBackup(null)}
                   className="min-h-[38px] py-1.5 px-3 rounded-xl bg-[#EFE6D1] hover:bg-[#E4D7BA] dark:bg-slate-800 dark:hover:bg-slate-700 text-[#1B1A17] dark:text-slate-200 text-xs font-semibold cursor-pointer"
                 >
-                  إلغاء
+                  {t('إلغاء', 'Cancel')}
                 </button>
               </div>
             </div>

@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { SURAHS_LIST } from '../../data/quranMetadata';
+import { SURAHS_LIST, getSurahDisplayName } from '../../data/quranMetadata';
 import { Ayah, getSurahData, sanitizeAyahText } from '../../data/quranService';
-import { RECITERS_LIST, Reciter, getAyahAudioUrl } from '../../data/reciters';
+import { RECITERS_LIST, Reciter, getAyahAudioUrl, getReciterDisplayName } from '../../data/reciters';
+import { formatLocalizedDigits, useLanguage } from '../../utils/i18n';
 import {
   TajweedRuleType,
   TajweedToken,
   alignUthmaniWithTajweed,
+  getTajweedTokenTooltip,
   parseWordTajweed,
 } from '../../utils/tajweedParser';
 import {
@@ -36,63 +38,68 @@ type IsolationFilterId =
 const ISOLATION_FILTERS: {
   id: IsolationFilterId;
   label: string;
+  labelEn: string;
   rules: TajweedRuleType[];
   colorHex: string;
 }[] = [
-  { id: 'all', label: 'إظهار كل الأحكام', rules: [], colorHex: '#10b981' },
+  { id: 'all', label: 'إظهار كل الأحكام', labelEn: 'All Rules', rules: [], colorHex: '#10b981' },
   {
     id: 'ghunnah-ikhfa',
     label: 'الغنة والإخفاء',
+    labelEn: 'Ghunnah & Ikhfa',
     rules: ['ghunnah', 'ikhfa'],
     colorHex: '#4ade80',
   },
   {
     id: 'idgham-iqlab',
     label: 'الإدغام والإقلاب',
+    labelEn: 'Idgham & Iqlab',
     rules: ['idgham', 'iqlab'],
     colorHex: '#2dd4bf',
   },
   {
     id: 'madd',
     label: 'جميع المدود',
+    labelEn: 'All Madd Rules',
     rules: ['madd-tabeei', 'madd-badal', 'madd-wajib', 'madd-lazim', 'madd-arid'],
     colorHex: '#f43f5e',
   },
-  { id: 'qalqalah', label: 'القلقلة', rules: ['qalqalah'], colorHex: '#38bdf8' },
-  { id: 'silent', label: 'الحروف الصامتة', rules: ['silent'], colorHex: '#94a3b8' },
+  { id: 'qalqalah', label: 'القلقلة', labelEn: 'Qalqalah', rules: ['qalqalah'], colorHex: '#38bdf8' },
+  { id: 'silent', label: 'الحروف الصامتة', labelEn: 'Silent Letters', rules: ['silent'], colorHex: '#94a3b8' },
 ];
 
-const CURATED_PRESETS: { label: string; surah: number; ayah: number }[] = [
-  { label: 'الفاتحة: ٧', surah: 1, ayah: 7 },
-  { label: 'البقرة: ٣', surah: 2, ayah: 3 },
-  { label: 'البقرة: ٥', surah: 2, ayah: 5 },
-  { label: 'البينة: ٤', surah: 98, ayah: 4 },
-  { label: 'الفيل: ٤', surah: 105, ayah: 4 },
-  { label: 'الإخلاص: ٤', surah: 112, ayah: 4 },
+const CURATED_PRESETS: { surah: number; ayah: number }[] = [
+  { surah: 1, ayah: 7 },
+  { surah: 2, ayah: 3 },
+  { surah: 2, ayah: 5 },
+  { surah: 98, ayah: 4 },
+  { surah: 105, ayah: 4 },
+  { surah: 112, ayah: 4 },
 ];
 
 const RULE_DISPLAY_META: Record<
   TajweedRuleType,
-  { label: string; colorHex: string; cssClass: string; filterId: IsolationFilterId }
+  { label: string; labelEn: string; colorHex: string; cssClass: string; filterId: IsolationFilterId }
 > = {
-  ghunnah: { label: 'غنة مشددة', colorHex: '#10b981', cssClass: 'tajweed-ghunnah', filterId: 'ghunnah-ikhfa' },
-  ikhfa: { label: 'إخفاء', colorHex: '#4ade80', cssClass: 'tajweed-ikhfa', filterId: 'ghunnah-ikhfa' },
-  idgham: { label: 'إدغام بغنة', colorHex: '#2dd4bf', cssClass: 'tajweed-idgham', filterId: 'idgham-iqlab' },
-  iqlab: { label: 'إقلاب', colorHex: '#34d399', cssClass: 'tajweed-iqlab', filterId: 'idgham-iqlab' },
-  qalqalah: { label: 'قلقلة', colorHex: '#38bdf8', cssClass: 'tajweed-qalqalah', filterId: 'qalqalah' },
-  'madd-wajib': { label: 'مد متصل / منفصل', colorHex: '#f43f5e', cssClass: 'tajweed-madd-wajib', filterId: 'madd' },
-  'madd-lazim': { label: 'مد لازم (6 حركات)', colorHex: '#ef4444', cssClass: 'tajweed-madd-lazim', filterId: 'madd' },
-  'madd-arid': { label: 'مد عارض للسكون', colorHex: '#fb923c', cssClass: 'tajweed-madd-arid', filterId: 'madd' },
-  'madd-tabeei': { label: 'مد طبيعي', colorHex: '#eab308', cssClass: 'tajweed-madd-tabeei', filterId: 'madd' },
-  'madd-badal': { label: 'مد بدل', colorHex: '#facc15', cssClass: 'tajweed-madd-badal', filterId: 'madd' },
-  tafkheem: { label: 'تفخيم', colorHex: '#60a5fa', cssClass: 'tajweed-tafkheem', filterId: 'all' },
-  silent: { label: 'لا يُلفظ / إدغام بلا غنة', colorHex: '#94a3b8', cssClass: 'tajweed-silent', filterId: 'silent' },
+  ghunnah: { label: 'غنة مشددة', labelEn: 'Mushaddadah Ghunnah', colorHex: '#10b981', cssClass: 'tajweed-ghunnah', filterId: 'ghunnah-ikhfa' },
+  ikhfa: { label: 'إخفاء', labelEn: 'Ikhfa', colorHex: '#4ade80', cssClass: 'tajweed-ikhfa', filterId: 'ghunnah-ikhfa' },
+  idgham: { label: 'إدغام بغنة', labelEn: 'Idgham w/ Ghunnah', colorHex: '#2dd4bf', cssClass: 'tajweed-idgham', filterId: 'idgham-iqlab' },
+  iqlab: { label: 'إقلاب', labelEn: 'Iqlab', colorHex: '#34d399', cssClass: 'tajweed-iqlab', filterId: 'idgham-iqlab' },
+  qalqalah: { label: 'قلقلة', labelEn: 'Qalqalah', colorHex: '#38bdf8', cssClass: 'tajweed-qalqalah', filterId: 'qalqalah' },
+  'madd-wajib': { label: 'مد متصل / منفصل', labelEn: 'Connected / Separated Madd', colorHex: '#f43f5e', cssClass: 'tajweed-madd-wajib', filterId: 'madd' },
+  'madd-lazim': { label: 'مد لازم (6 حركات)', labelEn: 'Madd Lazim (6 counts)', colorHex: '#ef4444', cssClass: 'tajweed-madd-lazim', filterId: 'madd' },
+  'madd-arid': { label: 'مد عارض للسكون', labelEn: 'Pause Madd (Arid)', colorHex: '#fb923c', cssClass: 'tajweed-madd-arid', filterId: 'madd' },
+  'madd-tabeei': { label: 'مد طبيعي', labelEn: 'Natural Madd', colorHex: '#eab308', cssClass: 'tajweed-madd-tabeei', filterId: 'madd' },
+  'madd-badal': { label: 'مد بدل', labelEn: 'Madd Badal', colorHex: '#facc15', cssClass: 'tajweed-madd-badal', filterId: 'madd' },
+  tafkheem: { label: 'تفخيم', labelEn: 'Tafkheem (Heavy)', colorHex: '#60a5fa', cssClass: 'tajweed-tafkheem', filterId: 'all' },
+  silent: { label: 'لا يُلفظ / إدغام بلا غنة', labelEn: 'Silent / Idgham w/o Ghunnah', colorHex: '#94a3b8', cssClass: 'tajweed-silent', filterId: 'silent' },
 };
 
 export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
   selectedReciter,
   onNavigateToAyah,
 }) => {
+  const { lang, isEnglish } = useLanguage();
   const [surahNumber, setSurahNumber] = useState<number>(1);
   const [ayahNumber, setAyahNumber] = useState<number>(7);
   const [ayahs, setAyahs] = useState<Ayah[]>([]);
@@ -133,7 +140,13 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
       })
       .catch((err) => {
         if (!cancelled) {
-          setErrorMsg(err instanceof Error ? err.message : 'تعذر تحميل الآية الكريمة.');
+          setErrorMsg(
+            err instanceof Error
+              ? err.message
+              : isEnglish
+              ? 'Unable to load the Ayah right now.'
+              : 'تعذر تحميل الآية الكريمة.'
+          );
           setIsLoading(false);
         }
       });
@@ -141,7 +154,7 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [surahNumber, reloadNonce]);
+  }, [surahNumber, reloadNonce, isEnglish]);
 
   // Stop audio when changing ayah or unmounting
   useEffect(() => {
@@ -226,7 +239,11 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
       };
       audioRef.current.onerror = () => {
         setIsPlayingAudio(false);
-        setAudioError('تعذر تشغيل التلاوة الصوتية حالياً، تأكد من اتصال الإنترنت.');
+        setAudioError(
+          isEnglish
+            ? 'Unable to play recitation right now; please check your internet connection.'
+            : 'تعذر تشغيل التلاوة الصوتية حالياً، تأكد من اتصال الإنترنت.'
+        );
       };
     }
 
@@ -246,7 +263,11 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
       .then(() => setIsPlayingAudio(true))
       .catch(() => {
         setIsPlayingAudio(false);
-        setAudioError('تعذر تشغيل الملف الصوتي في المتصفح.');
+        setAudioError(
+          isEnglish
+            ? 'Unable to play the audio file in this browser.'
+            : 'تعذر تشغيل الملف الصوتي في المتصفح.'
+        );
       });
   };
 
@@ -263,16 +284,20 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
       <div className="p-5 rounded-2xl bg-[#FBF7EE] dark:bg-slate-900 border border-[#D9B45A]/30 dark:border-slate-800 space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div>
-            <h3 className="text-base sm:text-lg font-bold text-[#1B1A17] dark:text-white">مختبر «حلّل الآية بنفسك»</h3>
+            <h3 className="text-base sm:text-lg font-bold text-[#1B1A17] dark:text-white">
+              {isEnglish ? 'Interactive «Dissect the Ayah» Lab' : 'مختبر «حلّل الآية بنفسك»'}
+            </h3>
             <p className="text-xs text-[#6B6251] dark:text-slate-400">
-              اختر أي آية من القرآن الكريم واعزل أحكامها أو اضغط على أي كلمة لشرح سبب التلوين مع الاستماع
+              {isEnglish
+                ? 'Choose any Ayah from the Quran, isolate its rules, or tap any word to inspect color reasons while listening'
+                : 'اختر أي آية من القرآن الكريم واعزل أحكامها أو اضغط على أي كلمة لشرح سبب التلوين مع الاستماع'}
             </p>
           </div>
 
           {/* Surah + Ayah Controls */}
           <div className="flex flex-wrap items-center gap-2">
             <select
-              aria-label="اختر السورة"
+              aria-label={isEnglish ? 'Select Surah' : 'اختر السورة'}
               value={surahNumber}
               onChange={(e) => {
                 setSurahNumber(Number(e.target.value));
@@ -283,7 +308,7 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
             >
               {SURAHS_LIST.map((s) => (
                 <option key={s.number} value={s.number} className="bg-white text-[#1B1A17] dark:bg-slate-900 dark:text-white">
-                  {s.number}. سورة {s.name}
+                  {formatLocalizedDigits(s.number, lang)}. {isEnglish ? getSurahDisplayName(s, lang) : `سورة ${s.name}`}
                 </option>
               ))}
             </select>
@@ -297,13 +322,13 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                 }}
                 disabled={ayahNumber <= 1}
                 className="p-2 text-[#6B6251] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white disabled:opacity-35 cursor-pointer disabled:cursor-not-allowed"
-                title="الآية السابقة"
+                title={isEnglish ? 'Previous Ayah' : 'الآية السابقة'}
               >
-                <ChevronRight className="w-4 h-4" />
+                {isEnglish ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
               </button>
 
               <select
-                aria-label="رقم الآية"
+                aria-label={isEnglish ? 'Ayah Number' : 'رقم الآية'}
                 value={ayahNumber}
                 onChange={(e) => {
                   setAyahNumber(Number(e.target.value));
@@ -313,7 +338,7 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
               >
                 {Array.from({ length: surahMeta.numberOfAyahs }, (_, i) => i + 1).map((n) => (
                   <option key={n} value={n} className="bg-white text-[#1B1A17] dark:bg-slate-900 dark:text-white">
-                    الآية {n}
+                    {isEnglish ? `Ayah ${n}` : `الآية ${formatLocalizedDigits(n, lang)}`}
                   </option>
                 ))}
               </select>
@@ -326,9 +351,9 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                 }}
                 disabled={ayahNumber >= surahMeta.numberOfAyahs}
                 className="p-2 text-[#6B6251] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white disabled:opacity-35 cursor-pointer disabled:cursor-not-allowed"
-                title="الآية التالية"
+                title={isEnglish ? 'Next Ayah' : 'الآية التالية'}
               >
-                <ChevronLeft className="w-4 h-4" />
+                {isEnglish ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
               </button>
             </div>
           </div>
@@ -337,13 +362,17 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
         {/* Curated Quick Examples Strip */}
         <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#D9B45A]/20 dark:border-slate-800/80">
           <span className="text-[11px] font-semibold text-[#6B6251] dark:text-slate-400 whitespace-nowrap">
-            نماذج غنية بالأحكام:
+            {isEnglish ? 'Rich Rule Examples:' : 'نماذج غنية بالأحكام:'}
           </span>
           {CURATED_PRESETS.map((preset) => {
             const isActive = surahNumber === preset.surah && ayahNumber === preset.ayah;
+            const presetSurah = SURAHS_LIST.find((s) => s.number === preset.surah);
+            const presetLabel = presetSurah
+              ? `${getSurahDisplayName(presetSurah, lang)}: ${formatLocalizedDigits(preset.ayah, lang)}`
+              : `${preset.surah}:${preset.ayah}`;
             return (
               <button
-                key={preset.label}
+                key={`${preset.surah}-${preset.ayah}`}
                 type="button"
                 onClick={() => handlePickPreset(preset.surah, preset.ayah)}
                 className={`py-1 px-3 rounded-lg border text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer tabular-nums ${
@@ -352,7 +381,7 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                     : 'bg-white dark:bg-slate-950 border-[#D9B45A]/25 dark:border-slate-800 text-[#4B4539] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white hover:border-[#D9B45A]/50 dark:hover:border-slate-700'
                 }`}
               >
-                {preset.label}
+                {presetLabel}
               </button>
             );
           })}
@@ -365,7 +394,7 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-[#D9B45A]/20 dark:border-slate-800">
           <div className="flex items-center gap-1.5 text-xs font-bold text-[#1B1A17] dark:text-slate-300">
             <Filter className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
-            <span>عزل وتمييز الحكم داخل الآية:</span>
+            <span>{isEnglish ? 'Isolate & Highlight Rule:' : 'عزل وتمييز الحكم داخل الآية:'}</span>
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5">
@@ -386,7 +415,7 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                     className="w-2.5 h-2.5 rounded-full shrink-0"
                     style={{ backgroundColor: f.colorHex }}
                   />
-                  <span>{f.label}</span>
+                  <span>{isEnglish ? f.labelEn : f.label}</span>
                 </button>
               );
             })}
@@ -397,7 +426,9 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
         {isLoading ? (
           <div className="py-12 text-center space-y-2">
             <div className="w-8 h-8 rounded-full border-2 border-[#D9B45A] border-t-transparent animate-spin mx-auto" />
-            <p className="text-xs text-[#6B6251] dark:text-slate-400">جارٍ جلب الرسم العثماني وأحكام التجويد للآية...</p>
+            <p className="text-xs text-[#6B6251] dark:text-slate-400">
+              {isEnglish ? 'Loading Uthmani script and Tajweed rules…' : 'جارٍ جلب الرسم العثماني وأحكام التجويد للآية...'}
+            </p>
           </div>
         ) : errorMsg ? (
           <div className="p-6 rounded-xl bg-rose-50 dark:bg-rose-950/20 border border-rose-300 dark:border-rose-500/30 text-center space-y-3">
@@ -408,7 +439,7 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
               className="py-2 px-4 rounded-xl bg-[#1F3A6E] hover:bg-[#2E5499] text-[#F6EFDD] text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5" />
-              <span>إعادة المحاولة</span>
+              <span>{isEnglish ? 'Retry' : 'إعادة المحاولة'}</span>
             </button>
           </div>
         ) : (
@@ -416,6 +447,7 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
             {/* Clickable Words Canvas (Kept deep ink so Tajweed rule colors stay luminous & legible) */}
             <div
               dir="rtl"
+              lang="ar"
               className="p-5 sm:p-7 rounded-2xl bg-[#0b1117] border border-[#1F3A6E]/35 dark:border-slate-800/90 text-center shadow-inner"
             >
               <p className="font-quran text-2xl sm:text-3xl leading-[2.6] text-slate-100 select-text">
@@ -437,7 +469,7 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                             ? 'bg-[#D9B45A]/20 ring-1 ring-[#D9B45A]'
                             : 'hover:bg-slate-800/70'
                         }`}
-                        title="اضغط لعرض تحليل أحكام هذه الكلمة"
+                        title={isEnglish ? 'Tap to inspect this word’s Tajweed rules' : 'اضغط لعرض تحليل أحكام هذه الكلمة'}
                       >
                         {wordTokens.map((tok, tIdx) => {
                           const isRuleMatched =
@@ -469,7 +501,7 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                           }
 
                           return (
-                            <span key={tIdx} className={meta.cssClass} title={tok.tooltip}>
+                            <span key={tIdx} className={meta.cssClass} title={getTajweedTokenTooltip(tok, lang)}>
                               {tok.text}
                             </span>
                           );
@@ -480,12 +512,14 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                   );
                 })}
                 <span className="text-[#D9B45A] font-bold text-xl mx-2 tabular-nums">
-                  ﴿{ayahNumber}﴾
+                  ﴿{formatLocalizedDigits(ayahNumber, lang)}﴾
                 </span>
               </p>
 
-              <p className="text-[11px] text-slate-400 mt-3">
-                اضغط على أي كلمة في الآية أعلاه لعرض تفصيل أحكامها وحروفها الملونة
+              <p dir={isEnglish ? 'ltr' : 'rtl'} className="text-[11px] text-slate-400 mt-3">
+                {isEnglish
+                  ? 'Tap any word above to view its colored Tajweed rules breakdown'
+                  : 'اضغط على أي كلمة في الآية أعلاه لعرض تفصيل أحكامها وحروفها الملونة'}
               </p>
             </div>
 
@@ -494,8 +528,10 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
               <div className="p-4 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/45 space-y-2.5 animate-in fade-in duration-150">
                 <div className="flex items-center justify-between gap-2 pb-2 border-b border-[#D9B45A]/20 dark:border-slate-800">
                   <div className="flex items-center gap-2.5">
-                    <span className="text-xs font-bold text-[#8A6418] dark:text-[#D9B45A]">تحليل الكلمة:</span>
-                    <span className="font-quran text-2xl text-[#1B1A17] dark:text-white">
+                    <span className="text-xs font-bold text-[#8A6418] dark:text-[#D9B45A]">
+                      {isEnglish ? 'Word Analysis:' : 'تحليل الكلمة:'}
+                    </span>
+                    <span dir="rtl" lang="ar" className="font-quran text-2xl text-[#1B1A17] dark:text-white">
                       {selectedWordTokens.map((t) => t.text).join('')}
                     </span>
                   </div>
@@ -504,7 +540,7 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                     onClick={() => setSelectedWordIndex(null)}
                     className="text-xs text-[#6B6251] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white cursor-pointer"
                   >
-                    إغلاق
+                    {isEnglish ? 'Close' : 'إغلاق'}
                   </button>
                 </div>
 
@@ -525,13 +561,20 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                             />
                             <div className="text-xs space-y-0.5">
                               <div className="font-bold text-[#1B1A17] dark:text-white flex items-center gap-2">
-                                <span className="font-quran text-base px-1.5 py-0.5 rounded bg-[#0b1117]" style={{ color: meta?.colorHex }}>
+                                <span
+                                  dir="rtl"
+                                  lang="ar"
+                                  className="font-quran text-base px-1.5 py-0.5 rounded bg-[#0b1117]"
+                                  style={{ color: meta?.colorHex }}
+                                >
                                   {tok.text}
                                 </span>
                                 <span aria-hidden="true">·</span>
-                                <span>{meta?.label}</span>
+                                <span>{meta ? (isEnglish ? meta.labelEn : meta.label) : ''}</span>
                               </div>
-                              <p className="text-[#4B4539] dark:text-slate-300 leading-relaxed">{tok.tooltip}</p>
+                              <p className="text-[#4B4539] dark:text-slate-300 leading-relaxed">
+                                {getTajweedTokenTooltip(tok, lang)}
+                              </p>
                             </div>
                           </div>
                         );
@@ -539,7 +582,9 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                   </div>
                 ) : (
                   <p className="text-xs text-[#4B4539] dark:text-slate-300">
-                    كلمة خالية من أحكام التلوين الخاصة؛ تُقرأ حروفها وحركاتها بالنطق الأصلي المُظهر بوضوح.
+                    {isEnglish
+                      ? 'No special color-coded Tajweed rule on this word; letters are pronounced clearly in their natural form.'
+                      : 'كلمة خالية من أحكام التلوين الخاصة؛ تُقرأ حروفها وحركاتها بالنطق الأصلي المُظهر بوضوح.'}
                   </p>
                 )}
               </div>
@@ -560,12 +605,16 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                   {isPlayingAudio ? (
                     <>
                       <Pause className="w-3.5 h-3.5 fill-current" />
-                      <span>إيقاف التلاوة</span>
+                      <span>{isEnglish ? 'Pause Recitation' : 'إيقاف التلاوة'}</span>
                     </>
                   ) : (
                     <>
                       <Play className="w-3.5 h-3.5 fill-current" />
-                      <span>استمع بصوت {activeReciter.name.split(' ')[0]}</span>
+                      <span>
+                        {isEnglish
+                          ? `Listen (${getReciterDisplayName(activeReciter, lang)})`
+                          : `استمع بصوت ${activeReciter.name.split(' ')[0]}`}
+                      </span>
                     </>
                   )}
                 </button>
@@ -578,9 +627,9 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                       ? 'bg-sky-50 dark:bg-sky-500/20 border-sky-400 text-sky-900 dark:text-sky-200'
                       : 'bg-white dark:bg-slate-950 border-[#D9B45A]/30 dark:border-slate-700 text-[#4B4539] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white'
                   }`}
-                  title="إبطاء الصوت لسماع المدود والغنة بوضوح"
+                  title={isEnglish ? 'Slow down audio to hear Madd and Ghunnah clearly' : 'إبطاء الصوت لسماع المدود والغنة بوضوح'}
                 >
-                  السرعة: {playbackRate}x
+                  {isEnglish ? `Speed: ${playbackRate}x` : `السرعة: ${playbackRate}x`}
                 </button>
 
                 {audioError && <span className="text-xs text-rose-600 dark:text-rose-400">{audioError}</span>}
@@ -593,7 +642,7 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                   className="py-2 px-3.5 rounded-xl bg-white dark:bg-slate-950 hover:bg-[#F3E9D2]/60 dark:hover:bg-slate-800 border border-[#D9B45A]/35 dark:border-slate-700 text-xs font-semibold text-[#1B1A17] dark:text-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
                 >
                   <BookOpen className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
-                  <span>فتح في المصحف</span>
+                  <span>{isEnglish ? 'Open in Mushaf' : 'فتح في المصحف'}</span>
                   <ExternalLink className="w-3 h-3 text-[#6B6251] dark:text-slate-400" />
                 </button>
               )}
@@ -604,10 +653,11 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
               <div className="flex items-center justify-between text-xs">
                 <span className="font-bold text-[#1B1A17] dark:text-slate-300 flex items-center gap-1.5">
                   <Volume2 className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
-                  <span>إحصاء الأحكام المكتشفة في الآية</span>
+                  <span>{isEnglish ? 'Detected Rules Breakdown' : 'إحصاء الأحكام المكتشفة في الآية'}</span>
                 </span>
                 <span className="text-[#6B6251] dark:text-slate-400 tabular-nums">
-                  {surahMeta.name} · آية {ayahNumber}
+                  {getSurahDisplayName(surahMeta, lang)} ·{' '}
+                  {isEnglish ? `Ayah ${ayahNumber}` : `آية ${formatLocalizedDigits(ayahNumber, lang)}`}
                 </span>
               </div>
 
@@ -624,13 +674,21 @@ export const AyahTajweedLab: React.FC<AyahTajweedLabProps> = ({
                         className="w-2.5 h-2.5 rounded-full shrink-0"
                         style={{ backgroundColor: meta.colorHex }}
                       />
-                      <span className="text-[#1B1A17] dark:text-slate-200 font-semibold">{meta.label}</span>
-                      <span className="text-[#6B6251] dark:text-slate-400">({count})</span>
+                      <span className="text-[#1B1A17] dark:text-slate-200 font-semibold">
+                        {isEnglish ? meta.labelEn : meta.label}
+                      </span>
+                      <span className="text-[#6B6251] dark:text-slate-400">
+                        ({formatLocalizedDigits(count, lang)})
+                      </span>
                     </button>
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-[#6B6251] dark:text-slate-400">لم تُسجل أحكام تلوين خاصة في هذه الآية القصيرة.</p>
+                <p className="text-xs text-[#6B6251] dark:text-slate-400">
+                  {isEnglish
+                    ? 'No special color-coded Tajweed rules detected in this short Ayah.'
+                    : 'لم تُسجل أحكام تلوين خاصة في هذه الآية القصيرة.'}
+                </p>
               )}
             </div>
           </div>

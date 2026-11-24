@@ -12,13 +12,14 @@ import {
   X,
   Edit3,
 } from 'lucide-react';
-import { SURAHS_LIST } from '../data/quranMetadata';
+import { SURAHS_LIST, getSurahFullTitle } from '../data/quranMetadata';
 import { buildUserBackupPayload } from '../utils/userBackup';
-import { toArabicIndic } from './khatma/KhatmaRing';
+import { formatLocalizedDigits, useLanguage } from '../utils/i18n';
 import {
   BOOKMARKS_UPDATED_EVENT,
   BOOKMARK_LABELS,
   BookmarkCategoryLabel,
+  getBookmarkDisplayLabel,
   loadAllBookmarks,
   removeSurahBookmark,
   SavedBookmarkEntry,
@@ -47,6 +48,7 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
   onUpdateNote,
   onNavigateToAyah,
 }) => {
+  const { lang, isEnglish, t } = useLanguage();
   const [activeTab, setActiveTab] = useState<'notes' | 'bookmarks'>('notes');
   const [searchTerm, setSearchTerm] = useState('');
   const [editingAyahId, setEditingAyahId] = useState<number | null>(null);
@@ -69,11 +71,16 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
   const filteredNotes = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     if (!q) return notes;
-    return notes.filter(
-      (n) =>
+    return notes.filter((n) => {
+      const meta = SURAHS_LIST.find(
+        (s) => s.number === n.surahNumber || s.name === n.surahName
+      );
+      return (
         n.text.toLowerCase().includes(q) ||
-        (n.surahName && n.surahName.includes(searchTerm.trim()))
-    );
+        (n.surahName && n.surahName.includes(searchTerm.trim())) ||
+        (meta && meta.englishName.toLowerCase().includes(q))
+      );
+    });
   }, [notes, searchTerm]);
 
   const filteredBookmarks = useMemo(() => {
@@ -81,10 +88,13 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
     return bookmarks.filter((b) => {
       if (bookmarkFilter !== 'all' && b.label !== bookmarkFilter) return false;
       if (!q) return true;
+      const meta = SURAHS_LIST.find((s) => s.number === b.surahNumber);
       return (
         b.surahName.includes(searchTerm.trim()) ||
+        (meta && meta.englishName.toLowerCase().includes(q)) ||
         (b.ayahSnippet && b.ayahSnippet.includes(searchTerm.trim())) ||
         b.label.includes(searchTerm.trim()) ||
+        getBookmarkDisplayLabel(b.label, 'en').toLowerCase().includes(q) ||
         String(b.surahNumber) === q
       );
     });
@@ -126,15 +136,18 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
           <div className="space-y-1.5">
             <div className="flex items-center gap-2 text-[#8A6418] dark:text-[#D9B45A] text-xs font-bold">
               <PenLine className="w-4 h-4 shrink-0" />
-              <span>مفكرة التدبر والعلامات المرجعية الشخصية</span>
+              <span>{t('مفكرة التدبر والعلامات المرجعية الشخصية', 'Personal Tadabbur Journal & Bookmarks')}</span>
             </div>
             <h2 className="text-xl sm:text-2xl font-bold text-[#1B1A17] dark:text-[#F6EFDD] font-kufi">
-              خواطرك ومواضع وقوفك في كتاب الله
+              {t('خواطرك ومواضع وقوفك في كتاب الله', 'Your Reflections & Reading Bookmarks')}
             </h2>
             <div className="flex items-start sm:items-center gap-2 text-xs text-[#5C5549] dark:text-slate-300 mt-1">
               <ShieldCheck className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A] shrink-0 mt-0.5 sm:mt-0" />
               <span>
-                محفوظة محلياً في جهازك فقط دون إرسال لأي خادم — نوصي بتصدير نسخة احتياطية دورياً.
+                {t(
+                  'محفوظة محلياً في جهازك فقط دون إرسال لأي خادم — نوصي بتصدير نسخة احتياطية دورياً.',
+                  'Stored locally on your device only without uploading to any server — we recommend exporting a backup regularly.'
+                )}
               </span>
             </div>
           </div>
@@ -146,7 +159,7 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
               className="min-h-[42px] py-2.5 px-4 bg-[#1F3A6E] hover:bg-[#2E5499] text-[#F6EFDD] rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 border border-[#648CD4]/40 transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D9B45A]"
             >
               <Download className="w-4 h-4" />
-              <span>تصدير نسخة احتياطية (.json)</span>
+              <span>{t('تصدير نسخة احتياطية (.json)', 'Export Backup (.json)')}</span>
             </button>
           )}
         </div>
@@ -163,7 +176,12 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
             }`}
           >
             <PenLine className="w-3.5 h-3.5 text-[#D9B45A]" />
-            <span>الخواطر والتدبر ({toArabicIndic(notes.length)})</span>
+            <span>
+              {t(
+                `الخواطر والتدبر (${formatLocalizedDigits(notes.length, lang)})`,
+                `Reflections (${notes.length})`
+              )}
+            </span>
           </button>
 
           <button
@@ -176,7 +194,12 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
             }`}
           >
             <Bookmark className="w-3.5 h-3.5 text-[#D9B45A]" />
-            <span>العلامات المرجعية ({toArabicIndic(bookmarks.length)})</span>
+            <span>
+              {t(
+                `العلامات المرجعية (${formatLocalizedDigits(bookmarks.length, lang)})`,
+                `Bookmarks (${bookmarks.length})`
+              )}
+            </span>
           </button>
         </div>
       </div>
@@ -184,18 +207,24 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
       {/* Search & Label Filter Bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="relative flex-1">
-          <Search className="absolute right-3.5 top-3.5 w-4 h-4 text-[#5C5549] dark:text-slate-400" />
+          <Search
+            className={`absolute top-3.5 w-4 h-4 text-[#5C5549] dark:text-slate-400 ${
+              isEnglish ? 'left-3.5' : 'right-3.5'
+            }`}
+          />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder={
               activeTab === 'notes'
-                ? 'ابحث في خواطرك أو باسم السورة...'
-                : 'ابحث في العلامات المرجعية باسم السورة أو نص الآية...'
+                ? t('ابحث في خواطرك أو باسم السورة...', 'Search notes or Surah name...')
+                : t('ابحث في العلامات المرجعية باسم السورة أو نص الآية...', 'Search bookmarks by Surah or Ayah text...')
             }
-            aria-label="بحث في المفكرة والعلامات المرجعية"
-            className="w-full min-h-[44px] pr-10 pl-4 py-3 rounded-xl bg-white dark:bg-[#10161f] border border-[#8A6418]/25 dark:border-slate-700/80 focus:border-[#8A6418] dark:focus:border-[#D9B45A] focus:ring-1 focus:ring-[#D9B45A] text-sm text-[#1B1A17] dark:text-[#F6EFDD] placeholder:text-[#5C5549]/70 dark:placeholder:text-slate-400 outline-none"
+            aria-label={t('بحث في المفكرة والعلامات المرجعية', 'Search journal and bookmarks')}
+            className={`w-full min-h-[44px] py-3 rounded-xl bg-white dark:bg-[#10161f] border border-[#8A6418]/25 dark:border-slate-700/80 focus:border-[#8A6418] dark:focus:border-[#D9B45A] focus:ring-1 focus:ring-[#D9B45A] text-sm text-[#1B1A17] dark:text-[#F6EFDD] placeholder:text-[#5C5549]/70 dark:placeholder:text-slate-400 outline-none ${
+              isEnglish ? 'pl-10 pr-4' : 'pr-10 pl-4'
+            }`}
           />
         </div>
 
@@ -210,7 +239,7 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
                   : 'bg-[#FBF7EE] dark:bg-[#10161f] border-[#8A6418]/25 dark:border-slate-800 text-[#5C5549] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white'
               }`}
             >
-              الكل
+              {t('الكل', 'All')}
             </button>
             {BOOKMARK_LABELS.map((lbl) => (
               <button
@@ -223,7 +252,7 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
                     : 'bg-[#FBF7EE] dark:bg-[#10161f] border-[#8A6418]/25 dark:border-slate-800 text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white'
                 }`}
               >
-                {lbl}
+                {getBookmarkDisplayLabel(lbl, lang)}
               </button>
             ))}
           </div>
@@ -238,16 +267,29 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
               <PenLine className="w-5 h-5" />
             </div>
             <h3 className="text-base font-bold text-[#1B1A17] dark:text-[#F6EFDD]">
-              {searchTerm.trim() ? 'لا توجد خواطر مطابقة لبحثك' : 'لا توجد خواطر مسجلة بعد'}
+              {searchTerm.trim()
+                ? t('لا توجد خواطر مطابقة لبحثك', 'No matching notes found')
+                : t('لا توجد خواطر مسجلة بعد', 'No reflections recorded yet')}
             </h3>
             <p className="text-xs text-[#5C5549] dark:text-slate-400 max-w-sm mx-auto leading-relaxed">
-              أثناء قراءتك في المصحف، انقر على أي آية واختر «مفكرتي الخاصة» لتسجيل ما يفتح الله به عليك من تدبر.
+              {t(
+                'أثناء قراءتك في المصحف، انقر على أي آية واختر «مفكرتي الخاصة» لتسجيل ما يفتح الله به عليك من تدبر.',
+                "While reading in the Mus'haf, tap any Ayah and choose “My Journal” to write down your reflections."
+              )}
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredNotes.map((note) => {
               const isEditing = editingAyahId === note.ayahId;
+              const surahMeta = SURAHS_LIST.find(
+                (s) => s.number === note.surahNumber || s.name === note.surahName
+              );
+              const noteSurahTitle = surahMeta
+                ? getSurahFullTitle(surahMeta, lang)
+                : note.surahName
+                ? t(`سورة ${note.surahName}`, `Surah ${note.surahName}`)
+                : null;
               return (
                 <div
                   key={note.ayahId}
@@ -257,9 +299,13 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
                     <div className="flex items-center justify-between gap-2 mb-3 pb-2 border-b border-[#8A6418]/15 dark:border-slate-800/80">
                       <div className="flex flex-wrap items-center gap-2 text-xs">
                         <span className="text-[#8A6418] dark:text-[#D9B45A] font-bold">
-                          {note.surahName
-                            ? `سورة ${note.surahName}${note.ayahNumber ? ` · آية ${toArabicIndic(note.ayahNumber)}` : ''}`
-                            : `الآية ${toArabicIndic(note.ayahId)}`}
+                          {noteSurahTitle
+                            ? `${noteSurahTitle}${
+                                note.ayahNumber
+                                  ? ` · ${t('آية', 'Ayah')} ${formatLocalizedDigits(note.ayahNumber, lang)}`
+                                  : ''
+                              }`
+                            : `${t('الآية', 'Ayah')} ${formatLocalizedDigits(note.ayahId, lang)}`}
                         </span>
                         <span aria-hidden="true" className="text-[#5C5549]/50 dark:text-slate-600">·</span>
                         <span className="text-[11px] text-[#5C5549] dark:text-slate-400 flex items-center gap-1">
@@ -273,8 +319,8 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
                           <button
                             type="button"
                             onClick={() => handleStartEdit(note)}
-                            aria-label="تعديل الخاطرة"
-                            title="تعديل الخاطرة"
+                            aria-label={t('تعديل الخاطرة', 'Edit note')}
+                            title={t('تعديل الخاطرة', 'Edit note')}
                             className="min-w-[34px] min-h-[34px] p-1.5 rounded-lg text-[#5C5549] dark:text-slate-400 hover:text-[#8A6418] dark:hover:text-[#D9B45A] hover:bg-[#EFE6D1] dark:hover:bg-slate-800 flex items-center justify-center transition-colors cursor-pointer"
                           >
                             <Edit3 className="w-4 h-4" />
@@ -283,8 +329,8 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
                         <button
                           type="button"
                           onClick={() => onDeleteNote(note.ayahId)}
-                          aria-label="حذف الخاطرة"
-                          title="حذف الخاطرة"
+                          aria-label={t('حذف الخاطرة', 'Delete note')}
+                          title={t('حذف الخاطرة', 'Delete note')}
                           className="min-w-[34px] min-h-[34px] p-1.5 rounded-lg text-[#5C5549] dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-[#EFE6D1] dark:hover:bg-slate-800 flex items-center justify-center transition-colors cursor-pointer"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -298,7 +344,7 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
                           rows={4}
                           value={editingDraft}
                           onChange={(e) => setEditingDraft(e.target.value)}
-                          aria-label="تعديل نص الخاطرة"
+                          aria-label={t('تعديل نص الخاطرة', 'Edit reflection text')}
                           className="font-naskh w-full p-3 rounded-xl bg-white dark:bg-slate-950 border border-[#8A6418]/50 dark:border-[#D9B45A]/50 text-[#1B1A17] dark:text-[#F6EFDD] text-base leading-[1.8] resize-none outline-none focus:border-[#8A6418] dark:focus:border-[#D9B45A]"
                         />
                         <div className="flex items-center justify-end gap-2">
@@ -308,7 +354,7 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
                             className="min-h-[34px] py-1 px-3 rounded-lg bg-[#EFE6D1] dark:bg-slate-800 hover:bg-[#E4D7BA] dark:hover:bg-slate-700 text-xs text-[#1B1A17] dark:text-slate-300 flex items-center gap-1 cursor-pointer"
                           >
                             <X className="w-3.5 h-3.5" />
-                            <span>إلغاء</span>
+                            <span>{t('إلغاء', 'Cancel')}</span>
                           </button>
                           <button
                             type="button"
@@ -316,7 +362,7 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
                             className="min-h-[34px] py-1 px-3.5 rounded-lg bg-[#1F3A6E] hover:bg-[#2E5499] text-xs font-bold text-[#F6EFDD] flex items-center gap-1 cursor-pointer"
                           >
                             <Check className="w-3.5 h-3.5 text-[#D9B45A]" />
-                            <span>حفظ التعديل</span>
+                            <span>{t('حفظ التعديل', 'Save Changes')}</span>
                           </button>
                         </div>
                       </div>
@@ -341,7 +387,7 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
                         className="min-h-[36px] px-2.5 rounded-lg text-xs text-[#1F3A6E] dark:text-[#648CD4] hover:text-[#8A6418] dark:hover:text-[#D9B45A] font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
                       >
                         <BookOpen className="w-3.5 h-3.5" />
-                        <span>مراجعة الآية في المصحف</span>
+                        <span>{t('مراجعة الآية في المصحف', "Open Ayah in Mus'haf")}</span>
                       </button>
                     </div>
                   )}
@@ -360,15 +406,25 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
               <Bookmark className="w-5 h-5" />
             </div>
             <h3 className="text-base font-bold text-[#1B1A17] dark:text-[#F6EFDD]">
-              {bookmarks.length === 0 ? 'لا توجد علامات مرجعية محفوظة بعد' : 'لا توجد علامات مطابقة للفلتر'}
+              {bookmarks.length === 0
+                ? t('لا توجد علامات مرجعية محفوظة بعد', 'No saved bookmarks yet')
+                : t('لا توجد علامات مطابقة للفلتر', 'No bookmarks match this filter')}
             </h3>
             <p className="text-xs text-[#5C5549] dark:text-slate-400 max-w-md mx-auto leading-relaxed">
-              من صفحة المصحف، انقر على أيقونة العلامة المرجعية بجانب أي آية لحفظ موضع توقفك والوصول إليه هنا في أي وقت.
+              {t(
+                'من صفحة المصحف، انقر على أيقونة العلامة المرجعية بجانب أي آية لحفظ موضع توقفك والوصول إليه هنا في أي وقت.',
+                "From the Mus'haf reader, tap the bookmark icon next to any Ayah to save your place and access it anytime."
+              )}
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredBookmarks.map((b) => (
+            {filteredBookmarks.map((b) => {
+              const surahMeta = SURAHS_LIST.find((s) => s.number === b.surahNumber);
+              const surahTitle = surahMeta
+                ? getSurahFullTitle(surahMeta, lang)
+                : t(`سورة ${b.surahName}`, `Surah ${b.surahName}`);
+              return (
               <div
                 key={b.surahNumber}
                 className="p-5 rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f] border border-[#8A6418]/25 dark:border-slate-800 shadow-lg flex flex-col justify-between space-y-3.5"
@@ -377,12 +433,14 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
                   <div className="flex items-center justify-between gap-2 pb-2 border-b border-[#8A6418]/15 dark:border-slate-800/80">
                     <div className="flex flex-wrap items-center gap-2 text-xs tabular-nums">
                       <span className="text-[#8A6418] dark:text-[#D9B45A] font-bold">
-                        سورة {b.surahName} · آية {toArabicIndic(b.ayahNumber)}
+                        {surahTitle} · {t('آية', 'Ayah')} {formatLocalizedDigits(b.ayahNumber, lang)}
                       </span>
                       {b.page && (
                         <>
                           <span aria-hidden="true" className="text-[#5C5549]/50 dark:text-slate-600">·</span>
-                          <span className="text-[#5C5549] dark:text-slate-400">ص {toArabicIndic(b.page)}</span>
+                          <span className="text-[#5C5549] dark:text-slate-400">
+                            {t('ص', 'p.')} {formatLocalizedDigits(b.page, lang)}
+                          </span>
                         </>
                       )}
                     </div>
@@ -393,8 +451,8 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
                         const next = removeSurahBookmark(b.surahNumber);
                         setBookmarks(next);
                       }}
-                      aria-label={`إزالة العلامة المرجعية من سورة ${b.surahName}`}
-                      title="حذف العلامة المرجعية"
+                      aria-label={t(`إزالة العلامة المرجعية من سورة ${b.surahName}`, `Remove bookmark from ${surahTitle}`)}
+                      title={t('حذف العلامة المرجعية', 'Delete Bookmark')}
                       className="min-w-[34px] min-h-[34px] p-1.5 rounded-lg text-[#5C5549] dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-[#EFE6D1] dark:hover:bg-slate-800 flex items-center justify-center transition-colors cursor-pointer"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -402,7 +460,7 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
                   </div>
 
                   {b.ayahSnippet && (
-                    <p className="font-quran text-[#1B1A17] dark:text-[#F6EFDD]/95 text-lg sm:text-xl leading-loose line-clamp-2">
+                    <p dir="rtl" lang="ar" className="font-quran text-[#1B1A17] dark:text-[#F6EFDD]/95 text-lg sm:text-xl leading-loose line-clamp-2 text-right">
                       ﴿ {b.ayahSnippet} ﴾
                     </p>
                   )}
@@ -423,7 +481,7 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
                             : 'bg-[#EFE6D1] dark:bg-slate-950 border-[#8A6418]/20 dark:border-slate-800 text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-slate-200'
                         }`}
                       >
-                        {lbl}
+                        {getBookmarkDisplayLabel(lbl, lang)}
                       </button>
                     ))}
                   </div>
@@ -432,7 +490,7 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
                 {onNavigateToAyah && (
                   <div className="pt-2.5 border-t border-[#8A6418]/15 dark:border-slate-800/80 flex items-center justify-between text-xs">
                     <span className="text-[11px] text-[#5C5549] dark:text-slate-500">
-                      حُفظت في {b.savedAt.slice(0, 10)}
+                      {t(`حُفظت في ${b.savedAt.slice(0, 10)}`, `Saved ${b.savedAt.slice(0, 10)}`)}
                     </span>
                     <button
                       type="button"
@@ -440,12 +498,13 @@ export const QuranJournal: React.FC<QuranJournalProps> = ({
                       className="min-h-[36px] px-3 rounded-lg bg-[#1F3A6E] hover:bg-[#2E5499] border border-[#648CD4]/40 text-[#F6EFDD] font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
                     >
                       <BookOpen className="w-3.5 h-3.5 text-[#D9B45A]" />
-                      <span>متابعة من هذه الآية</span>
+                      <span>{t('متابعة من هذه الآية', 'Resume from Ayah')}</span>
                     </button>
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )
       )}

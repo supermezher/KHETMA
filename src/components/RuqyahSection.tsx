@@ -3,15 +3,26 @@ import {
   RUQYAH_ITEMS,
   RUQYAH_ETIQUETTES,
   RuqyahItem,
-  AudioAyahRef
+  AudioAyahRef,
+  getRuqyahEtiquetteTitle,
+  getRuqyahEtiquetteDesc,
+  getRuqyahItemTitle,
+  getRuqyahItemSource,
+  getRuqyahItemVirtue,
+  getRuqyahItemGrade,
+  getRuqyahItemInstruction,
+  getRuqyahAudioStepLabel,
 } from '../data/ruqyahData';
 import {
   RECITERS_LIST,
   Reciter,
-  getAyahAudioUrl
+  getAyahAudioUrl,
+  getReciterDisplayCountry,
+  getReciterDisplayName,
 } from '../data/reciters';
-import { SURAHS_LIST } from '../data/quranMetadata';
+import { SURAHS_LIST, getSurahDisplayName } from '../data/quranMetadata';
 import { safeLocalStorage } from '../utils/safeStorage';
+import { formatLocalizedDigits, useLanguage } from '../utils/i18n';
 import {
   ShieldCheck, Sparkles, BookOpen, Heart, Volume2, Copy, Check,
   RotateCcw, Info, Compass, CheckCircle2, Pause, Square,
@@ -29,6 +40,7 @@ type TabType = 'all' | 'quranic' | 'prophetic' | 'sakina' | 'custom' | 'etiquett
 export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
   onNavigateToAyah,
 }) => {
+  const { lang, isEnglish } = useLanguage();
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [counters, setCounters] = useState<Record<string, number>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -142,7 +154,11 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
     stopAllAudio();
     saveCustomItems([]);
     setIsRestoreConfirmOpen(false);
-    showStatusToast('تمت استعادة قائمة الرقية الشرعية الافتراضية بنجاح');
+    showStatusToast(
+      isEnglish
+        ? 'Default Ruqyah list restored successfully.'
+        : 'تمت استعادة قائمة الرقية الشرعية الافتراضية بنجاح'
+    );
   };
 
   // Filter items based on active tab
@@ -180,7 +196,12 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
 
   // Safe clipboard copy
   const handleCopy = async (item: RuqyahItem) => {
-    const textToCopy = `${item.title}\n\n${item.arabicText}\n\n[المصدر: ${item.source}]\nفضله: ${item.virtueAndFadl}\nمن تطبيق بَيَان - المصحف الرقمي الوقفي`;
+    const title = getRuqyahItemTitle(item, lang);
+    const source = getRuqyahItemSource(item, lang);
+    const virtue = getRuqyahItemVirtue(item, lang);
+    const textToCopy = isEnglish
+      ? `${title}\n\n${item.arabicText}\n\n[Source: ${source}]\nVirtue: ${virtue}\nFrom Bayan App - Digital Qur'an Mus'haf`
+      : `${title}\n\n${item.arabicText}\n\n[المصدر: ${source}]\nفضله: ${virtue}\nمن تطبيق بَيَان - المصحف الرقمي الوقفي`;
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(textToCopy);
@@ -225,7 +246,11 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
         setIsPlayingAudio(false);
       } else {
         audioRef.current?.play().then(() => setIsPlayingAudio(true)).catch(() => {
-          showStatusToast('تعذر استئناف التلاوة الصوتية، يرجى التحقق من الاتصال');
+          showStatusToast(
+            isEnglish
+              ? 'Unable to resume recitation audio; please check your connection.'
+              : 'تعذر استئناف التلاوة الصوتية، يرجى التحقق من الاتصال'
+          );
         });
       }
       return;
@@ -293,7 +318,11 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
       audio.onerror = () => {
         setIsAudioLoading(false);
         setIsPlayingAudio(false);
-        showStatusToast('تعذر تحميل ملف التلاوة من الخادم، تحقق من اتصال الإنترنت');
+        showStatusToast(
+          isEnglish
+            ? 'Unable to load recitation audio from server; please check your connection.'
+            : 'تعذر تحميل ملف التلاوة من الخادم، تحقق من اتصال الإنترنت'
+        );
       };
       audioRef.current = audio;
     }
@@ -311,7 +340,7 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
         setIsAudioLoading(false);
         setIsPlayingAudio(false);
       });
-  }, [stopAllAudio, showStatusToast]);
+  }, [stopAllAudio, showStatusToast, isEnglish]);
 
   useEffect(() => {
     if (audioRef.current) {
@@ -352,7 +381,11 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
     stopAllAudio();
 
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-      showStatusToast('ميزة النطق الصوتي للأدعية غير مدعومة في هذا المتصفح');
+      showStatusToast(
+        isEnglish
+          ? 'Speech synthesis for prophetic duas is not supported in this browser.'
+          : 'ميزة النطق الصوتي للأدعية غير مدعومة في هذا المتصفح'
+      );
       return;
     }
 
@@ -386,12 +419,17 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
   // CUSTOM ITEM MODAL HANDLER
   // -------------------------------------------------------------
   const handleOpenAddModal = () => {
+    const fatiha = SURAHS_LIST[0];
     setNewItemCategory('quranic');
     setNewItemTitle('');
     setSelectedSurahNumber(1);
     setFromAyah(1);
     setToAyah(7);
-    setNewItemSource('سورة الفاتحة: 1 - 7');
+    setNewItemSource(
+      isEnglish
+        ? `${getSurahDisplayName(fatiha, 'en')}: 1 - 7`
+        : 'سورة الفاتحة: 1 - 7'
+    );
     setNewItemArabicText('');
     setNewItemRepeatTarget(3);
     setNewItemVirtue('');
@@ -407,7 +445,11 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
       setFromAyah(1);
       const defaultTo = Math.min(surah.numberOfAyahs, 5);
       setToAyah(defaultTo);
-      setNewItemSource(`سورة ${surah.name}: 1${defaultTo > 1 ? ` - ${defaultTo}` : ''}`);
+      setNewItemSource(
+        isEnglish
+          ? `${getSurahDisplayName(surah, 'en')}: 1${defaultTo > 1 ? ` - ${defaultTo}` : ''}`
+          : `سورة ${surah.name}: 1${defaultTo > 1 ? ` - ${defaultTo}` : ''}`
+      );
     }
   };
 
@@ -419,18 +461,26 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
     setFromAyah(safeFrom);
     setToAyah(safeTo);
     if (surah) {
-      setNewItemSource(`سورة ${surah.name}: ${safeFrom}${safeTo > safeFrom ? ` - ${safeTo}` : ''}`);
+      setNewItemSource(
+        isEnglish
+          ? `${getSurahDisplayName(surah, 'en')}: ${safeFrom}${safeTo > safeFrom ? ` - ${safeTo}` : ''}`
+          : `سورة ${surah.name}: ${safeFrom}${safeTo > safeFrom ? ` - ${safeTo}` : ''}`
+      );
     }
   };
 
   const handleSubmitNewItem = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newItemTitle.trim()) {
-      setFormError('يرجى إدخال عنوان الورد المبارك');
+      setFormError(isEnglish ? 'Please enter a title for the Ruqyah entry.' : 'يرجى إدخال عنوان الورد المبارك');
       return;
     }
     if (!newItemArabicText.trim()) {
-      setFormError('يرجى إدخال نص الآية أو الدعاء باللغة العربية');
+      setFormError(
+        isEnglish
+          ? 'Please enter the Arabic Quranic or Dua text.'
+          : 'يرجى إدخال نص الآية أو الدعاء باللغة العربية'
+      );
       return;
     }
 
@@ -443,7 +493,8 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
         sequence.push({
           surah: selectedSurahNumber,
           ayah: a,
-          label: `${surah?.name || 'سورة'}: ${a}`
+          label: `${surah?.name || 'سورة'}: ${a}`,
+          labelEn: `${surah ? getSurahDisplayName(surah, 'en') : 'Surah'}: ${a}`,
         });
       }
     }
@@ -452,16 +503,28 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
       id: `custom-${Date.now()}`,
       category: newItemCategory,
       title: newItemTitle.trim(),
-      source: newItemSource.trim() || (newItemCategory === 'quranic' ? `سورة ${surah?.name}` : 'مأثور'),
+      source:
+        newItemSource.trim() ||
+        (newItemCategory === 'quranic'
+          ? isEnglish
+            ? `${surah ? getSurahDisplayName(surah, 'en') : 'Surah'}`
+            : `سورة ${surah?.name}`
+          : isEnglish
+          ? 'Authentic Narration'
+          : 'مأثور'),
       arabicText: newItemArabicText.trim(),
       repeatTarget: Math.max(1, newItemRepeatTarget),
-      virtueAndFadl: newItemVirtue.trim() || 'آية / دعاء مبارك للشفاء والتحصين ودفع البلاء بإذن الله.',
+      virtueAndFadl:
+        newItemVirtue.trim() ||
+        (isEnglish
+          ? 'A blessed verse / supplication for healing, protection, and comfort by Allah’s leave.'
+          : 'آية / دعاء مبارك للشفاء والتحصين ودفع البلاء بإذن الله.'),
       instruction: newItemInstruction.trim() || undefined,
       surahNumber: newItemCategory === 'quranic' ? selectedSurahNumber : undefined,
       ayahNumber: newItemCategory === 'quranic' ? fromAyah : undefined,
       audioSequence: sequence,
       isCustom: true,
-      createdAt: new Date().toLocaleDateString('ar-SA')
+      createdAt: new Date().toLocaleDateString(isEnglish ? 'en-US' : 'ar-SA')
     };
 
     saveCustomItems([finalItem, ...customItems]);
@@ -479,22 +542,45 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
           <div className="space-y-2 max-w-2xl">
             <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-xl bg-[#D9B45A]/15 text-[#8A6418] dark:text-[#D9B45A] text-xs font-bold border border-[#8A6418]/30 dark:border-[#D9B45A]/40 shadow-sm">
               <ShieldCheck className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
-              <span>الرقية الشرعية المحققة من القرآن والسنة</span>
+              <span>
+                {isEnglish
+                  ? 'Authentic Ruqyah from the Quran & Sunnah'
+                  : 'الرقية الشرعية المحققة من القرآن والسنة'}
+              </span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1B1A17] dark:text-[#F6EFDD] font-kufi tracking-tight">
+            <h1
+              dir="rtl"
+              lang="ar"
+              className="text-2xl sm:text-3xl font-extrabold text-[#1B1A17] dark:text-[#F6EFDD] font-kufi tracking-tight"
+            >
               وَنُنَزِّلُ مِنَ الْقُرْآنِ مَا هُوَ شِفَاءٌ وَرَحْمَةٌ
             </h1>
+            {isEnglish && (
+              <p className="text-xs font-semibold text-[#8A6418] dark:text-[#D9B45A] italic">
+                “And We send down of the Qur’an that which is healing and mercy for the believers…” (Al-Isra: 82)
+              </p>
+            )}
             <p className="text-xs sm:text-sm text-[#5C5549] dark:text-slate-300 leading-relaxed">
-              حصن المسلم الجامع لآيات الشفاء والتحصين من العين والسحر، مع الاستماع المباشر بصوت كبار القراء، وعداد تكرار تفاعلي، وإمكانية إضافة أوراد مخصصة.
+              {isEnglish
+                ? 'A comprehensive fortress of authentic healing verses and prophetic supplications for protection and inner peace, complete with reciter audio playback, repeat counters, and custom entries.'
+                : 'حصن المسلم الجامع لآيات الشفاء والتحصين من العين والسحر، مع الاستماع المباشر بصوت كبار القراء، وعداد تكرار تفاعلي، وإمكانية إضافة أوراد مخصصة.'}
             </p>
           </div>
 
           {/* Daily Progress Card & Add Button */}
           <div className="w-full md:w-auto shrink-0 bg-[#EFE6D1] dark:bg-slate-950/80 border border-[#8A6418]/25 dark:border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col items-center justify-center min-w-[210px] shadow-lg">
-            <div className="text-[11px] text-[#5C5549] dark:text-slate-400 font-semibold mb-1">إنجاز رقية اليوم</div>
+            <div className="text-[11px] text-[#5C5549] dark:text-slate-400 font-semibold mb-1">
+              {isEnglish ? 'Today’s Ruqyah Progress' : 'إنجاز رقية اليوم'}
+            </div>
             <div className="flex items-baseline gap-1">
-              <span className="text-3xl font-black text-[#8A6418] dark:text-[#D9B45A] font-mono">{completedCount}</span>
-              <span className="text-xs text-[#5C5549] dark:text-slate-400">من {allItems.length} أوراد</span>
+              <span className="text-3xl font-black text-[#8A6418] dark:text-[#D9B45A] font-mono tabular-nums">
+                {formatLocalizedDigits(completedCount, lang)}
+              </span>
+              <span className="text-xs text-[#5C5549] dark:text-slate-400">
+                {isEnglish
+                  ? `of ${allItems.length} items`
+                  : `من ${formatLocalizedDigits(allItems.length, lang)} أوراد`}
+              </span>
             </div>
             
             {/* Progress bar */}
@@ -509,17 +595,17 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
               <button
                 onClick={handleOpenAddModal}
                 className="py-1.5 px-3 rounded-xl bg-[#1F3A6E] hover:bg-[#2E5499] text-[#F6EFDD] text-xs font-bold flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
-                title="إضافة ورد جديد للرقية الشرعية"
+                title={isEnglish ? 'Add a custom Ruqyah entry' : 'إضافة ورد جديد للرقية الشرعية'}
               >
                 <Plus className="w-3.5 h-3.5 text-[#D9B45A]" />
-                <span>إضافة ورد جديد</span>
+                <span>{isEnglish ? 'Add Custom Entry' : 'إضافة ورد جديد'}</span>
               </button>
 
               {completedCount > 0 && (
                 <button
                   onClick={handleResetAll}
                   className="p-1.5 rounded-xl text-[#5C5549] dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-[#E4D7BA] dark:hover:bg-slate-900 transition-colors cursor-pointer"
-                  title="إعادة تصفير عدادات الأوراد"
+                  title={isEnglish ? 'Reset all daily counters' : 'إعادة تصفير عدادات الأوراد'}
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                 </button>
@@ -529,16 +615,20 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
         </div>
 
         {/* Decorative background glow */}
-        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-[#D9B45A]/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute top-0 end-0 -me-16 -mt-16 w-64 h-64 bg-[#D9B45A]/10 rounded-full blur-3xl pointer-events-none" />
       </div>
 
       {/* Sharia & Medical Disclaimer Banner */}
       <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-[#8A6418]/30 dark:border-amber-500/30 text-[#4A3B12] dark:text-amber-200 text-xs leading-relaxed flex items-start sm:items-center gap-3 shadow-sm">
         <AlertCircle className="w-5 h-5 text-[#8A6418] dark:text-amber-400 shrink-0 mt-0.5 sm:mt-0" />
         <div>
-          <strong className="font-bold text-[#8A6418] dark:text-amber-300 block sm:inline sm:ml-1">تنبيه شرعي وطبي هام:</strong>
+          <strong className="font-bold text-[#8A6418] dark:text-amber-300 block sm:inline sm:me-1">
+            {isEnglish ? 'Important Islamic & Medical Note:' : 'تنبيه شرعي وطبي هام:'}
+          </strong>
           <span>
-            الرقية الشرعية والدعاء سببان شرعيان مباركان للشفاء واستجلاب البركة، ولا يُغنيان عن مراجعة الطبيب المختص والأخذ بالأسباب الطبية المادية وتناول العلاج الموصوف؛ عملاً بالحديث الشريف الصحيح: «تَدَاوَوْا فَإِنَّ اللَّهَ لَمْ يَضَعْ دَاءً إِلَّا وَضَعَ لَهُ شِفَاءً» (رواه الإمام أحمد وأصحاب السنن).
+            {isEnglish
+              ? 'Ruqyah and supplication are blessed spiritual means for healing and serenity, and do not replace consulting a qualified physician or taking prescribed medical treatment—in obedience to the authentic prophetic guidance: “Seek medical treatment, for Allah has not created a disease without also providing its cure.”'
+              : 'الرقية الشرعية والدعاء سببان شرعيان مباركان للشفاء واستجلاب البركة، ولا يُغنيان عن مراجعة الطبيب المختص والأخذ بالأسباب الطبية المادية وتناول العلاج الموصوف؛ عملاً بالحديث الشريف الصحيح: «تَدَاوَوْا فَإِنَّ اللَّهَ لَمْ يَضَعْ دَاءً إِلَّا وَضَعَ لَهُ شِفَاءً» (رواه الإمام أحمد وأصحاب السنن).'}
           </span>
         </div>
       </div>
@@ -550,8 +640,12 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
             <Volume2 className="w-4 h-4" />
           </div>
           <div>
-            <span className="text-xs font-bold text-[#1B1A17] dark:text-white block">صوت التلاوة للرقية</span>
-            <span className="text-[11px] text-[#5C5549] dark:text-slate-400">اختر القارئ واستمع لآيات الشفاء</span>
+            <span className="text-xs font-bold text-[#1B1A17] dark:text-white block">
+              {isEnglish ? 'Ruqyah Recitation Audio' : 'صوت التلاوة للرقية'}
+            </span>
+            <span className="text-[11px] text-[#5C5549] dark:text-slate-400">
+              {isEnglish ? 'Choose a reciter and listen to verses of healing' : 'اختر القارئ واستمع لآيات الشفاء'}
+            </span>
           </div>
         </div>
 
@@ -563,14 +657,14 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
               className="py-1.5 px-3 rounded-xl bg-[#EFE6D1] dark:bg-slate-950 border border-[#8A6418]/25 dark:border-slate-800 hover:border-[#8A6418]/50 dark:hover:border-slate-700 text-xs text-[#1B1A17] dark:text-slate-200 font-bold flex items-center gap-2 transition-colors cursor-pointer"
             >
               <User className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
-              <span>{selectedReciter.name}</span>
+              <span>{getReciterDisplayName(selectedReciter, lang)}</span>
               <ChevronDown className="w-3.5 h-3.5 text-[#5C5549] dark:text-slate-400" />
             </button>
 
             {isReciterMenuOpen && (
-              <div className="absolute left-0 sm:right-0 mt-1.5 w-64 max-h-60 overflow-y-auto bg-[#FBF7EE] dark:bg-slate-950 border border-[#8A6418]/30 dark:border-slate-800 rounded-2xl p-1.5 shadow-2xl z-50">
+              <div className="absolute start-0 mt-1.5 w-64 max-h-60 overflow-y-auto bg-[#FBF7EE] dark:bg-slate-950 border border-[#8A6418]/30 dark:border-slate-800 rounded-2xl p-1.5 shadow-2xl z-50">
                 <div className="text-[11px] font-bold text-[#5C5549] dark:text-slate-400 px-2.5 py-1.5 border-b border-[#8A6418]/15 dark:border-slate-800">
-                  اختر القارئ المفضل للرقية:
+                  {isEnglish ? 'Select preferred Ruqyah reciter:' : 'اختر القارئ المفضل للرقية:'}
                 </div>
                 {RECITERS_LIST.map((r) => (
                   <button
@@ -585,14 +679,16 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                         }
                       }
                     }}
-                    className={`w-full text-right px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors cursor-pointer ${
+                    className={`w-full text-start px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors cursor-pointer ${
                       selectedReciter.id === r.id
                         ? 'bg-[#1F3A6E] text-[#F6EFDD] font-bold'
                         : 'text-[#1B1A17] dark:text-slate-300 hover:bg-[#EFE6D1] dark:hover:bg-slate-900'
                     }`}
                   >
-                    <span>{r.name}</span>
-                    <span className={`text-[10px] ${selectedReciter.id === r.id ? 'text-[#D9B45A]' : 'text-[#5C5549] dark:text-slate-500'}`}>{r.country}</span>
+                    <span>{getReciterDisplayName(r, lang)}</span>
+                    <span className={`text-[10px] ${selectedReciter.id === r.id ? 'text-[#D9B45A]' : 'text-[#5C5549] dark:text-slate-500'}`}>
+                      {getReciterDisplayCountry(r, lang)}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -607,10 +703,10 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                 ? 'bg-[#D9B45A]/20 border-[#8A6418] dark:border-[#D9B45A]/50 text-[#8A6418] dark:text-[#D9B45A]'
                 : 'bg-[#EFE6D1] dark:bg-slate-950 border-[#8A6418]/20 dark:border-slate-800 text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-slate-200'
             }`}
-            title="تكرار الآية تلقائياً بعدد المرات المسنونة"
+            title={isEnglish ? 'Automatically repeat until target count' : 'تكرار الآية تلقائياً بعدد المرات المسنونة'}
           >
             <RefreshCw className={`w-3.5 h-3.5 ${autoLoopUntilTarget ? 'text-[#8A6418] dark:text-[#D9B45A] animate-spin-slow' : ''}`} />
-            <span>تكرار تلقائي للورد</span>
+            <span>{isEnglish ? 'Auto Repeat' : 'تكرار تلقائي للورد'}</span>
           </button>
 
           {/* Speed Selector */}
@@ -635,10 +731,14 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
             <button
               onClick={handleRestoreDefaults}
               className="py-1.5 px-3 rounded-xl bg-amber-500/15 border border-[#8A6418]/35 text-[#8A6418] dark:text-amber-300 text-xs font-medium flex items-center gap-1 hover:bg-amber-500/25 transition-colors cursor-pointer"
-              title="حذف جميع الأوراد المضافة واسترجاع القائمة الافتراضية"
+              title={isEnglish ? 'Remove custom entries and restore default list' : 'حذف جميع الأوراد المضافة واسترجاع القائمة الافتراضية'}
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>استعادة الأصل ({customItems.length} مضاف)</span>
+              <span>
+                {isEnglish
+                  ? `Restore Defaults (${customItems.length} custom)`
+                  : `استعادة الأصل (${formatLocalizedDigits(customItems.length, lang)} مضاف)`}
+              </span>
             </button>
           )}
 
@@ -649,7 +749,7 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
               className="py-1.5 px-3 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-700 dark:text-rose-300 text-xs font-bold flex items-center gap-1 hover:bg-rose-500/25 transition-colors cursor-pointer"
             >
               <Square className="w-3.5 h-3.5 fill-current" />
-              <span>إيقاف الصوت</span>
+              <span>{isEnglish ? 'Stop Audio' : 'إيقاف الصوت'}</span>
             </button>
           )}
         </div>
@@ -658,12 +758,14 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
       {/* Tabs Filter Bar */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-none select-none">
         {[
-          { id: 'all', label: 'الرقية الشاملة', count: allItems.length, icon: Sparkles },
-          ...(customItems.length > 0 ? [{ id: 'custom', label: 'أورادي المضافة', count: customItems.length, icon: Plus }] : []),
-          { id: 'quranic', label: 'آيات الشفاء والحفظ', count: allItems.filter(i => i.category === 'quranic').length, icon: BookOpen },
-          { id: 'prophetic', label: 'الأدعية النبوية', count: allItems.filter(i => i.category === 'prophetic').length, icon: ShieldCheck },
-          { id: 'sakina', label: 'سكينة وطرد القلق', count: allItems.filter(i => i.category === 'sakina').length, icon: Heart },
-          { id: 'etiquette', label: 'آداب وسنن الرقية', count: RUQYAH_ETIQUETTES.length, icon: Compass },
+          { id: 'all', label: isEnglish ? 'All Ruqyah' : 'الرقية الشاملة', count: allItems.length, icon: Sparkles },
+          ...(customItems.length > 0
+            ? [{ id: 'custom', label: isEnglish ? 'My Custom Items' : 'أورادي المضافة', count: customItems.length, icon: Plus }]
+            : []),
+          { id: 'quranic', label: isEnglish ? 'Quranic Healing' : 'آيات الشفاء والحفظ', count: allItems.filter(i => i.category === 'quranic').length, icon: BookOpen },
+          { id: 'prophetic', label: isEnglish ? 'Prophetic Duas' : 'الأدعية النبوية', count: allItems.filter(i => i.category === 'prophetic').length, icon: ShieldCheck },
+          { id: 'sakina', label: isEnglish ? 'Serenity & Calm' : 'سكينة وطرد القلق', count: allItems.filter(i => i.category === 'sakina').length, icon: Heart },
+          { id: 'etiquette', label: isEnglish ? 'Etiquette & Sunnah' : 'آداب وسنن الرقية', count: RUQYAH_ETIQUETTES.length, icon: Compass },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -679,10 +781,10 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
             >
               <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-[#D9B45A]' : ''}`} />
               <span>{tab.label}</span>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-lg ${
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-lg tabular-nums ${
                 isActive ? 'bg-white/20 text-[#F6EFDD]' : 'bg-[#EFE6D1] dark:bg-slate-800 text-[#5C5549] dark:text-slate-400'
               }`}>
-                {tab.count}
+                {formatLocalizedDigits(tab.count, lang)}
               </span>
             </button>
           );
@@ -695,10 +797,12 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
           <div className="p-4 rounded-2xl bg-[#FBF7EE] dark:bg-slate-900 border border-[#8A6418]/25 dark:border-slate-800">
             <h3 className="font-bold text-[#1B1A17] dark:text-white text-sm mb-1 flex items-center gap-2">
               <Compass className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A]" />
-              <span>شروط وآداب الرقية الشرعية الصحيحة</span>
+              <span>{isEnglish ? 'Conditions & Etiquette of Authentic Ruqyah' : 'شروط وآداب الرقية الشرعية الصحيحة'}</span>
             </h3>
             <p className="text-xs text-[#5C5549] dark:text-slate-400">
-              أجمع أهل العلم على أن الرقية تكون مشروعة ونافعة إذا تحققت فيها الشروط النبوية التالية:
+              {isEnglish
+                ? 'Scholars agree that Ruqyah is sound and beneficial when it fulfills the following prophetic conditions:'
+                : 'أجمع أهل العلم على أن الرقية تكون مشروعة ونافعة إذا تحققت فيها الشروط النبوية التالية:'}
             </p>
           </div>
 
@@ -708,12 +812,16 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                 key={eti.id}
                 className="p-5 rounded-2xl bg-[#FBF7EE] dark:bg-slate-900/90 border border-[#8A6418]/25 dark:border-slate-800 flex items-start gap-3.5 hover:border-[#8A6418]/45 dark:hover:border-slate-700 transition-colors shadow-md"
               >
-                <div className="w-9 h-9 rounded-xl bg-[#D9B45A]/15 border border-[#8A6418]/30 dark:border-[#D9B45A]/30 flex items-center justify-center text-[#8A6418] dark:text-[#D9B45A] shrink-0 font-bold text-sm">
-                  {eti.id}
+                <div className="w-9 h-9 rounded-xl bg-[#D9B45A]/15 border border-[#8A6418]/30 dark:border-[#D9B45A]/30 flex items-center justify-center text-[#8A6418] dark:text-[#D9B45A] shrink-0 font-bold text-sm tabular-nums">
+                  {formatLocalizedDigits(eti.id, lang)}
                 </div>
                 <div className="space-y-1">
-                  <h4 className="font-bold text-[#1B1A17] dark:text-white text-sm">{eti.title}</h4>
-                  <p className="text-xs text-[#5C5549] dark:text-slate-300 leading-relaxed">{eti.desc}</p>
+                  <h4 className="font-bold text-[#1B1A17] dark:text-white text-sm">
+                    {getRuqyahEtiquetteTitle(eti, lang)}
+                  </h4>
+                  <p className="text-xs text-[#5C5549] dark:text-slate-300 leading-relaxed">
+                    {getRuqyahEtiquetteDesc(eti, lang)}
+                  </p>
                 </div>
               </div>
             ))}
@@ -723,7 +831,10 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
           <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-[#8A6418]/30 dark:border-amber-500/30 text-[#4A3B12] dark:text-amber-200 text-xs leading-relaxed flex items-center gap-3">
             <Info className="w-5 h-5 text-[#8A6418] dark:text-amber-400 shrink-0" />
             <span>
-              <strong>تذكير نبوي:</strong> أفضل ما يرقي به المسلم نفسه هو أن يرقي نفسه بنفسه دون الذهاب لأحد؛ اقتداءً برسول الله ﷺ وأخذاً بمسلك التوكل التام وصدق الالتجاء.
+              <strong>{isEnglish ? 'Prophetic Reminder:' : 'تذكير نبوي:'}</strong>{' '}
+              {isEnglish
+                ? 'The best Ruqyah is when a Muslim recites for themselves with sincere reliance on Allah (Tawakkul), following the practice of the Prophet ﷺ.'
+                : 'أفضل ما يرقي به المسلم نفسه هو أن يرقي نفسه بنفسه دون الذهاب لأحد؛ اقتداءً برسول الله ﷺ وأخذاً بمسلك التوكل التام وصدق الالتجاء.'}
             </span>
           </div>
         </div>
@@ -738,6 +849,11 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
             const isThisItemActive = isThisItemPlayingQuran || isThisItemSpeakingDua;
 
             const currentAyahSeq = item.audioSequence ? item.audioSequence[playingAyahIndex] : null;
+            const displayTitle = getRuqyahItemTitle(item, lang);
+            const displaySource = getRuqyahItemSource(item, lang);
+            const displayGrade = getRuqyahItemGrade(item, lang);
+            const displayVirtue = getRuqyahItemVirtue(item, lang);
+            const displayInstruction = getRuqyahItemInstruction(item, lang);
 
             return (
               <div
@@ -753,31 +869,31 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                 {/* Header Row: Title & Source */}
                 <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[#8A6418]/15 dark:border-slate-800">
                   <div className="flex items-center gap-2.5">
-                    <span className="w-7 h-7 rounded-lg bg-[#1F3A6E]/10 dark:bg-[#1F3A6E]/50 border border-[#8A6418]/25 dark:border-[#648CD4]/35 text-[#8A6418] dark:text-[#D9B45A] font-bold text-xs flex items-center justify-center">
-                      {index + 1}
+                    <span className="w-7 h-7 rounded-lg bg-[#1F3A6E]/10 dark:bg-[#1F3A6E]/50 border border-[#8A6418]/25 dark:border-[#648CD4]/35 text-[#8A6418] dark:text-[#D9B45A] font-bold text-xs flex items-center justify-center tabular-nums">
+                      {formatLocalizedDigits(index + 1, lang)}
                     </span>
                     <div>
                       <h3 className="font-bold text-[#1B1A17] dark:text-white text-sm sm:text-base font-kufi flex items-center gap-2 flex-wrap">
-                        <span>{item.title}</span>
+                        <span>{displayTitle}</span>
                         {item.isCustom && (
                           <span className="text-[10px] px-2 py-0.5 rounded-lg bg-[#1F3A6E]/10 dark:bg-[#1F3A6E]/40 text-[#1F3A6E] dark:text-[#648CD4] border border-[#1F3A6E]/25 font-sans">
-                            ورد مضاف يدوياً
+                            {isEnglish ? 'Custom Entry' : 'ورد مضاف يدوياً'}
                           </span>
                         )}
                         {isThisItemActive && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-[#D9B45A]/20 text-[#8A6418] dark:text-[#D9B45A] text-[10px] font-sans border border-[#8A6418]/35 animate-pulse">
                             <span className="w-1.5 h-1.5 rounded-full bg-[#D9B45A] animate-ping" />
-                            <span>جارٍ الاستماع</span>
+                            <span>{isEnglish ? 'Playing' : 'جارٍ الاستماع'}</span>
                           </span>
                         )}
                       </h3>
                       <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                         <span className="text-[11px] text-[#8A6418] dark:text-[#D9B45A] font-medium">
-                          {item.source}
+                          {displaySource}
                         </span>
-                        {item.hadithGrade && (
+                        {displayGrade && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-[#EFE6D1] dark:bg-slate-800 text-[#5C5549] dark:text-slate-300 border border-[#8A6418]/20 dark:border-slate-700 font-semibold font-sans">
-                            {item.hadithGrade}
+                            {displayGrade}
                           </span>
                         )}
                       </div>
@@ -796,19 +912,27 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                             ? 'bg-[#D9B45A] text-[#1B1A17] border-[#8A6418] font-bold shadow-md'
                             : 'bg-[#EFE6D1] dark:bg-slate-950 border-[#8A6418]/25 dark:border-slate-800 hover:border-[#8A6418] dark:hover:border-[#D9B45A]/50 text-[#1B1A17] dark:text-slate-200 hover:text-[#8A6418] dark:hover:text-[#D9B45A]'
                         }`}
-                        title={isThisItemPlayingQuran ? 'إيقاف التلاوة' : 'استماع لتلاوة الآية'}
+                        title={
+                          isThisItemPlayingQuran
+                            ? isEnglish
+                              ? 'Pause recitation'
+                              : 'إيقاف التلاوة'
+                            : isEnglish
+                            ? 'Listen to Ayah recitation'
+                            : 'استماع لتلاوة الآية'
+                        }
                       >
                         {isAudioLoading && playingItemId === item.id ? (
                           <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#8A6418] dark:text-[#D9B45A]" />
                         ) : isThisItemPlayingQuran ? (
                           <>
                             <Pause className="w-3.5 h-3.5 fill-current" />
-                            <span>إيقاف مؤقت</span>
+                            <span>{isEnglish ? 'Pause' : 'إيقاف مؤقت'}</span>
                           </>
                         ) : (
                           <>
                             <Volume2 className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
-                            <span>استماع للتلاوة</span>
+                            <span>{isEnglish ? 'Listen' : 'استماع للتلاوة'}</span>
                           </>
                         )}
                       </button>
@@ -823,17 +947,25 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                             ? 'bg-[#D9B45A] text-[#1B1A17] border-[#8A6418] font-bold shadow-md'
                             : 'bg-[#EFE6D1] dark:bg-slate-950 border-[#8A6418]/25 dark:border-slate-800 hover:border-[#8A6418] text-[#1B1A17] dark:text-slate-200'
                         }`}
-                        title={isThisItemSpeakingDua ? 'إيقاف قراءة الدعاء' : 'استماع للدعاء بصوت واضح'}
+                        title={
+                          isThisItemSpeakingDua
+                            ? isEnglish
+                              ? 'Stop Arabic Dua speech'
+                              : 'إيقاف قراءة الدعاء'
+                            : isEnglish
+                            ? 'Listen to Arabic Dua aloud'
+                            : 'استماع للدعاء بصوت واضح'
+                        }
                       >
                         {isThisItemSpeakingDua ? (
                           <>
                             <Square className="w-3 h-3 fill-current" />
-                            <span>إيقاف القراءة</span>
+                            <span>{isEnglish ? 'Stop' : 'إيقاف القراءة'}</span>
                           </>
                         ) : (
                           <>
                             <Volume2 className="w-3.5 h-3.5 text-[#1F3A6E] dark:text-[#648CD4]" />
-                            <span>استماع للدعاء</span>
+                            <span>{isEnglish ? 'Hear Dua' : 'استماع للدعاء'}</span>
                           </>
                         )}
                       </button>
@@ -844,10 +976,10 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                       <button
                         onClick={() => onNavigateToAyah(item.surahNumber!, item.ayahNumber || 1)}
                         className="py-1 px-2.5 rounded-lg bg-[#EFE6D1] dark:bg-slate-950 border border-[#8A6418]/25 dark:border-slate-800 hover:border-[#8A6418] dark:hover:border-slate-700 text-[#1B1A17] dark:text-slate-300 hover:text-[#1F3A6E] dark:hover:text-white text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer"
-                        title="فتح السورة وقراءة الآية في المصحف الشريف"
+                        title={isEnglish ? 'Open in Mushaf reader' : 'فتح السورة وقراءة الآية في المصحف الشريف'}
                       >
                         <BookOpen className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
-                        <span className="hidden sm:inline">في المصحف</span>
+                        <span className="hidden sm:inline">{isEnglish ? 'In Mushaf' : 'في المصحف'}</span>
                       </button>
                     )}
 
@@ -855,7 +987,7 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                     <button
                       onClick={() => handleCopy(item)}
                       className="p-1.5 rounded-lg bg-[#EFE6D1] dark:bg-slate-950 border border-[#8A6418]/25 dark:border-slate-800 hover:border-[#8A6418] dark:hover:border-slate-700 text-[#5C5549] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white transition-colors cursor-pointer"
-                      title="نسخ الآية وفضلها"
+                      title={isEnglish ? 'Copy text & virtue' : 'نسخ الآية وفضلها'}
                     >
                       {copiedId === item.id ? (
                         <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -869,7 +1001,7 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                       <button
                         onClick={(e) => handleDeleteCustomItem(item.id, e)}
                         className="p-1.5 rounded-lg bg-[#EFE6D1] dark:bg-slate-950 border border-[#8A6418]/25 dark:border-slate-800 hover:border-rose-500/50 text-[#5C5549] dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors cursor-pointer"
-                        title="حذف هذا الورد المضاف يدوياً"
+                        title={isEnglish ? 'Delete custom entry' : 'حذف هذا الورد المضاف يدوياً'}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -877,8 +1009,8 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                   </div>
                 </div>
 
-                {/* Main Text Content */}
-                <div className="my-5 text-center px-2">
+                {/* Main Text Content (Kept strictly RTL Arabic for Qur'an and Duas) */}
+                <div dir="rtl" lang="ar" className="my-5 text-center px-2">
                   <p className="font-quran text-lg sm:text-2xl text-[#1B1A17] dark:text-[#F6EFDD] leading-loose select-text text-justify sm:text-center whitespace-pre-line">
                     {item.arabicText}
                   </p>
@@ -893,10 +1025,18 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                         <span className="w-1 h-4 bg-[#1F3A6E] dark:bg-[#648CD4] animate-pulse delay-75 rounded-full" />
                         <span className="w-1 h-2 bg-[#8A6418] dark:bg-[#D9B45A] animate-pulse delay-150 rounded-full" />
                       </div>
-                      <span className="text-[#1B1A17] dark:text-white font-bold">بصوت: {selectedReciter.name}</span>
+                      <span className="text-[#1B1A17] dark:text-white font-bold">
+                        {isEnglish
+                          ? `Reciter: ${getReciterDisplayName(selectedReciter, lang)}`
+                          : `بصوت: ${selectedReciter.name}`}
+                      </span>
                       {item.audioSequence && item.audioSequence.length > 1 && (
                         <span className="text-[#1F3A6E] dark:text-[#D9B45A] font-mono bg-white/70 dark:bg-slate-900/80 px-2 py-0.5 rounded-lg border border-[#8A6418]/25">
-                          {currentAyahSeq?.label || `آية ${playingAyahIndex + 1}/${item.audioSequence.length}`}
+                          {currentAyahSeq
+                            ? getRuqyahAudioStepLabel(currentAyahSeq, lang)
+                            : isEnglish
+                            ? `Ayah ${playingAyahIndex + 1}/${item.audioSequence.length}`
+                            : `آية ${playingAyahIndex + 1}/${item.audioSequence.length}`}
                         </span>
                       )}
                     </div>
@@ -907,7 +1047,7 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                           onClick={() => playAyah(item.id, item.audioSequence!, playingAyahIndex + 1)}
                           className="py-1 px-2 rounded-lg bg-[#1F3A6E] hover:bg-[#2E5499] text-[#F6EFDD] text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
                         >
-                          <span>الآية التالية</span>
+                          <span>{isEnglish ? 'Next Ayah' : 'الآية التالية'}</span>
                           <SkipForward className="w-3 h-3" />
                         </button>
                       )}
@@ -916,7 +1056,7 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                         onClick={stopAllAudio}
                         className="py-1 px-2 rounded-lg bg-white/70 dark:bg-slate-900 text-[#5C5549] dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 text-[11px] font-medium cursor-pointer"
                       >
-                        إيقاف
+                        {isEnglish ? 'Stop' : 'إيقاف'}
                       </button>
                     </div>
                   </div>
@@ -925,14 +1065,18 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                 {/* Virtue & Instruction Boxes */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 my-3 text-xs">
                   <div className="p-3 rounded-xl bg-[#EFE6D1]/80 dark:bg-slate-950/70 border border-[#8A6418]/15 dark:border-slate-800/80 text-[#1B1A17] dark:text-slate-300 leading-relaxed">
-                    <span className="font-bold text-[#8A6418] dark:text-[#D9B45A] block mb-1">فضله وأثره النبوي:</span>
-                    <span>{item.virtueAndFadl}</span>
+                    <span className="font-bold text-[#8A6418] dark:text-[#D9B45A] block mb-1">
+                      {isEnglish ? 'Virtue & Prophetic Impact:' : 'فضله وأثره النبوي:'}
+                    </span>
+                    <span>{displayVirtue}</span>
                   </div>
 
-                  {item.instruction && (
+                  {displayInstruction && (
                     <div className="p-3 rounded-xl bg-[#1F3A6E]/8 dark:bg-[#142038]/50 border border-[#1F3A6E]/20 dark:border-[#648CD4]/30 text-[#1B1A17] dark:text-slate-200 leading-relaxed">
-                      <span className="font-bold text-[#1F3A6E] dark:text-[#648CD4] block mb-1">كيفية الرقية والتطبيق:</span>
-                      <span>{item.instruction}</span>
+                      <span className="font-bold text-[#1F3A6E] dark:text-[#648CD4] block mb-1">
+                        {isEnglish ? 'How to Practice:' : 'كيفية الرقية والتطبيق:'}
+                      </span>
+                      <span>{displayInstruction}</span>
                     </div>
                   )}
                 </div>
@@ -940,11 +1084,17 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                 {/* Footer: Interactive Counter Button */}
                 <div className="pt-3 border-t border-[#8A6418]/15 dark:border-slate-800 flex items-center justify-between gap-3">
                   <div className="text-[11px] text-[#5C5549] dark:text-slate-400 flex items-center gap-1.5">
-                    <span>التكرار المسنون:</span>
-                    <strong className="text-[#1B1A17] dark:text-white font-mono">{item.repeatTarget} {item.repeatTarget === 1 ? 'مرة' : 'مرات'}</strong>
+                    <span>{isEnglish ? 'Sunnah Count:' : 'التكرار المسنون:'}</span>
+                    <strong className="text-[#1B1A17] dark:text-white font-mono tabular-nums">
+                      {isEnglish
+                        ? `${item.repeatTarget} ${item.repeatTarget === 1 ? 'time' : 'times'}`
+                        : `${formatLocalizedDigits(item.repeatTarget, lang)} ${item.repeatTarget === 1 ? 'مرة' : 'مرات'}`}
+                    </strong>
                     {count > 0 && (
-                      <span className="text-emerald-700 dark:text-emerald-400 text-[10px] mr-1">
-                        (أُنجز {count} من {item.repeatTarget})
+                      <span className="text-emerald-700 dark:text-emerald-400 text-[10px] ms-1">
+                        {isEnglish
+                          ? `(${count} of ${item.repeatTarget} done)`
+                          : `(أُنجز ${formatLocalizedDigits(count, lang)} من ${formatLocalizedDigits(item.repeatTarget, lang)})`}
                       </span>
                     )}
                   </div>
@@ -954,7 +1104,7 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                       <button
                         onClick={(e) => handleReset(item.id, e)}
                         className="p-2 rounded-xl text-[#5C5549] dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-[#EFE6D1] dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                        title="إعادة تصفير العداد"
+                        title={isEnglish ? 'Reset counter' : 'إعادة تصفير العداد'}
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
                       </button>
@@ -963,7 +1113,7 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                     <button
                       onClick={() => handleIncrement(item)}
                       disabled={isCompleted}
-                      className={`py-2 px-5 rounded-2xl font-bold text-xs sm:text-sm flex items-center gap-2.5 transition-all shadow-md cursor-pointer ${
+                      className={`py-2 px-5 rounded-2xl font-bold text-xs sm:text-sm flex items-center gap-2.5 transition-all shadow-md cursor-pointer tabular-nums ${
                         isCompleted
                           ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-600/40 cursor-default'
                           : 'bg-[#1F3A6E] hover:bg-[#2E5499] text-[#F6EFDD] active:scale-95'
@@ -972,12 +1122,20 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                       {isCompleted ? (
                         <>
                           <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                          <span>تم الورد بنجاح ✓ ({count}/{item.repeatTarget})</span>
+                          <span>
+                            {isEnglish
+                              ? `Completed ✓ (${count}/${item.repeatTarget})`
+                              : `تم الورد بنجاح ✓ (${formatLocalizedDigits(count, lang)}/${formatLocalizedDigits(item.repeatTarget, lang)})`}
+                          </span>
                         </>
                       ) : (
                         <>
                           <ShieldCheck className="w-4 h-4 text-[#D9B45A]" />
-                          <span>قراءة ({count} من {item.repeatTarget})</span>
+                          <span>
+                            {isEnglish
+                              ? `Recite (${count} of ${item.repeatTarget})`
+                              : `قراءة (${formatLocalizedDigits(count, lang)} من ${formatLocalizedDigits(item.repeatTarget, lang)})`}
+                          </span>
                         </>
                       )}
                     </button>
@@ -1009,13 +1167,20 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                   <Plus className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 id="add-ruqyah-title" className="font-bold text-[#1B1A17] dark:text-white text-base font-kufi">إضافة ورد أو آية جديدة للرقية</h3>
-                  <p className="text-[11px] text-[#5C5549] dark:text-slate-400">ستُحفظ في التطبيق وتعمل بكامل خصائص الصوت والعداد والتنقل</p>
+                  <h3 id="add-ruqyah-title" className="font-bold text-[#1B1A17] dark:text-white text-base font-kufi">
+                    {isEnglish ? 'Add Custom Ruqyah Entry' : 'إضافة ورد أو آية جديدة للرقية'}
+                  </h3>
+                  <p className="text-[11px] text-[#5C5549] dark:text-slate-400">
+                    {isEnglish
+                      ? 'Saved locally with full audio playback, repeat counter, and Mushaf navigation'
+                      : 'ستُحفظ في التطبيق وتعمل بكامل خصائص الصوت والعداد والتنقل'}
+                  </p>
                 </div>
               </div>
 
               <button
                 onClick={() => setIsAddModalOpen(false)}
+                aria-label={isEnglish ? 'Close modal' : 'إغلاق'}
                 className="p-1.5 rounded-xl text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white hover:bg-[#EFE6D1] dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
@@ -1033,12 +1198,14 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
               
               {/* Category selector */}
               <div>
-                <label className="block text-xs font-bold text-[#1B1A17] dark:text-slate-300 mb-1.5">نوع الورد:</label>
+                <label className="block text-xs font-bold text-[#1B1A17] dark:text-slate-300 mb-1.5">
+                  {isEnglish ? 'Entry Type:' : 'نوع الورد:'}
+                </label>
                 <div className="grid grid-cols-3 gap-2">
                   {[
-                    { id: 'quranic', label: 'آية قرآنية', icon: BookOpen },
-                    { id: 'prophetic', label: 'دعاء نبوي', icon: ShieldCheck },
-                    { id: 'sakina', label: 'دعاء سكينة وكرب', icon: Heart }
+                    { id: 'quranic', label: isEnglish ? 'Quranic Verses' : 'آية قرآنية', icon: BookOpen },
+                    { id: 'prophetic', label: isEnglish ? 'Prophetic Dua' : 'دعاء نبوي', icon: ShieldCheck },
+                    { id: 'sakina', label: isEnglish ? 'Serenity Dua' : 'دعاء سكينة وكرب', icon: Heart }
                   ].map((cat) => {
                     const Icon = cat.icon;
                     const isSelected = newItemCategory === cat.id;
@@ -1069,12 +1236,12 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
               {/* Title Input */}
               <div>
                 <label className="block text-xs font-bold text-[#1B1A17] dark:text-slate-300 mb-1">
-                  عنوان الورد <span className="text-rose-500 dark:text-rose-400">*</span>:
+                  {isEnglish ? 'Title' : 'عنوان الورد'} <span className="text-rose-500 dark:text-rose-400">*</span>:
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="مثال: آيات إحياء العظام والشفاء، أو دعاء الحفظ"
+                  placeholder={isEnglish ? 'e.g., Verses of Healing or Protection Dua' : 'مثال: آيات إحياء العظام والشفاء، أو دعاء الحفظ'}
                   value={newItemTitle}
                   onChange={(e) => setNewItemTitle(e.target.value)}
                   className="w-full bg-white dark:bg-slate-950 border border-[#8A6418]/25 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs text-[#1B1A17] dark:text-white placeholder-[#5C5549]/60 dark:placeholder-slate-600 focus:outline-none focus:border-[#8A6418] dark:focus:border-[#D9B45A]"
@@ -1085,14 +1252,20 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
               {newItemCategory === 'quranic' && (
                 <div className="p-3.5 rounded-2xl bg-[#EFE6D1] dark:bg-slate-950 border border-[#8A6418]/25 dark:border-slate-800 space-y-3">
                   <div className="flex items-center justify-between text-xs font-bold text-[#8A6418] dark:text-[#D9B45A]">
-                    <span>تحديد السورة والآيات لتشغيل الصوت والتنقل:</span>
-                    <span>{currentSelectedSurah?.numberOfAyahs} آية</span>
+                    <span>{isEnglish ? 'Select Surah & Ayah range for audio & jump:' : 'تحديد السورة والآيات لتشغيل الصوت والتنقل:'}</span>
+                    <span className="tabular-nums">
+                      {isEnglish
+                        ? `${currentSelectedSurah?.numberOfAyahs} Ayahs`
+                        : `${formatLocalizedDigits(currentSelectedSurah?.numberOfAyahs || 0, lang)} آية`}
+                    </span>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                     {/* Surah Dropdown */}
                     <div className="sm:col-span-1">
-                      <label className="block text-[11px] text-[#5C5549] dark:text-slate-400 mb-1">السورة:</label>
+                      <label className="block text-[11px] text-[#5C5549] dark:text-slate-400 mb-1">
+                        {isEnglish ? 'Surah:' : 'السورة:'}
+                      </label>
                       <select
                         value={selectedSurahNumber}
                         onChange={(e) => handleSurahChange(Number(e.target.value))}
@@ -1100,7 +1273,7 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                       >
                         {SURAHS_LIST.map((s) => (
                           <option key={s.number} value={s.number} className="bg-white text-[#1B1A17] dark:bg-slate-900 dark:text-[#F6EFDD]">
-                            {s.number}. {s.name}
+                            {formatLocalizedDigits(s.number, lang)}. {getSurahDisplayName(s, lang)}
                           </option>
                         ))}
                       </select>
@@ -1108,7 +1281,9 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
 
                     {/* From Ayah */}
                     <div>
-                      <label className="block text-[11px] text-[#5C5549] dark:text-slate-400 mb-1">من آية:</label>
+                      <label className="block text-[11px] text-[#5C5549] dark:text-slate-400 mb-1">
+                        {isEnglish ? 'From Ayah:' : 'من آية:'}
+                      </label>
                       <input
                         type="number"
                         min={1}
@@ -1121,7 +1296,9 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
 
                     {/* To Ayah */}
                     <div>
-                      <label className="block text-[11px] text-[#5C5549] dark:text-slate-400 mb-1">إلى آية:</label>
+                      <label className="block text-[11px] text-[#5C5549] dark:text-slate-400 mb-1">
+                        {isEnglish ? 'To Ayah:' : 'إلى آية:'}
+                      </label>
                       <input
                         type="number"
                         min={fromAyah}
@@ -1134,7 +1311,7 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                   </div>
 
                   <div className="text-[11px] text-[#5C5549] dark:text-slate-400 flex items-center justify-between">
-                    <span>المصدر المقترح:</span>
+                    <span>{isEnglish ? 'Suggested Source:' : 'المصدر المقترح:'}</span>
                     <strong className="text-[#8A6418] dark:text-[#D9B45A] font-mono">{newItemSource}</strong>
                   </div>
                 </div>
@@ -1143,10 +1320,12 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
               {/* Source Input for Prophetic / Sakina */}
               {newItemCategory !== 'quranic' && (
                 <div>
-                  <label className="block text-xs font-bold text-[#1B1A17] dark:text-slate-300 mb-1">المصدر / التخريج:</label>
+                  <label className="block text-xs font-bold text-[#1B1A17] dark:text-slate-300 mb-1">
+                    {isEnglish ? 'Source / Hadith Reference:' : 'المصدر / التخريج:'}
+                  </label>
                   <input
                     type="text"
-                    placeholder="مثال: صحيح مسلم عن عثمان بن أبي العاص"
+                    placeholder={isEnglish ? 'e.g., Sahih Muslim' : 'مثال: صحيح مسلم عن عثمان بن أبي العاص'}
                     value={newItemSource}
                     onChange={(e) => setNewItemSource(e.target.value)}
                     className="w-full bg-white dark:bg-slate-950 border border-[#8A6418]/25 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs text-[#1B1A17] dark:text-white placeholder-[#5C5549]/60 dark:placeholder-slate-600 focus:outline-none focus:border-[#8A6418] dark:focus:border-[#D9B45A]"
@@ -1157,12 +1336,15 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
               {/* Arabic Text Area */}
               <div>
                 <label className="block text-xs font-bold text-[#1B1A17] dark:text-slate-300 mb-1">
-                  نص الآية أو الدعاء باللغة العربية <span className="text-rose-500 dark:text-rose-400">*</span>:
+                  {isEnglish ? 'Arabic Verse or Dua Text' : 'نص الآية أو الدعاء باللغة العربية'}{' '}
+                  <span className="text-rose-500 dark:text-rose-400">*</span>:
                 </label>
                 <textarea
                   rows={4}
+                  dir="rtl"
+                  lang="ar"
                   required
-                  placeholder="اكتب أو الصق نص الآيات المباركة بالرسم العثماني أو المشكول..."
+                  placeholder={isEnglish ? 'Enter or paste the Arabic Quranic/Dua text…' : 'اكتب أو الصق نص الآيات المباركة بالرسم العثماني أو المشكول...'}
                   value={newItemArabicText}
                   onChange={(e) => setNewItemArabicText(e.target.value)}
                   className="w-full bg-white dark:bg-slate-950 border border-[#8A6418]/25 dark:border-slate-800 rounded-xl p-3 text-sm font-quran text-[#1B1A17] dark:text-[#F6EFDD] placeholder-[#5C5549]/60 dark:placeholder-slate-600 focus:outline-none focus:border-[#8A6418] dark:focus:border-[#D9B45A] leading-relaxed text-right"
@@ -1172,8 +1354,14 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
               {/* Repeat Target & Quick selector */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-bold text-[#1B1A17] dark:text-slate-300">التكرار المسنون للورد:</label>
-                  <span className="text-xs text-[#8A6418] dark:text-[#D9B45A] font-mono font-bold">{newItemRepeatTarget} مرات</span>
+                  <label className="text-xs font-bold text-[#1B1A17] dark:text-slate-300">
+                    {isEnglish ? 'Sunnah Repeat Target:' : 'التكرار المسنون للورد:'}
+                  </label>
+                  <span className="text-xs text-[#8A6418] dark:text-[#D9B45A] font-mono font-bold tabular-nums">
+                    {isEnglish
+                      ? `${newItemRepeatTarget} ${newItemRepeatTarget === 1 ? 'time' : 'times'}`
+                      : `${formatLocalizedDigits(newItemRepeatTarget, lang)} ${newItemRepeatTarget === 1 ? 'مرة' : 'مرات'}`}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
                   {[1, 3, 7, 10].map((num) => (
@@ -1181,13 +1369,15 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                       type="button"
                       key={num}
                       onClick={() => setNewItemRepeatTarget(num)}
-                      className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer tabular-nums ${
                         newItemRepeatTarget === num
                           ? 'bg-[#1F3A6E] text-[#F6EFDD] font-mono'
                           : 'bg-[#EFE6D1] dark:bg-slate-950 border border-[#8A6418]/20 dark:border-slate-800 text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white'
                       }`}
                     >
-                      {num} {num === 1 ? 'مرة' : 'مرات'}
+                      {isEnglish
+                        ? `${num} ${num === 1 ? 'time' : 'times'}`
+                        : `${formatLocalizedDigits(num, lang)} ${num === 1 ? 'مرة' : 'مرات'}`}
                     </button>
                   ))}
                 </div>
@@ -1195,10 +1385,12 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
 
               {/* Virtue and Fadl */}
               <div>
-                <label className="block text-xs font-bold text-[#1B1A17] dark:text-slate-300 mb-1">فضله وأثره في الشفاء:</label>
+                <label className="block text-xs font-bold text-[#1B1A17] dark:text-slate-300 mb-1">
+                  {isEnglish ? 'Virtue & Healing Benefit:' : 'فضله وأثره في الشفاء:'}
+                </label>
                 <input
                   type="text"
-                  placeholder="مثال: من قرأها صباحاً ومساءً كفاه الله كل سوء"
+                  placeholder={isEnglish ? 'e.g., Recited morning & evening for protection' : 'مثال: من قرأها صباحاً ومساءً كفاه الله كل سوء'}
                   value={newItemVirtue}
                   onChange={(e) => setNewItemVirtue(e.target.value)}
                   className="w-full bg-white dark:bg-slate-950 border border-[#8A6418]/25 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs text-[#1B1A17] dark:text-white placeholder-[#5C5549]/60 dark:placeholder-slate-600 focus:outline-none focus:border-[#8A6418] dark:focus:border-[#D9B45A]"
@@ -1207,10 +1399,12 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
 
               {/* Instruction */}
               <div>
-                <label className="block text-xs font-bold text-[#1B1A17] dark:text-slate-300 mb-1">طريقة التطبيق والنفث (اختياري):</label>
+                <label className="block text-xs font-bold text-[#1B1A17] dark:text-slate-300 mb-1">
+                  {isEnglish ? 'How to Practice (optional):' : 'طريقة التطبيق والنفث (اختياري):'}
+                </label>
                 <input
                   type="text"
-                  placeholder="مثال: ينفث في يديه ويمسح بهما موضع الألم"
+                  placeholder={isEnglish ? 'e.g., Blow gently into palms and wipe gently' : 'مثال: ينفث في يديه ويمسح بهما موضع الألم'}
                   value={newItemInstruction}
                   onChange={(e) => setNewItemInstruction(e.target.value)}
                   className="w-full bg-white dark:bg-slate-950 border border-[#8A6418]/25 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs text-[#1B1A17] dark:text-white placeholder-[#5C5549]/60 dark:placeholder-slate-600 focus:outline-none focus:border-[#8A6418] dark:focus:border-[#D9B45A]"
@@ -1224,14 +1418,14 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
                   onClick={() => setIsAddModalOpen(false)}
                   className="py-2 px-4 rounded-xl text-xs font-bold text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white hover:bg-[#EFE6D1] dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 >
-                  إلغاء
+                  {isEnglish ? 'Cancel' : 'إلغاء'}
                 </button>
                 <button
                   type="submit"
                   className="py-2 px-5 rounded-xl bg-[#1F3A6E] hover:bg-[#2E5499] text-[#F6EFDD] text-xs font-bold flex items-center gap-1.5 shadow-lg transition-all cursor-pointer"
                 >
                   <Check className="w-4 h-4 text-[#D9B45A]" />
-                  <span>حفظ الورد وإضافته للرقية</span>
+                  <span>{isEnglish ? 'Save to Ruqyah List' : 'حفظ الورد وإضافته للرقية'}</span>
                 </button>
               </div>
 
@@ -1246,14 +1440,16 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="تأكيد استعادة الأوراد الافتراضية"
+          aria-label={isEnglish ? 'Confirm restoring default Ruqyah entries' : 'تأكيد استعادة الأوراد الافتراضية'}
           className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in"
         >
           <div className="bg-[#FBF7EE] dark:bg-slate-900 border border-[#8A6418]/40 dark:border-amber-500/40 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-[#8A6418]/15 dark:border-slate-800">
               <div className="flex items-center gap-2 text-[#8A6418] dark:text-amber-400 font-bold">
                 <RotateCcw className="w-4 h-4" />
-                <h3 className="text-base text-[#1B1A17] dark:text-white">استعادة الأوراد الافتراضية</h3>
+                <h3 className="text-base text-[#1B1A17] dark:text-white">
+                  {isEnglish ? 'Restore Default Entries' : 'استعادة الأوراد الافتراضية'}
+                </h3>
               </div>
               <button
                 onClick={() => setIsRestoreConfirmOpen(false)}
@@ -1263,20 +1459,22 @@ export const RuqyahSection: React.FC<RuqyahSectionProps> = ({
               </button>
             </div>
             <p className="text-xs text-[#5C5549] dark:text-slate-300 leading-relaxed">
-              هل تريد حذف جميع الأوراد التي أضفتها يدوياً ({customItems.length} ورد) واستعادة القائمة الافتراضية فقط؟
+              {isEnglish
+                ? `Remove all custom entries you added (${customItems.length}) and restore the default Ruqyah list only?`
+                : `هل تريد حذف جميع الأوراد التي أضفتها يدوياً (${formatLocalizedDigits(customItems.length, lang)} ورد) واستعادة القائمة الافتراضية فقط؟`}
             </p>
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 onClick={() => setIsRestoreConfirmOpen(false)}
                 className="py-2 px-4 rounded-xl text-xs text-[#5C5549] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white cursor-pointer"
               >
-                إلغاء
+                {isEnglish ? 'Cancel' : 'إلغاء'}
               </button>
               <button
                 onClick={confirmRestoreDefaults}
                 className="py-2 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold cursor-pointer"
               >
-                نعم، استعادة الأصل
+                {isEnglish ? 'Yes, Restore Defaults' : 'نعم، استعادة الأصل'}
               </button>
             </div>
           </div>

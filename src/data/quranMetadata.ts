@@ -126,3 +126,26 @@ export const SURAHS_LIST: SurahMeta[] = [
   { number: 113, name: 'الفلق', englishName: 'Al-Falaq', englishNameTranslation: 'The Daybreak', revelationType: 'Meccan', revelationTypeAr: 'مكية', numberOfAyahs: 5, juzNumber: 30, startPage: 604 },
   { number: 114, name: 'الناس', englishName: 'An-Nas', englishNameTranslation: 'Mankind', revelationType: 'Meccan', revelationTypeAr: 'مكية', numberOfAyahs: 6, juzNumber: 30, startPage: 604 },
 ];
+
+export function getSurahDisplayName(
+  meta: Pick<SurahMeta, 'name' | 'englishName'>,
+  lang: 'ar' | 'en'
+): string {
+  return lang === 'en' ? meta.englishName : meta.name;
+}
+
+export function getSurahFullTitle(
+  meta: Pick<SurahMeta, 'name' | 'englishName'>,
+  lang: 'ar' | 'en'
+): string {
+  return lang === 'en' ? `Surah ${meta.englishName}` : `سورة ${meta.name}`;
+}
+
+export function getRevelationTypeLabel(
+  revelationType: 'Meccan' | 'Medinan',
+  lang: 'ar' | 'en'
+): string {
+  if (lang === 'en') return revelationType;
+  return revelationType === 'Meccan' ? 'مكية' : 'مدنية';
+}
+

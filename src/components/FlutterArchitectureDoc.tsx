@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Code, Database, Layers, Calendar, CheckCircle2, Copy, Check, Cpu } from 'lucide-react';
+import { formatLocalizedDigits, useLanguage } from '../utils/i18n';
 
 export const FlutterArchitectureDoc: React.FC = () => {
+  const { lang, isEnglish } = useLanguage();
   const [activeTab, setActiveTab] = useState<'architecture' | 'database' | 'flutter-code' | 'roadmap'>('architecture');
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
@@ -14,27 +16,39 @@ export const FlutterArchitectureDoc: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Banner */}
-      <div className="p-6 rounded-2xl bg-gradient-to-l from-[#EFE6D1] via-[#FBF7EE] to-[#F6EFDD] dark:from-[#142038] dark:via-[#151d29] dark:to-[#10161f] border border-[#D4C7AE] dark:border-[#2E5499]/35 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div
+        className={`p-6 rounded-2xl ${
+          isEnglish ? 'bg-gradient-to-r' : 'bg-gradient-to-l'
+        } from-[#EFE6D1] via-[#FBF7EE] to-[#F6EFDD] dark:from-[#142038] dark:via-[#151d29] dark:to-[#10161f] border border-[#D4C7AE] dark:border-[#2E5499]/35 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4`}
+      >
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-[#1F3A6E]/10 dark:bg-[#1F3A6E]/50 border border-[#1F3A6E]/25 dark:border-[#648CD4]/35 text-[#1F3A6E] dark:text-[#D9B45A] text-xs font-bold mb-2">
             <Cpu className="w-3.5 h-3.5" />
-            <span>المعمارية التقنية والتوجيه الهندسي (Flutter Architecture)</span>
+            <span>
+              {isEnglish
+                ? 'Technical Architecture & Engineering Guide (Flutter Architecture)'
+                : 'المعمارية التقنية والتوجيه الهندسي (Flutter Architecture)'}
+            </span>
           </div>
           <h2 className="text-xl sm:text-2xl font-bold text-[#1B1A17] dark:text-[#F6EFDD] mb-1">
-            دليل هندسة وتطوير تطبيق "بيان" كوقف خيري مفتوح المصدر
+            {isEnglish
+              ? 'Engineering & Open-Source Waqf Blueprint for “Bayan”'
+              : 'دليل هندسة وتطوير تطبيق "بيان" كوقف خيري مفتوح المصدر'}
           </h2>
           <p className="text-xs sm:text-sm text-[#5E584E] dark:text-slate-300 max-w-2xl">
-            توثيق تقني متكامل يشمل Clean Architecture، قواعد البيانات المشفرة (Isar / SQLCipher)، محرك الرسم العثماني والتجويد في Flutter، والتمرير الذكي.
+            {isEnglish
+              ? 'Comprehensive technical blueprint covering Clean Architecture, encrypted local storage (Isar / SQLCipher), Flutter Uthmani & Tajweed rendering engine, and smart auto-scrolling.'
+              : 'توثيق تقني متكامل يشمل Clean Architecture، قواعد البيانات المشفرة (Isar / SQLCipher)، محرك الرسم العثماني والتجويد في Flutter، والتمرير الذكي.'}
           </p>
         </div>
 
         {/* Navigation Tabs */}
         <div className="flex flex-wrap gap-1.5 bg-[#EFE6D1] dark:bg-[#0d131c] p-1.5 rounded-xl border border-[#D4C7AE] dark:border-slate-800">
           {[
-            { id: 'architecture', label: 'هيكل المشروع المعماري', icon: Layers },
-            { id: 'database', label: 'قاعدة البيانات والتشفير', icon: Database },
-            { id: 'flutter-code', label: 'كود صفحة القراءة والتجويد', icon: Code },
-            { id: 'roadmap', label: 'خطة التنفيذ والوقف', icon: Calendar },
+            { id: 'architecture', label: isEnglish ? 'Project Architecture' : 'هيكل المشروع المعماري', icon: Layers },
+            { id: 'database', label: isEnglish ? 'Database & Encryption' : 'قاعدة البيانات والتشفير', icon: Database },
+            { id: 'flutter-code', label: isEnglish ? 'Reading & Tajweed Code' : 'كود صفحة القراءة والتجويد', icon: Code },
+            { id: 'roadmap', label: isEnglish ? 'Execution & Waqf Plan' : 'خطة التنفيذ والوقف', icon: Calendar },
           ].map((t) => {
             const Icon = t.icon;
             const isActive = activeTab === t.id;
@@ -63,7 +77,11 @@ export const FlutterArchitectureDoc: React.FC = () => {
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <h3 className="font-bold text-lg text-[#1B1A17] dark:text-[#F6EFDD] flex items-center gap-2">
               <Layers className="w-5 h-5 text-[#1F3A6E] dark:text-[#648CD4]" />
-              <span>هيكل المجلدات النظيف (Clean Architecture & BLoC / Riverpod)</span>
+              <span>
+                {isEnglish
+                  ? 'Clean Folder Structure (Clean Architecture & BLoC / Riverpod)'
+                  : 'هيكل المجلدات النظيف (Clean Architecture & BLoC / Riverpod)'}
+              </span>
             </h3>
             <button
               type="button"
@@ -71,12 +89,22 @@ export const FlutterArchitectureDoc: React.FC = () => {
               className="py-1.5 px-3 rounded-lg bg-[#EFE6D1] hover:bg-[#E3D9C3] dark:bg-slate-800 dark:hover:bg-slate-700 text-[#1B1A17] dark:text-slate-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
             >
               {copiedIndex === 1 ? <Check className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copiedIndex === 1 ? 'تم النسخ' : 'نسخ الهيكل'}</span>
+              <span>{copiedIndex === 1 ? (isEnglish ? 'Copied' : 'تم النسخ') : (isEnglish ? 'Copy Tree' : 'نسخ الهيكل')}</span>
             </button>
           </div>
 
           <p className="text-xs sm:text-sm text-[#5E584E] dark:text-slate-300 leading-relaxed">
-            تم تصميم تطبيق <strong>"بيان"</strong> في Flutter وفق مبادئ <strong>Domain-Driven Design (DDD)</strong> و <strong>Clean Architecture</strong> لعزل منطق العمل القرآني عن الواجهات، مع ضمان إمكانية استبدال مصادر البيانات (Offline SQLite / Isar / Remote API) دون كسر طبقة العرض.
+            {isEnglish ? (
+              <>
+                <strong>Bayan</strong> in Flutter follows <strong>Domain-Driven Design (DDD)</strong> and{' '}
+                <strong>Clean Architecture</strong> to isolate Quranic domain logic from UI widgets, ensuring data sources (Offline SQLite / Isar / Remote API) can be swapped without breaking the presentation layer.
+              </>
+            ) : (
+              <>
+                تم تصميم تطبيق <strong>"بيان"</strong> في Flutter وفق مبادئ <strong>Domain-Driven Design (DDD)</strong> و{' '}
+                <strong>Clean Architecture</strong> لعزل منطق العمل القرآني عن الواجهات، مع ضمان إمكانية استبدال مصادر البيانات (Offline SQLite / Isar / Remote API) دون كسر طبقة العرض.
+              </>
+            )}
           </p>
 
           <pre className="p-4 rounded-xl bg-[#10161f] border border-[#D4C7AE] dark:border-slate-800 text-xs font-mono text-[#D9B45A] overflow-x-auto leading-relaxed" dir="ltr">
@@ -85,21 +113,41 @@ export const FlutterArchitectureDoc: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs pt-2">
             <div className="p-4 rounded-xl bg-[#F6EFDD] dark:bg-slate-950/70 border border-[#E3D9C3] dark:border-slate-800">
-              <strong className="text-[#1F3A6E] dark:text-[#648CD4] block mb-1">1. طبقة النطاق (Domain Layer):</strong>
+              <strong className="text-[#1F3A6E] dark:text-[#648CD4] block mb-1">
+                {isEnglish ? '1. Domain Layer:' : '1. طبقة النطاق (Domain Layer):'}
+              </strong>
               <p className="text-[#5E584E] dark:text-slate-400">
-                تحتوي على الكيانات النقية (Entities)، العقود المجردة (Repositories Interfaces)، وحالات الاستخدام (UseCases) مثل <code>GetAyahWithTajweedUseCase</code> و <code>CalculateKhatmaPaceUseCase</code>.
+                {isEnglish ? (
+                  <>
+                    Contains pure Entities, abstract Repository contracts, and UseCases such as{' '}
+                    <code>GetAyahWithTajweedUseCase</code> and <code>CalculateKhatmaPaceUseCase</code>.
+                  </>
+                ) : (
+                  <>
+                    تحتوي على الكيانات النقية (Entities)، العقود المجردة (Repositories Interfaces)، وحالات الاستخدام (UseCases) مثل{' '}
+                    <code>GetAyahWithTajweedUseCase</code> و <code>CalculateKhatmaPaceUseCase</code>.
+                  </>
+                )}
               </p>
             </div>
             <div className="p-4 rounded-xl bg-[#F6EFDD] dark:bg-slate-950/70 border border-[#E3D9C3] dark:border-slate-800">
-              <strong className="text-[#8A6418] dark:text-[#D9B45A] block mb-1">2. طبقة البيانات (Data Layer):</strong>
+              <strong className="text-[#8A6418] dark:text-[#D9B45A] block mb-1">
+                {isEnglish ? '2. Data Layer:' : '2. طبقة البيانات (Data Layer):'}
+              </strong>
               <p className="text-[#5E584E] dark:text-slate-400">
-                تحتوي على تطبيق المستودعات، ومحرك التخزين المحلي Offline-first (Isar / Drift)، والتشفير (AES-256 عبر flutter_secure_storage)، وإدارة الكاش والملفات الصوتية.
+                {isEnglish
+                  ? 'Implements repositories, offline-first local storage (Isar / Drift), AES-256 encryption via flutter_secure_storage, and audio caching.'
+                  : 'تحتوي على تطبيق المستودعات، ومحرك التخزين المحلي Offline-first (Isar / Drift)، والتشفير (AES-256 عبر flutter_secure_storage)، وإدارة الكاش والملفات الصوتية.'}
               </p>
             </div>
             <div className="p-4 rounded-xl bg-[#F6EFDD] dark:bg-slate-950/70 border border-[#E3D9C3] dark:border-slate-800">
-              <strong className="text-[#1F3A6E] dark:text-[#9CB7E8] block mb-1">3. طبقة العرض (Presentation Layer):</strong>
+              <strong className="text-[#1F3A6E] dark:text-[#9CB7E8] block mb-1">
+                {isEnglish ? '3. Presentation Layer:' : '3. طبقة العرض (Presentation Layer):'}
+              </strong>
               <p className="text-[#5E584E] dark:text-slate-400">
-                مبنية بـ BLoC / Cubit لإدارة حالات التلاوة والتمرير الذكي، مع واجهات متكيفة تدعم الهواتف والـ Tablets (وضع صفحتين متقابلتين).
+                {isEnglish
+                  ? 'Built with BLoC / Cubit for recitation and smart-scroll state, featuring adaptive layouts for phones and tablets (dual facing pages).'
+                  : 'مبنية بـ BLoC / Cubit لإدارة حالات التلاوة والتمرير الذكي، مع واجهات متكيفة تدعم الهواتف والـ Tablets (وضع صفحتين متقابلتين).'}
               </p>
             </div>
           </div>
@@ -112,7 +160,11 @@ export const FlutterArchitectureDoc: React.FC = () => {
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <h3 className="font-bold text-lg text-[#1B1A17] dark:text-[#F6EFDD] flex items-center gap-2">
               <Database className="w-5 h-5 text-[#8A6418] dark:text-[#D9B45A]" />
-              <span>مخطط قاعدة البيانات المحلية المشفرة (Isar NoSQL & Drift SQLite)</span>
+              <span>
+                {isEnglish
+                  ? 'Encrypted Local Database Schema (Isar NoSQL & Drift SQLite)'
+                  : 'مخطط قاعدة البيانات المحلية المشفرة (Isar NoSQL & Drift SQLite)'}
+              </span>
             </h3>
             <button
               type="button"
@@ -120,12 +172,20 @@ export const FlutterArchitectureDoc: React.FC = () => {
               className="py-1.5 px-3 rounded-lg bg-[#EFE6D1] hover:bg-[#E3D9C3] dark:bg-slate-800 dark:hover:bg-slate-700 text-[#1B1A17] dark:text-slate-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
             >
               {copiedIndex === 2 ? <Check className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copiedIndex === 2 ? 'تم النسخ' : 'نسخ الكود'}</span>
+              <span>{copiedIndex === 2 ? (isEnglish ? 'Copied' : 'تم النسخ') : (isEnglish ? 'Copy Code' : 'نسخ الكود')}</span>
             </button>
           </div>
 
           <p className="text-xs sm:text-sm text-[#5E584E] dark:text-slate-300 leading-relaxed">
-            لضمان <strong>سرعة استجابة فائقة (60 FPS)</strong> بدون أي تأخير، يتم تخزين نصوص القرآن بالرسم العثماني وعلامات التجويد محلياً، بينما تُشفّر مفكرة الخواطر الشخصية وسجل القراءة باستخدام مفتاح عشوائي 256-bit مخزن في <strong>Keychain (iOS)</strong> أو <strong>Keystore (Android)</strong>.
+            {isEnglish ? (
+              <>
+                To ensure <strong>ultra-smooth 60 FPS responsiveness</strong> without lag, Uthmani Quranic text and Tajweed markers are stored locally, while personal Tadabbur journal entries and reading logs are encrypted with a random 256-bit key stored in <strong>Keychain (iOS)</strong> or <strong>Keystore (Android)</strong>.
+              </>
+            ) : (
+              <>
+                لضمان <strong>سرعة استجابة فائقة (60 FPS)</strong> بدون أي تأخير، يتم تخزين نصوص القرآن بالرسم العثماني وعلامات التجويد محلياً، بينما تُشفّر مفكرة الخواطر الشخصية وسجل القراءة باستخدام مفتاح عشوائي 256-bit مخزن في <strong>Keychain (iOS)</strong> أو <strong>Keystore (Android)</strong>.
+              </>
+            )}
           </p>
 
           <pre className="p-4 rounded-xl bg-[#10161f] border border-[#D4C7AE] dark:border-slate-800 text-xs font-mono text-[#E9E3D3] overflow-x-auto leading-relaxed" dir="ltr">
@@ -140,7 +200,11 @@ export const FlutterArchitectureDoc: React.FC = () => {
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <h3 className="font-bold text-lg text-[#1B1A17] dark:text-[#F6EFDD] flex items-center gap-2">
               <Code className="w-5 h-5 text-[#8A6418] dark:text-[#D9B45A]" />
-              <span>كود صفحة القراءة والتجويد الملون والتمرير الذكي (Dart/Flutter)</span>
+              <span>
+                {isEnglish
+                  ? 'Reading, Colored Tajweed & Smart Auto-Scroll Screen (Dart/Flutter)'
+                  : 'كود صفحة القراءة والتجويد الملون والتمرير الذكي (Dart/Flutter)'}
+              </span>
             </h3>
             <button
               type="button"
@@ -148,12 +212,20 @@ export const FlutterArchitectureDoc: React.FC = () => {
               className="py-1.5 px-3 rounded-lg bg-[#EFE6D1] hover:bg-[#E3D9C3] dark:bg-slate-800 dark:hover:bg-slate-700 text-[#1B1A17] dark:text-slate-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
             >
               {copiedIndex === 3 ? <Check className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copiedIndex === 3 ? 'تم النسخ' : 'نسخ كود Flutter'}</span>
+              <span>{copiedIndex === 3 ? (isEnglish ? 'Copied' : 'تم النسخ') : (isEnglish ? 'Copy Flutter Code' : 'نسخ كود Flutter')}</span>
             </button>
           </div>
 
           <p className="text-xs sm:text-sm text-[#5E584E] dark:text-slate-300 leading-relaxed">
-            الكود يوضح بناء <code>TextSpan</code> عالي الأداء مع تحليل قواعد التجويد (Regex & Tokenization)، خط الرسم العثماني <code>Amiri Quran</code>، والتحكم في التمرير التلقائي السلس مع <strong>فيزياء التوقف التلقائي عند رؤوس الآيات ﴿﴾</strong>.
+            {isEnglish ? (
+              <>
+                This snippet illustrates building high-performance <code>TextSpan</code> trees with Tajweed rule tokenization, the <code>Amiri Quran</code> Uthmani typeface, and smooth auto-scrolling with <strong>gentle pauses at ayah endings ﴿﴾</strong>.
+              </>
+            ) : (
+              <>
+                الكود يوضح بناء <code>TextSpan</code> عالي الأداء مع تحليل قواعد التجويد (Regex & Tokenization)، خط الرسم العثماني <code>Amiri Quran</code>، والتحكم في التمرير التلقائي السلس مع <strong>فيزياء التوقف التلقائي عند رؤوس الآيات ﴿﴾</strong>.
+              </>
+            )}
           </p>
 
           <pre className="p-4 rounded-xl bg-[#10161f] border border-[#D4C7AE] dark:border-slate-800 text-xs font-mono text-[#E9E3D3] overflow-x-auto max-h-[500px] leading-relaxed" dir="ltr">
@@ -168,51 +240,87 @@ export const FlutterArchitectureDoc: React.FC = () => {
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-lg text-[#1B1A17] dark:text-[#F6EFDD] flex items-center gap-2">
               <Calendar className="w-5 h-5 text-[#1F3A6E] dark:text-[#648CD4]" />
-              <span>الخطة الزمنية والتقنية لتنفيذ التطبيق كوقف خيري مفتوح المصدر</span>
+              <span>
+                {isEnglish
+                  ? 'Execution & Technical Roadmap as an Open-Source Charitable Waqf'
+                  : 'الخطة الزمنية والتقنية لتنفيذ التطبيق كوقف خيري مفتوح المصدر'}
+              </span>
             </h3>
           </div>
 
           <div className="space-y-4">
             {[
               {
-                phase: 'المرحلة 1: التأسيس وقاعدة البيانات الموثوقة (الأسابيع 1 - 3)',
-                desc: 'تجهيز قاعدة البيانات المحلية المعتمدة من مجمع الملك فهد لطباعة المصحف الشريف بالرسم العثماني الكامل، إعداد معمارية Clean Architecture في Flutter، وبناء خوارزمية تلوين أحكام التجويد والخطوط.',
-                deliverables: 'قاعدة بيانات Isar/SQLite مدمجة خالية تماماً من الأخطاء، دعم الخطوط العثمانية، وعارض الآيات الأولي.'
+                phase: isEnglish
+                  ? 'Phase 1: Foundation & Verified Uthmani Database (Weeks 1–3)'
+                  : 'المرحلة 1: التأسيس وقاعدة البيانات الموثوقة (الأسابيع 1 - 3)',
+                desc: isEnglish
+                  ? 'Prepare the verified local King Fahd Complex Uthmani Quran database, set up Clean Architecture in Flutter, and build the Tajweed color-tokenization and typography engine.'
+                  : 'تجهيز قاعدة البيانات المحلية المعتمدة من مجمع الملك فهد لطباعة المصحف الشريف بالرسم العثماني الكامل، إعداد معمارية Clean Architecture في Flutter، وبناء خوارزمية تلوين أحكام التجويد والخطوط.',
+                deliverables: isEnglish
+                  ? 'Error-free embedded Isar/SQLite database, Uthmani font support, and initial Ayah reader.'
+                  : 'قاعدة بيانات Isar/SQLite مدمجة خالية تماماً من الأخطاء، دعم الخطوط العثمانية، وعارض الآيات الأولي.'
               },
               {
-                phase: 'المرحلة 2: المحرك الصوتي والتمرير المتزامن الذكي (الأسابيع 4 - 6)',
-                desc: 'دمج مشغل الصوتيات background audio service مع دعم 10 قراء معتمدين، نظام إدارة التحميل والتخزين Offline، ومزامنة إضاءة الآية أثناء التلاوة مع التمرير الفيزيائي المتوقف عند رؤوس الآيات.',
-                deliverables: 'استماع ومزامنة متكاملة، ورد يومي ذكي، وعمل كامل بدون إنترنت.'
+                phase: isEnglish
+                  ? 'Phase 2: Audio Engine & Smart Synced Scrolling (Weeks 4–6)'
+                  : 'المرحلة 2: المحرك الصوتي والتمرير المتزامن الذكي (الأسابيع 4 - 6)',
+                desc: isEnglish
+                  ? 'Integrate background audio service supporting 10 certified reciters, offline download/cache management, and live ayah highlighting synced with physics-based smart scrolling.'
+                  : 'دمج مشغل الصوتيات background audio service مع دعم 10 قراء معتمدين، نظام إدارة التحميل والتخزين Offline، ومزامنة إضاءة الآية أثناء التلاوة مع التمرير الفيزيائي المتوقف عند رؤوس الآيات.',
+                deliverables: isEnglish
+                  ? 'Synced listening playback, smart daily Wird, and full offline functionality.'
+                  : 'استماع ومزامنة متكاملة، ورد يومي ذكي، وعمل كامل بدون إنترنت.'
               },
               {
-                phase: 'المرحلة 3: أدوات التدبر والحفظ والتسميع (الأسابيع 7 - 9)',
-                desc: 'برمجة حلقة التسميع ومراجعة الحفظ (إخفاء الكلمات، التكرار المتباعد)، نافذة التدبر السريع والتفسير الميسر، والمفكرة الشخصية المشفرة بأعلى معايير التشفير العسكري AES-256.',
-                deliverables: 'وضع الحفظ الذكي، مفكرة مشفرة، ومساعد التدبر البلاغي.'
+                phase: isEnglish
+                  ? 'Phase 3: Tadabbur, Memorization & Recitation Check (Weeks 7–9)'
+                  : 'المرحلة 3: أدوات التدبر والحفظ والتسميع (الأسابيع 7 - 9)',
+                desc: isEnglish
+                  ? 'Build memorization review mode (word masking & spaced repetition), quick Tafsir & Tadabbur sheet, and an AES-256 encrypted personal reflection journal.'
+                  : 'برمجة حلقة التسميع ومراجعة الحفظ (إخفاء الكلمات، التكرار المتباعد)، نافذة التدبر السريع والتفسير الميسر، والمفكرة الشخصية المشفرة بأعلى معايير التشفير العسكري AES-256.',
+                deliverables: isEnglish
+                  ? 'Smart memorization mode, encrypted reflection journal, and rhetorical Tadabbur assistant.'
+                  : 'وضع الحفظ الذكي، مفكرة مشفرة، ومساعد التدبر البلاغي.'
               },
               {
-                phase: 'المرحلة 4: الميزات المجتمعية وشبكة الإحصاءات (الأسابيع 10 - 12)',
-                desc: 'تطوير شبكة الإحصاءات والـ Heatmap السنوية، مصمم بطاقات المشاركة على السوشيال ميديا، تبويب "القرآن حياتي" بحسب الحال، ونظام الختمات الجماعية والأوقاف الرقمية.',
-                deliverables: 'مولد البطاقات، سجل الختمات، ونظام الختمة العائلية.'
+                phase: isEnglish
+                  ? 'Phase 4: Community Features & Faith Analytics Grid (Weeks 10–12)'
+                  : 'المرحلة 4: الميزات المجتمعية وشبكة الإحصاءات (الأسابيع 10 - 12)',
+                desc: isEnglish
+                  ? 'Develop annual Heatmap statistics, social share card designer, “Qur’an is My Life” situational navigator, and collective Khatma / digital Waqf campaigns.'
+                  : 'تطوير شبكة الإحصاءات والـ Heatmap السنوية، مصمم بطاقات المشاركة على السوشيال ميديا، تبويب "القرآن حياتي" بحسب الحال، ونظام الختمات الجماعية والأوقاف الرقمية.',
+                deliverables: isEnglish
+                  ? 'Share card generator, Khatma log, and family/group Khatma system.'
+                  : 'مولد البطاقات، سجل الختمات، ونظام الختمة العائلية.'
               },
               {
-                phase: 'المرحلة 5: التدقيق النهائي، الإطلاق والوقف الخيري (الأسابيع 13 - 14)',
-                desc: 'المراجعة الشرعية الدقيقة للنصوص مع لجنة تدقيق المصحف، اختبارات الأداء على أكثر من 30 جهاز مختلف (Android & iOS)، ونشر الكود مفتوح المصدر تحت رخصة وقفية خيرية مجانية (GPLv3 / Open Waqf License) وإطلاق التطبيق على المتاجر بدون أي إعلانات للأبد.',
-                deliverables: 'تطبيق منشور على App Store و Google Play وكود متاح على GitHub وقفاً لله.'
+                phase: isEnglish
+                  ? 'Phase 5: Final Audit, Launch & Charitable Waqf (Weeks 13–14)'
+                  : 'المرحلة 5: التدقيق النهائي، الإطلاق والوقف الخيري (الأسابيع 13 - 14)',
+                desc: isEnglish
+                  ? 'Complete scholarly text verification, benchmark performance across 30+ Android & iOS devices, publish open-source code under a charitable Waqf license (GPLv3 / Open Waqf License), and ship ad-free forever.'
+                  : 'المراجعة الشرعية الدقيقة للنصوص مع لجنة تدقيق المصحف، اختبارات الأداء على أكثر من 30 جهاز مختلف (Android & iOS)، ونشر الكود مفتوح المصدر تحت رخصة وقفية خيرية مجانية (GPLv3 / Open Waqf License) وإطلاق التطبيق على المتاجر بدون أي إعلانات للأبد.',
+                deliverables: isEnglish
+                  ? 'App published on App Store & Google Play with open-source code on GitHub as an eternal Waqf.'
+                  : 'تطبيق منشور على App Store و Google Play وكود متاح على GitHub وقفاً لله.'
               }
             ].map((p, idx) => (
               <div key={idx} className="p-4 rounded-xl bg-[#F6EFDD] dark:bg-slate-950/80 border border-[#E3D9C3] dark:border-slate-800 space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-[#1F3A6E] text-[#FBF7EE] font-bold text-xs flex items-center justify-center border border-[#8A6418]/40 dark:border-[#D9B45A]/40">
-                    {idx + 1}
+                  <span className="w-6 h-6 rounded-full bg-[#1F3A6E] text-[#FBF7EE] font-bold text-xs flex items-center justify-center border border-[#8A6418]/40 dark:border-[#D9B45A]/40 tabular-nums">
+                    {formatLocalizedDigits(idx + 1, lang)}
                   </span>
                   <h4 className="font-bold text-[#1B1A17] dark:text-[#F6EFDD] text-sm sm:text-base">{p.phase}</h4>
                 </div>
-                <p className="text-xs sm:text-sm text-[#5E584E] dark:text-slate-300 leading-relaxed pr-8">
+                <p className="text-xs sm:text-sm text-[#5E584E] dark:text-slate-300 leading-relaxed ps-8">
                   {p.desc}
                 </p>
-                <div className="pr-8 text-xs text-[#8A6418] dark:text-[#D9B45A] flex items-center gap-1.5 font-medium">
+                <div className="ps-8 text-xs text-[#8A6418] dark:text-[#D9B45A] flex items-center gap-1.5 font-medium">
                   <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                  <span>المخرجات: {p.deliverables}</span>
+                  <span>
+                    {isEnglish ? `Deliverables: ${p.deliverables}` : `المخرجات: ${p.deliverables}`}
+                  </span>
                 </div>
               </div>
             ))}

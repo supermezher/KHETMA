@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Ayah, getMushafPageData, sanitizeAyahText } from '../data/quranService';
-import { SURAHS_LIST } from '../data/quranMetadata';
+import { SURAHS_LIST, getSurahDisplayName } from '../data/quranMetadata';
 import { safeLocalStorage } from '../utils/safeStorage';
 import { formatLocalDate, recordAyahReadActivity } from '../data/faithAnalyticsService';
 import { recordMushafPageReadInWird } from '../utils/personalKhatma';
@@ -12,6 +12,7 @@ import {
 } from '../utils/recitationMatcher';
 import { toArabicIndic } from './khatma/KhatmaRing';
 import { AudioLevelMeter } from './AudioLevelMeter';
+import { formatLocalizedDigits, useLanguage } from '../utils/i18n';
 import {
   MemorizationRepeatTarget,
   HidePattern,
@@ -121,6 +122,15 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
   playbackCycleEvent,
   reciterName,
 }) => {
+  const { lang, isEnglish, t } = useLanguage();
+  const currentSurahMeta = useMemo(
+    () => SURAHS_LIST.find((s) => s.number === surahNumber),
+    [surahNumber]
+  );
+  const displaySurahName = currentSurahMeta
+    ? getSurahDisplayName(currentSurahMeta, lang)
+    : surahName;
+
   const [studyTab, setStudyTab] = useState<StudyTab>('recite');
   const [quizMode, setQuizMode] = useState<QuizMode>('next-ayah');
   const [onlyDueFilter, setOnlyDueFilter] = useState<boolean>(false);
@@ -617,12 +627,14 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') {
         return;
       }
-      if (e.key === 'ArrowLeft') {
+      const nextKey = isEnglish ? 'ArrowRight' : 'ArrowLeft';
+      const prevKey = isEnglish ? 'ArrowLeft' : 'ArrowRight';
+      if (e.key === nextKey) {
         if (safeIdx < activeAyahList.length - 1) {
           e.preventDefault();
           selectAyahIndex(safeIdx + 1);
         }
-      } else if (e.key === 'ArrowRight') {
+      } else if (e.key === prevKey) {
         if (safeIdx > 0) {
           e.preventDefault();
           selectAyahIndex(safeIdx - 1);
@@ -634,7 +646,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
     };
     window.addEventListener('keydown', handleNavKeys);
     return () => window.removeEventListener('keydown', handleNavKeys);
-  }, [studyTab, currentAyah, safeIdx, activeAyahList.length, selectAyahIndex, revealNextWordHint]);
+  }, [studyTab, currentAyah, safeIdx, activeAyahList.length, selectAyahIndex, revealNextWordHint, isEnglish]);
 
   const currentRecord = currentAyah
     ? srsMap[`${surahNumber}:${currentAyah.numberInSurah}`]
@@ -869,7 +881,12 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
 
     const RecognitionCtor = getSpeechRecognitionConstructor();
     if (!RecognitionCtor || !currentAyah) {
-      setVoiceError('المتصفح الحالي لا يدعم التسميع الصوتي المباشر؛ يمكنك استخدام زر «سجّل تسميعك وقارن».');
+      setVoiceError(
+        t(
+          'المتصفح الحالي لا يدعم التسميع الصوتي المباشر؛ يمكنك استخدام زر «سجّل تسميعك وقارن».',
+          'Live voice check is not supported in this browser; use "Record & Compare" instead.'
+        )
+      );
       return;
     }
 
@@ -937,13 +954,33 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
           return;
         }
         if (event?.error === 'not-allowed' || event?.error === 'service-not-allowed') {
-          setVoiceError('يرجى السماح بصلاحية الميكروفون للتسميع الصوتي الذكي.');
+          setVoiceError(
+            t(
+              'يرجى السماح بصلاحية الميكروفون للتسميع الصوتي الذكي.',
+              'Please allow microphone access for live voice check.'
+            )
+          );
         } else if (event?.error === 'no-speech') {
-          setVoiceError('لم يُلتقط صوت واضح؛ اقترب من الميكروفون وابدأ القراءة.');
+          setVoiceError(
+            t(
+              'لم يُلتقط صوت واضح؛ اقترب من الميكروفون وابدأ القراءة.',
+              'No clear speech detected; move closer to the mic and recite.'
+            )
+          );
         } else if (event?.error === 'network') {
-          setVoiceError('تتعذر خدمة التعرف الصوتي دون إنترنت؛ استخدم «سجّل تسميعك وقارن».');
+          setVoiceError(
+            t(
+              'تتعذر خدمة التعرف الصوتي دون إنترنت؛ استخدم «سجّل تسميعك وقارن».',
+              'Speech recognition requires an internet connection; use "Record & Compare" instead.'
+            )
+          );
         } else {
-          setVoiceError('تعذر متابعة التسميع الصوتي؛ حاول مرة أخرى.');
+          setVoiceError(
+            t(
+              'تعذر متابعة التسميع الصوتي؛ حاول مرة أخرى.',
+              'Could not continue voice check; please try again.'
+            )
+          );
         }
         speechRecRef.current = null;
         setIsVoiceChecking(false);
@@ -962,7 +999,12 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
     } catch {
       speechRecRef.current = null;
       setIsVoiceChecking(false);
-      setVoiceError('تعذر تشغيل التسميع الصوتي المباشر في هذا المتصفح.');
+      setVoiceError(
+        t(
+          'تعذر تشغيل التسميع الصوتي المباشر في هذا المتصفح.',
+          'Unable to start live voice check in this browser.'
+        )
+      );
     }
   };
 
@@ -975,7 +1017,12 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
     }
 
     if (!isMicSupported) {
-      setMicError('المتصفح الحالي لا يدعم التسجيل الصوتي المحلي.');
+      setMicError(
+        t(
+          'المتصفح الحالي لا يدعم التسجيل الصوتي المحلي.',
+          'Local audio recording is not supported in this browser.'
+        )
+      );
       return;
     }
 
@@ -1023,7 +1070,12 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
       setIsRecording(true);
     } catch {
       cleanupRecordingResources(false);
-      setMicError('تعذر الوصول للميكروفون؛ يرجى السماح بصلاحية الصوت في المتصفح.');
+      setMicError(
+        t(
+          'تعذر الوصول للميكروفون؛ يرجى السماح بصلاحية الصوت في المتصفح.',
+          'Microphone access denied; please allow audio permission in your browser.'
+        )
+      );
     }
   };
 
@@ -1116,7 +1168,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
 
   return (
     <section
-      aria-label="حلقة الحفظ والتسميع المتقن"
+      aria-label={t('حلقة الحفظ والتسميع المتقن', 'Memorization & Mastery Studio')}
       className="max-w-4xl mx-auto animate-in fade-in duration-200 pb-6"
     >
       <div className="w-full bg-[#FBF7EE] dark:bg-[#10161f] border border-[#D9B45A]/35 dark:border-[#D9B45A]/25 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
@@ -1129,11 +1181,11 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="font-bold text-base sm:text-lg text-[#1B1A17] dark:text-[#F6EFDD] font-kufi">
-                  حلقة الحفظ
+                  {t('حلقة الحفظ', 'Memorization Studio')}
                 </h2>
                 {onChangeSurah ? (
                   <select
-                    aria-label="اختيار السورة للحفظ"
+                    aria-label={t('اختيار السورة للحفظ', 'Select Surah to memorize')}
                     value={surahNumber}
                     onChange={(e) => {
                       clearPendingAdvanceTimers();
@@ -1145,18 +1197,24 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                   >
                     {SURAHS_LIST.map((s) => (
                       <option key={s.number} value={s.number} className="bg-white text-[#1B1A17] dark:bg-slate-900 dark:text-[#F6EFDD]">
-                        {toArabicIndic(s.number)}. سورة {s.name} ({toArabicIndic(s.numberOfAyahs)})
+                        {formatLocalizedDigits(s.number, lang)}. {t(`سورة ${s.name}`, `Surah ${getSurahDisplayName(s, 'en')}`)} ({formatLocalizedDigits(s.numberOfAyahs, lang)})
                       </option>
                     ))}
                   </select>
                 ) : (
-                  <span className="text-xs font-bold text-[#8A6418] dark:text-[#D9B45A]">· سورة {surahName}</span>
+                  <span className="text-xs font-bold text-[#8A6418] dark:text-[#D9B45A]">
+                    · {t(`سورة ${surahName}`, `Surah ${displaySurahName}`)}
+                  </span>
                 )}
               </div>
               <p className="text-xs text-[#6B6251] dark:text-slate-400 tabular-nums mt-0.5">
-                إتقان السورة: {toArabicIndic(surahSummary.mastered)} من{' '}
-                {toArabicIndic(surahSummary.total)} آية · مستحق اليوم:{' '}
-                <strong className="text-[#8A6418] dark:text-amber-300">{toArabicIndic(surahSummary.dueCount)}</strong>
+                {t('إتقان السورة:', 'Surah Mastery:')}{' '}
+                {formatLocalizedDigits(surahSummary.mastered, lang)}{' '}
+                {t('من', 'of')} {formatLocalizedDigits(surahSummary.total, lang)}{' '}
+                {t('آية', 'Ayahs')} · {t('مستحق اليوم:', 'Due today:')}{' '}
+                <strong className="text-[#8A6418] dark:text-amber-300">
+                  {formatLocalizedDigits(surahSummary.dueCount, lang)}
+                </strong>
               </p>
             </div>
           </div>
@@ -1173,7 +1231,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                     : 'text-[#6B6251] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white'
                 }`}
               >
-                التسميع المتدرج
+                {t('التسميع المتدرج', 'Progressive Recite')}
               </button>
               <button
                 type="button"
@@ -1186,7 +1244,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                 }`}
               >
                 <BrainCircuit className="w-3.5 h-3.5 text-[#D9B45A]" />
-                <span>اختبار التثبيت</span>
+                <span>{t('اختبار التثبيت', 'Retention Quiz')}</span>
               </button>
             </div>
 
@@ -1200,14 +1258,14 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
               }}
               className="min-h-[38px] px-3.5 py-1.5 rounded-xl bg-white dark:bg-slate-900 hover:bg-[#F3E9D2] dark:hover:bg-slate-800 border border-[#D9B45A]/30 dark:border-slate-700 text-[#4B4539] dark:text-slate-200 text-xs font-semibold transition-colors cursor-pointer"
             >
-              خروج
+              {t('خروج', 'Exit')}
             </button>
           </div>
         </div>
 
         {/* Guided 3-Step Progressive Flow */}
         <div
-          aria-label="خطوات التسميع المتدرج"
+          aria-label={t('خطوات التسميع المتدرج', 'Progressive memorization steps')}
           className="px-4 sm:px-5 py-2 border-b border-[#D9B45A]/20 dark:border-slate-800/75 bg-white/60 dark:bg-slate-950/60 flex flex-wrap items-center justify-between gap-2 text-[11px]"
         >
           <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
@@ -1220,10 +1278,14 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                   : 'text-[#6B6251] dark:text-slate-400'
               }`}
             >
-              <span className="w-4 h-4 rounded-full bg-[#D9B45A] text-[#1B1A17] inline-flex items-center justify-center text-[10px] font-extrabold">١</span>
-              <span>حدّد المقطع والوجه</span>
+              <span className="w-4 h-4 rounded-full bg-[#D9B45A] text-[#1B1A17] inline-flex items-center justify-center text-[10px] font-extrabold">
+                {formatLocalizedDigits(1, lang)}
+              </span>
+              <span>{t('حدّد المقطع والوجه', 'Set Range / Page')}</span>
             </button>
-            <span className="text-[#8A6418]/50 dark:text-slate-600" aria-hidden="true">←</span>
+            <span className="text-[#8A6418]/50 dark:text-slate-600" aria-hidden="true">
+              {isEnglish ? '→' : '←'}
+            </span>
             <span
               className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold ${
                 isVoiceChecking || isRecording || isCurrentAyahPlaying
@@ -1231,10 +1293,14 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                   : 'text-[#6B6251] dark:text-slate-300'
               }`}
             >
-              <span className="w-4 h-4 rounded-full bg-[#1F3A6E] text-[#F6EFDD] inline-flex items-center justify-center text-[10px] font-extrabold">٢</span>
-              <span>استمع وردد بصوتك</span>
+              <span className="w-4 h-4 rounded-full bg-[#1F3A6E] text-[#F6EFDD] inline-flex items-center justify-center text-[10px] font-extrabold">
+                {formatLocalizedDigits(2, lang)}
+              </span>
+              <span>{t('استمع وردد بصوتك', 'Listen & Recite')}</span>
             </span>
-            <span className="text-[#8A6418]/50 dark:text-slate-600" aria-hidden="true">←</span>
+            <span className="text-[#8A6418]/50 dark:text-slate-600" aria-hidden="true">
+              {isEnglish ? '→' : '←'}
+            </span>
             <button
               type="button"
               disabled={!canQuiz}
@@ -1245,12 +1311,16 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                   : 'text-[#6B6251] dark:text-slate-300 hover:text-[#1F3A6E] dark:hover:text-[#D9B45A]'
               }`}
             >
-              <span className="w-4 h-4 rounded-full bg-emerald-600 text-white inline-flex items-center justify-center text-[10px] font-extrabold">٣</span>
-              <span>اختبر الإتقان (SRS)</span>
+              <span className="w-4 h-4 rounded-full bg-emerald-600 text-white inline-flex items-center justify-center text-[10px] font-extrabold">
+                {formatLocalizedDigits(3, lang)}
+              </span>
+              <span>{t('اختبر الإتقان (SRS)', 'Test Mastery (SRS)')}</span>
             </button>
           </div>
           <span className="text-[#6B6251] dark:text-slate-400 hidden sm:inline">
-            {scopeMode === 'mushaf-page' ? 'نظام المصحف بالوجه' : 'نظام حفظ المقاطع'}
+            {scopeMode === 'mushaf-page'
+              ? t('نظام المصحف بالوجه', "Mus'haf Page System")
+              : t('نظام حفظ المقاطع', 'Ayah Span System')}
           </span>
         </div>
 
@@ -1269,7 +1339,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                       : 'text-[#6B6251] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white'
                   }`}
                 >
-                  بنطاق الآيات
+                  {t('بنطاق الآيات', 'By Ayah Range')}
                 </button>
                 <button
                   type="button"
@@ -1281,7 +1351,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                   }`}
                 >
                   <BookOpen className="w-3 h-3" />
-                  <span>بالصفحة / الوجه</span>
+                  <span>{t('بالصفحة / الوجه', "By Mus'haf Page")}</span>
                 </button>
               </div>
 
@@ -1289,7 +1359,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                 <>
                   <div className="flex items-center gap-1.5 tabular-nums">
                     <label className="text-[#6B6251] dark:text-slate-400" htmlFor="hifz-range-start">
-                      من
+                      {t('من', 'From')}
                     </label>
                     <select
                       id="hifz-range-start"
@@ -1299,12 +1369,12 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                     >
                       {ayahs.map((a) => (
                         <option key={a.numberInSurah} value={a.numberInSurah} className="bg-white text-[#1B1A17] dark:bg-slate-900 dark:text-[#F6EFDD]">
-                          آية {toArabicIndic(a.numberInSurah)}
+                          {t('آية', 'Ayah')} {formatLocalizedDigits(a.numberInSurah, lang)}
                         </option>
                       ))}
                     </select>
                     <label className="text-[#6B6251] dark:text-slate-400" htmlFor="hifz-range-end">
-                      إلى
+                      {t('إلى', 'To')}
                     </label>
                     <select
                       id="hifz-range-end"
@@ -1316,7 +1386,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                         .filter((a) => a.numberInSurah >= rangeStart)
                         .map((a) => (
                           <option key={a.numberInSurah} value={a.numberInSurah} className="bg-white text-[#1B1A17] dark:bg-slate-900 dark:text-[#F6EFDD]">
-                            آية {toArabicIndic(a.numberInSurah)}
+                            {t('آية', 'Ayah')} {formatLocalizedDigits(a.numberInSurah, lang)}
                           </option>
                         ))}
                     </select>
@@ -1330,7 +1400,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                         onClick={() => applyPresetRange(5)}
                         className="px-2 py-1 rounded-lg bg-white dark:bg-slate-900 hover:bg-[#F3E9D2] dark:hover:bg-slate-800 border border-[#D9B45A]/25 dark:border-slate-800 text-[11px] text-[#4B4539] dark:text-slate-300 cursor-pointer"
                       >
-                        ٥ آيات
+                        {t('٥ آيات', '5 Ayahs')}
                       </button>
                     )}
                     {ayahs.length > 10 && (
@@ -1339,7 +1409,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                         onClick={() => applyPresetRange(10)}
                         className="px-2 py-1 rounded-lg bg-white dark:bg-slate-900 hover:bg-[#F3E9D2] dark:hover:bg-slate-800 border border-[#D9B45A]/25 dark:border-slate-800 text-[11px] text-[#4B4539] dark:text-slate-300 cursor-pointer"
                       >
-                        ١٠ آيات
+                        {t('١٠ آيات', '10 Ayahs')}
                       </button>
                     )}
                     {(rangeStart !== 1 || rangeEnd !== ayahs.length) && (
@@ -1348,7 +1418,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                         onClick={() => applyPresetRange('all')}
                         className="px-2 py-1 rounded-lg bg-white dark:bg-slate-900 hover:bg-[#F3E9D2] dark:hover:bg-slate-800 border border-[#D9B45A]/30 dark:border-slate-800 text-[11px] text-[#8A6418] dark:text-[#D9B45A] font-semibold cursor-pointer"
                       >
-                        كامل السورة
+                        {t('كامل السورة', 'Full Surah')}
                       </button>
                     )}
                   </div>
@@ -1360,16 +1430,20 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                     type="button"
                     disabled={selectedPageNumber <= 1 || isJumpingPage || (!onChangeSurah && selectedPageNumber <= (surahPageSpans[0]?.pageNumber ?? 1))}
                     onClick={() => handleSelectMushafPage(selectedPageNumber - 1)}
-                    title="الوجه السابق في المصحف"
-                    aria-label="الوجه السابق"
+                    title={t('الوجه السابق في المصحف', "Previous Mus'haf page")}
+                    aria-label={t('الوجه السابق', 'Previous page')}
                     className="min-h-[34px] px-2 rounded-lg bg-white dark:bg-slate-950 hover:bg-[#F3E9D2] dark:hover:bg-slate-800 border border-[#D9B45A]/30 dark:border-slate-700/80 text-[#1B1A17] dark:text-slate-200 disabled:opacity-35 flex items-center gap-1 cursor-pointer"
                   >
-                    <ChevronRight className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
-                    <span className="hidden sm:inline text-[11px]">السابق</span>
+                    {isEnglish ? (
+                      <ChevronLeft className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
+                    ) : (
+                      <ChevronRight className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
+                    )}
+                    <span className="hidden sm:inline text-[11px]">{t('السابق', 'Prev')}</span>
                   </button>
 
                   <select
-                    aria-label="اختيار صفحة المصحف من السورة"
+                    aria-label={t('اختيار صفحة المصحف من السورة', "Select Mus'haf page for Surah")}
                     value={activePageSpan?.pageNumber ?? selectedPageNumber}
                     onChange={(e) => handleSelectMushafPage(Number(e.target.value))}
                     className="min-h-[34px] bg-white dark:bg-slate-950 border border-[#D9B45A]/45 dark:border-[#D9B45A]/40 rounded-lg px-2.5 py-1 text-[#1B1A17] dark:text-[#F6EFDD] font-semibold outline-none cursor-pointer"
@@ -1378,9 +1452,11 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                       const stats = computePageMasteryStats(sp, ayahs, srsMap, surahNumber, todayStr);
                       return (
                         <option key={sp.pageNumber} value={sp.pageNumber} className="bg-white text-[#1B1A17] dark:bg-slate-900 dark:text-[#F6EFDD]">
-                          وجه {toArabicIndic(sp.pageNumber)} · آيات {toArabicIndic(sp.startAyah)}–
-                          {toArabicIndic(sp.endAyah)} ({toArabicIndic(stats.masteredCount)}/
-                          {toArabicIndic(stats.totalAyahs)})
+                          {t('وجه', 'Page')} {formatLocalizedDigits(sp.pageNumber, lang)} ·{' '}
+                          {t('آيات', 'Ayahs')} {formatLocalizedDigits(sp.startAyah, lang)}–
+                          {formatLocalizedDigits(sp.endAyah, lang)} (
+                          {formatLocalizedDigits(stats.masteredCount, lang)}/
+                          {formatLocalizedDigits(stats.totalAyahs, lang)})
                         </option>
                       );
                     })}
@@ -1390,12 +1466,16 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                     type="button"
                     disabled={selectedPageNumber >= 604 || isJumpingPage || (!onChangeSurah && selectedPageNumber >= (surahPageSpans[surahPageSpans.length - 1]?.pageNumber ?? 604))}
                     onClick={() => handleSelectMushafPage(selectedPageNumber + 1)}
-                    title="الوجه التالي في المصحف"
-                    aria-label="الوجه التالي"
+                    title={t('الوجه التالي في المصحف', "Next Mus'haf page")}
+                    aria-label={t('الوجه التالي', 'Next page')}
                     className="min-h-[34px] px-2 rounded-lg bg-white dark:bg-slate-950 hover:bg-[#F3E9D2] dark:hover:bg-slate-800 border border-[#D9B45A]/30 dark:border-slate-700/80 text-[#1B1A17] dark:text-slate-200 disabled:opacity-35 flex items-center gap-1 cursor-pointer"
                   >
-                    <span className="hidden sm:inline text-[11px]">التالي</span>
-                    <ChevronLeft className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
+                    <span className="hidden sm:inline text-[11px]">{t('التالي', 'Next')}</span>
+                    {isEnglish ? (
+                      <ChevronRight className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
+                    ) : (
+                      <ChevronLeft className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
+                    )}
                   </button>
 
                   {onChangeSurah && (
@@ -1413,7 +1493,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                         type="number"
                         min={1}
                         max={604}
-                        aria-label="رقم الصفحة في المصحف (١ إلى ٦٠٤)"
+                        aria-label={t('رقم الصفحة في المصحف (١ إلى ٦٠٤)', "Mus'haf page number (1 to 604)")}
                         value={pageJumpInput}
                         onChange={(e) => setPageJumpInput(e.target.value)}
                         className="w-16 min-h-[34px] bg-white dark:bg-slate-950 border border-[#D9B45A]/35 dark:border-slate-700/80 rounded-lg px-2 py-1 text-center text-[#8A6418] dark:text-[#D9B45A] font-bold outline-none focus:border-[#D9B45A]"
@@ -1423,7 +1503,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                         disabled={isJumpingPage}
                         className="min-h-[34px] px-2.5 py-1 rounded-lg bg-[#1F3A6E] hover:bg-[#2E5499] border border-[#648CD4]/45 text-[#F6EFDD] text-[11px] font-bold cursor-pointer disabled:opacity-45"
                       >
-                        {isJumpingPage ? '…' : 'انتقال'}
+                        {isJumpingPage ? '…' : t('انتقال', 'Go')}
                       </button>
                     </form>
                   )}
@@ -1434,12 +1514,21 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
             {/* Range Mastery Bar */}
             <div className="flex items-center gap-2.5 tabular-nums">
               <span className="text-[11px] text-[#4B4539] dark:text-slate-300">
-                {scopeMode === 'mushaf-page' ? 'إتقان الوجه:' : 'إتقان المقطع:'}{' '}
-                <strong className="text-emerald-700 dark:text-emerald-400">{toArabicIndic(masteredPct)}٪</strong>
+                {scopeMode === 'mushaf-page'
+                  ? t('إتقان الوجه:', 'Page Mastery:')
+                  : t('إتقان المقطع:', 'Range Mastery:')}{' '}
+                <strong className="text-emerald-700 dark:text-emerald-400">
+                  {formatLocalizedDigits(masteredPct, lang)}
+                  {t('٪', '%')}
+                </strong>
               </span>
               <div className="w-24 h-2 rounded-full bg-white dark:bg-slate-900 border border-[#D9B45A]/30 dark:border-slate-800 overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-l from-emerald-500 to-[#D9B45A] transition-all duration-300"
+                  className={`h-full transition-all duration-300 ${
+                    isEnglish
+                      ? 'bg-gradient-to-r from-[#D9B45A] to-emerald-500'
+                      : 'bg-gradient-to-l from-emerald-500 to-[#D9B45A]'
+                  }`}
                   style={{ width: `${masteredPct}%` }}
                 />
               </div>
@@ -1451,28 +1540,41 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
             <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-white/90 dark:bg-slate-950/75 border border-[#D9B45A]/25 dark:border-[#D9B45A]/20 text-[11px] tabular-nums">
               <div className="flex flex-wrap items-center gap-2 text-[#4B4539] dark:text-slate-300">
                 <span className="font-bold text-[#8A6418] dark:text-[#D9B45A]">
-                  مصفوفة المصحف · صفحة {toArabicIndic(activePageSpan.pageNumber)} من ٦٠٤
+                  {t(
+                    `مصفوفة المصحف · صفحة ${formatLocalizedDigits(activePageSpan.pageNumber, 'ar')} من ٦٠٤`,
+                    `Mus'haf Matrix · Page ${activePageSpan.pageNumber} of 604`
+                  )}
                 </span>
                 <span className="text-[#8A6418]/45 dark:text-slate-500">•</span>
-                <span>الجزء {toArabicIndic(activePageSpan.juz)}</span>
+                <span>
+                  {t(
+                    `الجزء ${formatLocalizedDigits(activePageSpan.juz, 'ar')}`,
+                    `Juz ${activePageSpan.juz}`
+                  )}
+                </span>
                 <span className="text-[#8A6418]/45 dark:text-slate-500">•</span>
                 <span>
-                  الآيات {toArabicIndic(activePageSpan.startAyah)}–{toArabicIndic(activePageSpan.endAyah)} (
-                  {toArabicIndic(activePageSpan.ayahCount)} آيات)
+                  {t('الآيات', 'Ayahs')} {formatLocalizedDigits(activePageSpan.startAyah, lang)}–
+                  {formatLocalizedDigits(activePageSpan.endAyah, lang)} (
+                  {formatLocalizedDigits(activePageSpan.ayahCount, lang)} {t('آيات', 'Ayahs')})
                 </span>
                 {activePageStats?.isFullyMastered && (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-400 dark:border-emerald-500/40 text-emerald-800 dark:text-emerald-300 font-bold">
                     <CheckCircle2 className="w-3 h-3" />
-                    وجه متقن
+                    {t('وجه متقن', 'Page Mastered')}
                   </span>
                 )}
               </div>
 
               {coSurahsOnPage.length > 1 && onChangeSurah && (
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[#6B6251] dark:text-slate-400">سور نفس الوجه:</span>
+                  <span className="text-[#6B6251] dark:text-slate-400">
+                    {t('سور نفس الوجه:', 'Surahs on this page:')}
+                  </span>
                   {coSurahsOnPage.map((cs) => {
                     const isCurrent = cs.surahNumber === surahNumber;
+                    const coMeta = SURAHS_LIST.find((s) => s.number === cs.surahNumber);
+                    const coLabel = coMeta ? getSurahDisplayName(coMeta, lang) : cs.surahName;
                     return (
                       <button
                         key={cs.surahNumber}
@@ -1488,7 +1590,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                             : 'bg-[#FBF7EE] dark:bg-slate-900 border-[#D9B45A]/25 dark:border-slate-700 text-[#4B4539] dark:text-slate-300 hover:border-[#D9B45A] hover:text-[#1B1A17] dark:hover:text-white'
                         }`}
                       >
-                        {cs.surahName}
+                        {coLabel}
                       </button>
                     );
                   })}
@@ -1536,16 +1638,19 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                     }}
                     title={
                       rec?.status === 'mastered'
-                        ? `الآية ${a.numberInSurah}: متقنة`
+                        ? t(`الآية ${a.numberInSurah}: متقنة`, `Ayah ${a.numberInSurah}: Mastered`)
                         : rec?.status === 'good'
-                        ? `الآية ${a.numberInSurah}: جيدة`
+                        ? t(`الآية ${a.numberInSurah}: جيدة`, `Ayah ${a.numberInSurah}: Good`)
                         : rec?.status === 'needs-review'
-                        ? `الآية ${a.numberInSurah}: تحتاج تثبيت`
-                        : `الآية ${a.numberInSurah}: جديدة`
+                        ? t(
+                            `الآية ${a.numberInSurah}: تحتاج تثبيت`,
+                            `Ayah ${a.numberInSurah}: Needs review`
+                          )
+                        : t(`الآية ${a.numberInSurah}: جديدة`, `Ayah ${a.numberInSurah}: New`)
                     }
                     className={`min-w-[30px] h-7 px-1.5 rounded-lg border text-[11px] tabular-nums transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${pillStyle}`}
                   >
-                    {toArabicIndic(a.numberInSurah)}
+                    {formatLocalizedDigits(a.numberInSurah, lang)}
                   </button>
                 );
               })}
@@ -1558,13 +1663,15 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
             {/* Hiding Patterns & Study Helpers Toolbar */}
             <div className="p-3 sm:px-5 bg-white/80 dark:bg-slate-950/60 border-b border-[#D9B45A]/20 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2.5 text-xs">
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[#6B6251] dark:text-slate-400 ml-1">النمط:</span>
-                    {(
+                <span className="text-[#6B6251] dark:text-slate-400 me-1">
+                  {t('النمط:', 'Pattern:')}
+                </span>
+                {(
                   [
-                    { id: 'first-word-only', label: 'مطلع الآية' },
-                    { id: 'first-letter', label: 'الحرف الأول' },
-                    { id: 'alternate-words', label: 'كلمة بعد كلمة' },
-                    { id: 'all-blank', label: 'حجب كامل' },
+                    { id: 'first-word-only', label: t('مطلع الآية', 'First Word') },
+                    { id: 'first-letter', label: t('الحرف الأول', 'First Letter') },
+                    { id: 'alternate-words', label: t('كلمة بعد كلمة', 'Every Other') },
+                    { id: 'all-blank', label: t('حجب كامل', 'Hide All') },
                   ] as const
                 ).map((p) => (
                   <button
@@ -1598,7 +1705,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                           : 'text-[#6B6251] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white'
                       }`}
                     >
-                      آية بآية
+                      {t('آية بآية', 'Ayah by Ayah')}
                     </button>
                     <button
                       type="button"
@@ -1610,7 +1717,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                       }`}
                     >
                       <Layers className="w-3 h-3 text-[#D9B45A]" />
-                      <span>عرض الوجه كاملاً</span>
+                      <span>{t('عرض الوجه كاملاً', 'Full Page View')}</span>
                     </button>
                   </div>
                 )}
@@ -1619,11 +1726,14 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                   type="button"
                   onClick={revealNextWordHint}
                   disabled={!currentAyah || (reciteViewMode === 'single-ayah' && nextHiddenIndex === null)}
-                  title="اكشف الكلمة المخفية التالية تدريجياً (اختصار: مسافة)"
+                  title={t(
+                    'اكشف الكلمة المخفية التالية تدريجياً (اختصار: مسافة)',
+                    'Reveal next hidden word (Shortcut: Space)'
+                  )}
                   className="min-h-[34px] flex items-center gap-1 py-1 px-2.5 rounded-lg bg-[#1F3A6E] hover:bg-[#2E5499] border border-[#648CD4]/45 text-[#F6EFDD] disabled:opacity-40 transition-colors cursor-pointer"
                 >
                   <Lightbulb className="w-3.5 h-3.5 text-[#D9B45A]" />
-                  <span>تلميح كلمة</span>
+                  <span>{t('تلميح كلمة', 'Word Hint')}</span>
                 </button>
 
                 <button
@@ -1633,7 +1743,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                   className="min-h-[34px] flex items-center gap-1 py-1 px-2.5 rounded-lg bg-[#FBF7EE] dark:bg-slate-900 hover:bg-[#F3E9D2] dark:hover:bg-slate-800 border border-[#D9B45A]/25 dark:border-slate-800 text-[#1B1A17] dark:text-slate-200 disabled:opacity-40 transition-colors cursor-pointer"
                 >
                   <Eye className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                  <span>كشف الكل</span>
+                  <span>{t('كشف الكل', 'Show All')}</span>
                 </button>
 
                 <button
@@ -1643,7 +1753,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                   className="min-h-[34px] flex items-center gap-1 py-1 px-2.5 rounded-lg bg-[#FBF7EE] dark:bg-slate-900 hover:bg-[#F3E9D2] dark:hover:bg-slate-800 border border-[#D9B45A]/25 dark:border-slate-800 text-[#1B1A17] dark:text-slate-200 disabled:opacity-40 transition-colors cursor-pointer"
                 >
                   <EyeOff className="w-3.5 h-3.5 text-[#8A6418] dark:text-amber-400" />
-                  <span>حجب</span>
+                  <span>{t('حجب', 'Hide')}</span>
                 </button>
 
                 <button
@@ -1664,7 +1774,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                 >
                   <CalendarClock className="w-3.5 h-3.5" />
                   <span>
-                    المستحق ({toArabicIndic(dueAyahsInRange.length)})
+                    {t('المستحق', 'Due')} ({formatLocalizedDigits(dueAyahsInRange.length, lang)})
                   </span>
                 </button>
 
@@ -1679,7 +1789,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                   }`}
                 >
                   <BookOpenText className="w-3.5 h-3.5" />
-                  <span>المعنى</span>
+                  <span>{t('المعنى', 'Meaning')}</span>
                 </button>
               </div>
             </div>
@@ -1692,10 +1802,16 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                     <Sparkles className="w-6 h-6" />
                   </div>
                   <h3 className="text-base font-bold text-[#1B1A17] dark:text-[#F6EFDD]">
-                    أتممت مراجعة جميع الآيات المستحقة في هذا النطاق اليوم
+                    {t(
+                      'أتممت مراجعة جميع الآيات المستحقة في هذا النطاق اليوم',
+                      'You have reviewed all due Ayahs in this range today'
+                    )}
                   </h3>
                   <p className="text-xs text-[#6B6251] dark:text-slate-300 leading-relaxed">
-                    ثبّت الله حفظك! يمكنك استعراض جميع آيات المقطع للتسميع الحر أو توسيع نطاق الحفظ من الأعلى.
+                    {t(
+                      'ثبّت الله حفظك! يمكنك استعراض جميع آيات المقطع للتسميع الحر أو توسيع نطاق الحفظ من الأعلى.',
+                      'May Allah keep your memorization firm! You can show all Ayahs for free recitation or expand the range above.'
+                    )}
                   </p>
                   <button
                     type="button"
@@ -1705,7 +1821,10 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                     }}
                     className="min-h-[40px] px-4 py-2 rounded-xl bg-[#1F3A6E] hover:bg-[#2E5499] border border-[#648CD4]/50 text-[#F6EFDD] text-xs font-bold cursor-pointer"
                   >
-                    عرض كل آيات المقطع ({toArabicIndic(rangeAyahs.length)})
+                    {t(
+                      `عرض كل آيات المقطع (${toArabicIndic(rangeAyahs.length)})`,
+                      `Show All Ayahs in Range (${rangeAyahs.length})`
+                    )}
                   </button>
                 </div>
               ) : currentAyah ? (
@@ -1713,43 +1832,55 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                   {/* Active Ayah Metadata Row */}
                   <div className="text-xs mb-4 font-semibold flex flex-wrap items-center justify-center gap-2 tabular-nums">
                     <select
-                      aria-label="اختيار رقم الآية"
+                      aria-label={t('اختيار رقم الآية', 'Select Ayah number')}
                       value={safeIdx}
                       onChange={(e) => selectAyahIndex(Number(e.target.value))}
                       className="min-h-[34px] bg-white dark:bg-[#0d121a] border border-[#D9B45A]/45 dark:border-[#D9B45A]/35 rounded-lg px-2.5 py-1 text-[#8A6418] dark:text-[#D9B45A] font-bold outline-none cursor-pointer hover:border-[#D9B45A]"
                     >
                       {activeAyahList.map((a, idx) => (
                         <option key={a.numberInSurah} value={idx} className="bg-white text-[#1B1A17] dark:bg-slate-900 dark:text-[#F6EFDD]">
-                          الآية {toArabicIndic(a.numberInSurah)} ({toArabicIndic(idx + 1)} من{' '}
-                          {toArabicIndic(activeAyahList.length)})
+                          {t('الآية', 'Ayah')} {formatLocalizedDigits(a.numberInSurah, lang)} (
+                          {formatLocalizedDigits(idx + 1, lang)} {t('من', 'of')}{' '}
+                          {formatLocalizedDigits(activeAyahList.length, lang)})
                         </option>
                       ))}
                     </select>
 
                     {currentRecord ? (
                       <span className="text-[#4B4539] dark:text-slate-300 bg-white dark:bg-slate-900/90 border border-[#D9B45A]/25 dark:border-slate-800 px-2.5 py-1 rounded-lg font-normal">
-                        المراجعة القادمة: <strong className="text-[#8A6418] dark:text-[#D9B45A]">{currentRecord.nextReviewDate}</strong>
+                        {t('المراجعة القادمة:', 'Next review:')}{' '}
+                        <strong className="text-[#8A6418] dark:text-[#D9B45A]">{currentRecord.nextReviewDate}</strong>
                       </span>
                     ) : (
                       <span className="text-[#6B6251] dark:text-slate-400 bg-white/80 dark:bg-slate-900/70 border border-[#D9B45A]/20 dark:border-slate-800 px-2.5 py-1 rounded-lg font-normal">
-                        آية جديدة للتقييم
+                        {t('آية جديدة للتقييم', 'New Ayah to evaluate')}
                       </span>
                     )}
                   </div>
 
                   {/* Interactive Stage: Either Full Mushaf Face Matrix or Centered Single Ayah */}
                   {scopeMode === 'mushaf-page' && reciteViewMode === 'full-page' ? (
-                    <div className="w-full max-w-3xl mx-auto p-4 sm:p-6 rounded-2xl bg-[#F6EFDD] dark:bg-[#0d121a]/95 border border-[#D9B45A]/45 dark:border-[#D9B45A]/30 shadow-inner text-right space-y-4">
+                    <div className="w-full max-w-3xl mx-auto p-4 sm:p-6 rounded-2xl bg-[#F6EFDD] dark:bg-[#0d121a]/95 border border-[#D9B45A]/45 dark:border-[#D9B45A]/30 shadow-inner space-y-4">
                       <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-[#D9B45A]/25 dark:border-slate-800/80 text-xs">
                         <span className="font-bold text-[#8A6418] dark:text-[#D9B45A] font-kufi">
-                          لوح الوجه {toArabicIndic(activePageSpan?.pageNumber ?? selectedPageNumber)} · سورة {surahName}
+                          {t(
+                            `لوح الوجه ${formatLocalizedDigits(activePageSpan?.pageNumber ?? selectedPageNumber, 'ar')} · سورة ${surahName}`,
+                            `Page Slate ${activePageSpan?.pageNumber ?? selectedPageNumber} · Surah ${displaySurahName}`
+                          )}
                         </span>
                         <span className="text-[11px] text-[#6B6251] dark:text-slate-400">
-                          انقر أي كلمة مخفية لكشفها · أو رقم الآية للتركيز والتسميع
+                          {t(
+                            'انقر أي كلمة مخفية لكشفها · أو رقم الآية للتركيز والتسميع',
+                            'Tap any hidden word to reveal it · or an Ayah number to focus'
+                          )}
                         </span>
                       </div>
 
-                      <div className="font-quran text-xl sm:text-2xl text-[#1B1A17] dark:text-[#F6EFDD] leading-[2.45] flex flex-wrap items-baseline gap-x-1.5 gap-y-2.5">
+                      <div
+                        dir="rtl"
+                        lang="ar"
+                        className="font-quran text-xl sm:text-2xl text-[#1B1A17] dark:text-[#F6EFDD] leading-[2.45] flex flex-wrap items-baseline gap-x-1.5 gap-y-2.5 text-right"
+                      >
                         {activeAyahList.map((pageAyah, ayahPos) => {
                           const ayahClean = sanitizeAyahText(
                             pageAyah.text,
@@ -1794,7 +1925,11 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                                         ? 'bg-[#1F3A6E]/15 dark:bg-[#1F3A6E]/35 border border-[#1F3A6E]/35 dark:border-[#648CD4]/35'
                                         : 'hover:bg-[#1F3A6E]/10 dark:hover:bg-[#1F3A6E]/25 border border-transparent'
                                     }`}
-                                    title={hidden ? 'انقر لكشف الكلمة' : 'انقر لإخفاء الكلمة'}
+                                    title={
+                                      hidden
+                                        ? t('انقر لكشف الكلمة', 'Click to reveal word')
+                                        : t('انقر لإخفاء الكلمة', 'Click to hide word')
+                                    }
                                   >
                                     <span className={hidden ? 'opacity-0 select-none' : 'opacity-100'}>
                                       {word}
@@ -1817,7 +1952,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                               <button
                                 type="button"
                                 onClick={() => selectAyahIndex(ayahPos)}
-                                title={`تركيز الآية ${pageAyah.numberInSurah}`}
+                                title={t(`تركيز الآية ${pageAyah.numberInSurah}`, `Focus Ayah ${pageAyah.numberInSurah}`)}
                                 className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded-lg font-sans text-sm font-bold tabular-nums transition-colors cursor-pointer ${
                                   isFocusedAyah
                                     ? 'bg-[#D9B45A] text-[#10161f]'
@@ -1836,7 +1971,11 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                       </div>
                     </div>
                   ) : (
-                    <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-3 font-quran text-2xl sm:text-3xl text-[#1B1A17] dark:text-[#F6EFDD] max-w-2xl leading-relaxed">
+                    <div
+                      dir="rtl"
+                      lang="ar"
+                      className="flex flex-wrap items-center justify-center gap-x-2 gap-y-3 font-quran text-2xl sm:text-3xl text-[#1B1A17] dark:text-[#F6EFDD] max-w-2xl leading-relaxed"
+                    >
                       {words.map((word, idx) => {
                         const hidden = isMemorizationWordHidden(idx, hidePattern, revealedWordIndices);
                         const firstLetterCue =
@@ -1854,7 +1993,11 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                                 ? 'bg-white dark:bg-[#0d121a]/90 border border-[#D9B45A]/50 dark:border-[#D9B45A]/35 text-transparent hover:border-[#8A6418] dark:hover:border-[#D9B45A] shadow-inner min-w-[3.4rem]'
                                 : 'hover:bg-[#1F3A6E]/10 dark:hover:bg-[#1F3A6E]/35 border border-transparent'
                             }`}
-                            title={hidden ? 'انقر لكشف الكلمة' : 'انقر لإخفاء الكلمة'}
+                            title={
+                              hidden
+                                ? t('انقر لكشف الكلمة', 'Click to reveal word')
+                                : t('انقر لإخفاء الكلمة', 'Click to hide word')
+                            }
                           >
                             <span className={hidden ? 'opacity-0 select-none' : 'opacity-100'}>
                               {word}
@@ -1881,11 +2024,11 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
 
                   {/* Tafsir Comprehension Anchor */}
                   {showTafsirAnchor && currentAyah.tafsir && (
-                    <div className="mt-5 max-w-xl w-full p-3.5 rounded-xl bg-white dark:bg-[#0d121a]/90 border border-[#D9B45A]/35 dark:border-emerald-500/30 text-right space-y-1 animate-in fade-in duration-150">
+                    <div className="mt-5 max-w-xl w-full p-3.5 rounded-xl bg-white dark:bg-[#0d121a]/90 border border-[#D9B45A]/35 dark:border-emerald-500/30 text-start space-y-1 animate-in fade-in duration-150">
                       <span className="text-[11px] font-bold text-[#1F3A6E] dark:text-emerald-400">
-                        الربط بالمعنى (التفسير الميسر):
+                        {t('الربط بالمعنى (التفسير الميسر):', 'Meaning Anchor (Tafsir Al-Muyassar):')}
                       </span>
-                      <p className="text-xs sm:text-sm text-[#4B4539] dark:text-slate-200 leading-relaxed select-text">
+                      <p dir="rtl" lang="ar" className="text-xs sm:text-sm text-[#4B4539] dark:text-slate-200 leading-relaxed select-text text-right">
                         {currentAyah.tafsir}
                       </p>
                     </div>
@@ -1906,12 +2049,12 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                         {isVoiceChecking ? (
                           <>
                             <Square className="w-3.5 h-3.5 fill-emerald-600 dark:fill-emerald-300 text-emerald-600 dark:text-emerald-300" />
-                            <span>إيقاف التسميع الذكي</span>
+                            <span>{t('إيقاف التسميع الذكي', 'Stop Voice Check')}</span>
                           </>
                         ) : (
                           <>
                             <Sparkles className="w-3.5 h-3.5 text-[#D9B45A]" />
-                            <span>التسميع الذكي بالصوت</span>
+                            <span>{t('التسميع الذكي بالصوت', 'Smart Voice Check')}</span>
                           </>
                         )}
                       </button>
@@ -1930,12 +2073,12 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                         {isRecording ? (
                           <>
                             <Square className="w-3.5 h-3.5 fill-rose-500 dark:fill-rose-400 text-rose-500 dark:text-rose-400" />
-                            <span>إيقاف التسجيل</span>
+                            <span>{t('إيقاف التسجيل', 'Stop Recording')}</span>
                           </>
                         ) : (
                           <>
                             <Mic className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
-                            <span>سجّل تسميعك وقارن</span>
+                            <span>{t('سجّل تسميعك وقارن', 'Record & Compare')}</span>
                           </>
                         )}
                       </button>
@@ -1957,12 +2100,12 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                           {isPlayingSelfRec ? (
                             <>
                               <Pause className="w-3.5 h-3.5" />
-                              <span>إيقاف تسجيلي</span>
+                              <span>{t('إيقاف تسجيلي', 'Stop Playback')}</span>
                             </>
                           ) : (
                             <>
                               <Play className="w-3.5 h-3.5 fill-current" />
-                              <span>سماع تسجيلي</span>
+                              <span>{t('سماع تسجيلي', 'Play Recording')}</span>
                             </>
                           )}
                         </button>
@@ -1975,7 +2118,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                           isActive={isRecording}
                           mediaStream={activeMediaStream}
                           tone="rose"
-                          label="التسجيل جارٍ..."
+                          label={t('التسجيل جارٍ...', 'Recording...')}
                         />
                       </div>
                     )}
@@ -1987,7 +2130,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
 
                   {/* Live Voice Tasmie Results Panel */}
                   {(isVoiceChecking || voiceEval || voiceError) && (
-                    <div className="mt-3 max-w-xl w-full p-3.5 rounded-xl bg-white dark:bg-[#0d121a]/95 border border-[#D9B45A]/40 dark:border-[#D9B45A]/35 text-right space-y-2 animate-in fade-in duration-150">
+                    <div className="mt-3 max-w-xl w-full p-3.5 rounded-xl bg-white dark:bg-[#0d121a]/95 border border-[#D9B45A]/40 dark:border-[#D9B45A]/35 text-start space-y-2 animate-in fade-in duration-150">
                       {voiceError ? (
                         <p className="text-xs text-amber-800 dark:text-amber-200">{voiceError}</p>
                       ) : (
@@ -1997,10 +2140,10 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                               <Sparkles className="w-3.5 h-3.5" />
                               <span>
                                 {isVoiceChecking
-                                  ? 'أصغي لتلاوتك… اقرأ الآية غيباً الآن'
+                                  ? t('أصغي لتلاوتك… اقرأ الآية غيباً الآن', 'Listening to your recitation… recite from memory')
                                   : voiceEval?.isComplete
-                                  ? 'ما شاء الله! أتممت تسميع الآية بدقة تامة'
-                                  : 'نتيجة التسميع الصوتي'}
+                                  ? t('ما شاء الله! أتممت تسميع الآية بدقة تامة', 'MashaAllah! Completed Ayah recitation accurately')
+                                  : t('نتيجة التسميع الصوتي', 'Voice Check Result')}
                               </span>
                             </span>
                             <div className="flex items-center gap-2">
@@ -2019,7 +2162,10 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                                       : 'bg-[#FBF7EE] dark:bg-slate-900 border-[#D9B45A]/30 dark:border-slate-700 text-[#8A6418] dark:text-amber-300'
                                   }`}
                                 >
-                                  {toArabicIndic(voiceEval.matchedCount)}/{toArabicIndic(voiceEval.totalExpectedSpokenWords)} كلمة ({toArabicIndic(voiceEval.accuracyPercent)}٪)
+                                  {formatLocalizedDigits(voiceEval.matchedCount, lang)}/
+                                  {formatLocalizedDigits(voiceEval.totalExpectedSpokenWords, lang)}{' '}
+                                  {t('كلمة', 'words')} ({formatLocalizedDigits(voiceEval.accuracyPercent, lang)}
+                                  {t('٪', '%')})
                                 </span>
                               )}
                             </div>
@@ -2027,22 +2173,27 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
 
                           {voiceTranscript && (
                             <p className="text-xs text-[#4B4539] dark:text-slate-300 leading-relaxed bg-[#FBF7EE] dark:bg-slate-950/70 rounded-lg px-2.5 py-1.5 border border-[#D9B45A]/20 dark:border-slate-800/80">
-                              <span className="text-[#6B6251] dark:text-slate-400">ما التقطه الصوت: </span>
-                              {voiceTranscript}
+                              <span className="text-[#6B6251] dark:text-slate-400">
+                                {t('ما التقطه الصوت:', 'Heard:')}{' '}
+                              </span>
+                              <span dir="rtl" lang="ar">{voiceTranscript}</span>
                             </p>
                           )}
 
                           {voiceEval && !voiceEval.isComplete && voiceEval.nextExpectedRawIndex !== null && (
                             <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] pt-0.5">
                               <span className="text-[#8A6418] dark:text-amber-300">
-                                إذا توقفت عند كلمة، يمكنك كشفها للتذكّر:
+                                {t(
+                                  'إذا توقفت عند كلمة، يمكنك كشفها للتذكّر:',
+                                  'Stuck on a word? Reveal a hint:'
+                                )}
                               </span>
                               <button
                                 type="button"
                                 onClick={revealNextWordHint}
                                 className="px-2.5 py-1 rounded-lg bg-[#1F3A6E] hover:bg-[#2E5499] border border-[#648CD4]/45 text-[#F6EFDD] font-bold cursor-pointer"
                               >
-                                افتح لي الكلمة التالية
+                                {t('افتح لي الكلمة التالية', 'Reveal Next Word')}
                               </button>
                             </div>
                           )}
@@ -2055,7 +2206,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                                 className="min-h-[32px] px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                               >
                                 <CheckCircle2 className="w-3.5 h-3.5" />
-                                <span>اعتماد «متقن» والانتقال للتالية</span>
+                                <span>{t('اعتماد «متقن» والانتقال للتالية', 'Mark Mastered & Next')}</span>
                               </button>
                             </div>
                           )}
@@ -2065,7 +2216,11 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                   )}
 
                   <p className="text-[11px] text-[#6B6251] dark:text-slate-400 mt-3 hidden sm:block">
-                    انقر على أي كلمة مخفية لكشفها · أو استخدم <kbd className="px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 border border-[#D9B45A]/30 dark:border-slate-700 text-[#8A6418] dark:text-[#D9B45A]">مسافة</kbd> لكشف الكلمة التالية والأسهم للتنقل
+                    {t('انقر على أي كلمة مخفية لكشفها · أو استخدم', 'Tap any hidden word to reveal · or press')}{' '}
+                    <kbd className="px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 border border-[#D9B45A]/30 dark:border-slate-700 text-[#8A6418] dark:text-[#D9B45A]">
+                      {t('مسافة', 'Space')}
+                    </kbd>{' '}
+                    {t('لكشف الكلمة التالية والأسهم للتنقل', 'for next hint & arrow keys to navigate')}
                   </p>
                 </>
               ) : null}
@@ -2097,12 +2252,16 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                     {isCurrentAyahPlaying ? (
                       <>
                         <Pause className="w-4 h-4" />
-                        <span>إيقاف مؤقت</span>
+                        <span>{t('إيقاف مؤقت', 'Pause')}</span>
                       </>
                     ) : (
                       <>
                         <Volume2 className="w-4 h-4 text-[#D9B45A]" />
-                        <span>{reciterName ? `استماع (${reciterName.split(' ')[0]})` : 'استماع للآية'}</span>
+                        <span>
+                          {reciterName
+                            ? t(`استماع (${reciterName.split(' ')[0]})`, `Listen (${reciterName.split(' ')[0]})`)
+                            : t('استماع للآية', 'Listen to Ayah')}
+                        </span>
                       </>
                     )}
                   </button>
@@ -2114,21 +2273,23 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                       clearPendingAdvanceTimers();
                       if (currentAyah) onPlayAyah(currentAyah.numberInSurah);
                     }}
-                    title="إعادة تشغيل الآية من البداية"
+                    title={t('إعادة تشغيل الآية من البداية', 'Replay Ayah from start')}
                     className="min-h-[40px] py-2 px-2.5 rounded-xl bg-white dark:bg-slate-900 hover:bg-[#FBF7EE] dark:hover:bg-slate-800 border border-[#D9B45A]/30 dark:border-slate-800 text-[#1B1A17] dark:text-slate-200 transition-colors flex items-center gap-1 text-xs font-medium cursor-pointer disabled:opacity-40"
                   >
                     <RotateCcw className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
-                    <span>إعادة</span>
+                    <span>{t('إعادة', 'Replay')}</span>
                   </button>
 
                   {/* Per-Ayah Repeats */}
                   <div className="flex items-center gap-1 bg-white dark:bg-slate-950 p-1 rounded-xl border border-[#D9B45A]/30 dark:border-slate-800 text-[11px] tabular-nums">
-                    <span className="text-[#6B6251] dark:text-slate-400 px-1.5">التكرار:</span>
+                    <span className="text-[#6B6251] dark:text-slate-400 px-1.5">
+                      {t('التكرار:', 'Repeat:')}
+                    </span>
                     {(
                       [
-                        { value: 1, label: 'مرة' },
-                        { value: 2, label: 'مرتان' },
-                        { value: 3, label: '٣' },
+                        { value: 1, label: t('مرة', '1×') },
+                        { value: 2, label: t('مرتان', '2×') },
+                        { value: 3, label: t('٣', '3×') },
                         { value: 'loop', label: '∞' },
                       ] as const
                     ).map((opt) => {
@@ -2173,7 +2334,10 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                           setRepeatTarget(1);
                         }
                       }}
-                      title="التبديل بين آية واحدة أو تلاوة مقطع الحفظ كاملاً تلقائياً"
+                      title={t(
+                        'التبديل بين آية واحدة أو تلاوة مقطع الحفظ كاملاً تلقائياً',
+                        'Switch between single Ayah or auto-reciting the full range'
+                      )}
                       className={`min-h-[30px] flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold transition-colors cursor-pointer ${
                         rangePlaybackMode !== 'single'
                           ? 'bg-[#1F3A6E] text-[#F6EFDD]'
@@ -2183,10 +2347,10 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                       <Repeat className="w-3 h-3" />
                       <span>
                         {rangePlaybackMode === 'single'
-                          ? 'آية واحدة'
+                          ? t('آية واحدة', 'Single Ayah')
                           : rangePlaybackMode === 'range'
-                          ? 'تلاوة المقطع'
-                          : 'تكرار المقطع ∞'}
+                          ? t('تلاوة المقطع', 'Play Range')
+                          : t('تكرار المقطع ∞', 'Loop Range ∞')}
                       </span>
                     </button>
 
@@ -2194,7 +2358,10 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                       <button
                         type="button"
                         onClick={() => setPauseForRepeatSec((s) => (s === 0 ? 3 : 0))}
-                        title="إضافة وقفة ٣ ثوانٍ بعد كل آية للترديد خلف القارئ"
+                        title={t(
+                          'إضافة وقفة ٣ ثوانٍ بعد كل آية للترديد خلف القارئ',
+                          'Add a 3-second pause after each Ayah to repeat along'
+                        )}
                         className={`min-h-[30px] flex items-center gap-1 px-2 py-1 rounded-lg font-semibold transition-colors cursor-pointer ${
                           pauseForRepeatSec === 3
                             ? 'bg-[#D9B45A]/25 text-[#8A6418] dark:text-amber-300 border border-[#D9B45A]'
@@ -2202,7 +2369,11 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                         }`}
                       >
                         <Timer className="w-3 h-3" />
-                        <span>{pauseForRepeatSec === 3 ? 'وقفة ٣ث' : 'بلا وقفة'}</span>
+                        <span>
+                          {pauseForRepeatSec === 3
+                            ? t('وقفة ٣ث', '3s Pause')
+                            : t('بلا وقفة', 'No Pause')}
+                        </span>
                       </button>
                     )}
                   </div>
@@ -2214,21 +2385,21 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                     type="button"
                     onClick={() => selectAyahIndex(safeIdx - 1)}
                     disabled={!currentAyah || safeIdx === 0}
-                    title="الآية السابقة"
-                    aria-label="الآية السابقة"
+                    title={t('الآية السابقة', 'Previous Ayah')}
+                    aria-label={t('الآية السابقة', 'Previous Ayah')}
                     className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl bg-white dark:bg-slate-900 border border-[#D9B45A]/30 dark:border-slate-800 text-[#1B1A17] dark:text-slate-200 disabled:opacity-35 hover:bg-[#FBF7EE] dark:hover:bg-slate-800 transition-colors cursor-pointer"
                   >
-                    <ChevronRight className="w-4 h-4" />
+                    {isEnglish ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                   </button>
                   <button
                     type="button"
                     onClick={() => selectAyahIndex(safeIdx + 1)}
                     disabled={!currentAyah || safeIdx >= activeAyahList.length - 1}
-                    title="الآية التالية"
-                    aria-label="الآية التالية"
+                    title={t('الآية التالية', 'Next Ayah')}
+                    aria-label={t('الآية التالية', 'Next Ayah')}
                     className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl bg-white dark:bg-slate-900 border border-[#D9B45A]/30 dark:border-slate-800 text-[#1B1A17] dark:text-slate-200 disabled:opacity-35 hover:bg-[#FBF7EE] dark:hover:bg-slate-800 transition-colors cursor-pointer"
                   >
-                    <ChevronLeft className="w-4 h-4" />
+                    {isEnglish ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
@@ -2239,23 +2410,31 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                   {waitingCountdown !== null ? (
                     <>
                       <span className="text-[#8A6418] dark:text-amber-300 font-semibold">
-                        وقفة للترديد… الانتقال للآية التالية خلال {toArabicIndic(waitingCountdown)} ث
+                        {t(
+                          `وقفة للترديد… الانتقال للآية التالية خلال ${toArabicIndic(waitingCountdown)} ث`,
+                          `Repeat pause… advancing to next Ayah in ${waitingCountdown}s`
+                        )}
                       </span>
                       <button
                         type="button"
                         onClick={clearPendingAdvanceTimers}
                         className="text-[#4B4539] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white underline cursor-pointer"
                       >
-                        إلغاء الانتقال
+                        {t('إلغاء الانتقال', 'Cancel auto-advance')}
                       </button>
                     </>
                   ) : (
                     <span className="text-[#1F3A6E] dark:text-[#D9B45A] font-medium">
                       {repeatTarget === 'loop'
-                        ? 'تكرار مستمر للآية الحالية'
-                        : `التلاوة ${toArabicIndic(currentRepeat)} من ${toArabicIndic(repeatTarget)}${
-                            rangePlaybackMode !== 'single' ? ' · التلقين التلقائي للمقطع مفعّل' : ''
-                          }`}
+                        ? t('تكرار مستمر للآية الحالية', 'Continuous repeat for current Ayah')
+                        : t(
+                            `التلاوة ${toArabicIndic(currentRepeat)} من ${toArabicIndic(repeatTarget)}${
+                              rangePlaybackMode !== 'single' ? ' · التلقين التلقائي للمقطع مفعّل' : ''
+                            }`,
+                            `Play ${currentRepeat} of ${repeatTarget}${
+                              rangePlaybackMode !== 'single' ? ' · Auto-range playback active' : ''
+                            }`
+                          )}
                     </span>
                   )}
                 </div>
@@ -2265,20 +2444,22 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
               {currentAyah && (
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-[#D9B45A]/20 dark:border-slate-800/80 text-xs">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-[#6B6251] dark:text-slate-400 ml-1">تقييم الآية:</span>
+                    <span className="text-[#6B6251] dark:text-slate-400 me-1">
+                      {t('تقييم الآية:', 'Rate Ayah:')}
+                    </span>
                     <button
                       type="button"
                       onClick={() => setAyahMastery('needs-review')}
                       className="min-h-[36px] py-1.5 px-3 rounded-xl bg-rose-50 dark:bg-rose-500/15 border border-rose-300 dark:border-rose-500/40 text-rose-800 dark:text-rose-200 hover:bg-rose-100 dark:hover:bg-rose-500/25 font-semibold transition-colors cursor-pointer"
                     >
-                      تثبيت (غداً)
+                      {t('تثبيت (غداً)', 'Review (Tomorrow)')}
                     </button>
                     <button
                       type="button"
                       onClick={() => setAyahMastery('good')}
                       className="min-h-[36px] py-1.5 px-3 rounded-xl bg-amber-50 dark:bg-amber-500/15 border border-amber-300 dark:border-amber-500/40 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-500/25 font-semibold transition-colors cursor-pointer"
                     >
-                      جيد (مضاعف)
+                      {t('جيد (مضاعف)', 'Good (Spaced)')}
                     </button>
                     <button
                       type="button"
@@ -2286,24 +2467,30 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                       className="min-h-[36px] py-1.5 px-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-400 dark:border-emerald-500/45 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100 dark:hover:bg-emerald-500/25 font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>متقن (متباعد)</span>
+                      <span>{t('متقن (متباعد)', 'Mastered (Long)')}</span>
                     </button>
 
                     {scopeMode === 'mushaf-page' && activePageSpan && (
                       <button
                         type="button"
                         onClick={() => setPageMastery('mastered')}
-                        title="اعتماد جميع آيات هذا الوجه كمتقنة وجدولتها في المراجعة المتباعدة"
+                        title={t(
+                          'اعتماد جميع آيات هذا الوجه كمتقنة وجدولتها في المراجعة المتباعدة',
+                          'Mark all Ayahs on this page as mastered in spaced repetition'
+                        )}
                         className="min-h-[36px] py-1.5 px-3 rounded-xl bg-[#1F3A6E] hover:bg-[#2E5499] border border-[#D9B45A]/45 text-[#F6EFDD] font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
                       >
                         <Award className="w-3.5 h-3.5 text-[#D9B45A]" />
-                        <span>إتقان الوجه كاملاً</span>
+                        <span>{t('إتقان الوجه كاملاً', 'Master Entire Page')}</span>
                       </button>
                     )}
                   </div>
 
                   <span className="text-[11px] text-[#6B6251] dark:text-slate-400 tabular-nums">
-                    متبقي في النطاق: {toArabicIndic(activeAyahList.length - 1 - safeIdx)} آية
+                    {t(
+                      `متبقي في النطاق: ${toArabicIndic(activeAyahList.length - 1 - safeIdx)} آية`,
+                      `Remaining in range: ${activeAyahList.length - 1 - safeIdx} Ayahs`
+                    )}
                   </span>
                 </div>
               )}
@@ -2325,7 +2512,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                       : 'text-[#4B4539] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white'
                   }`}
                 >
-                  ربط أوائل الآيات
+                  {t('ربط أوائل الآيات', 'Next Ayah Linking')}
                 </button>
                 <button
                   type="button"
@@ -2337,12 +2524,13 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                       : 'text-[#4B4539] dark:text-slate-300 hover:text-[#1B1A17] dark:hover:text-white'
                   }`}
                 >
-                  إكمال الكلمة الناقصة
+                  {t('إكمال الكلمة الناقصة', 'Fill Missing Word')}
                 </button>
               </div>
 
               <span className="text-xs text-[#8A6418] dark:text-[#D9B45A] font-bold tabular-nums">
-                النتيجة: {toArabicIndic(quizScore.correct)} / {toArabicIndic(quizScore.total)}
+                {t('النتيجة:', 'Score:')} {formatLocalizedDigits(quizScore.correct, lang)} /{' '}
+                {formatLocalizedDigits(quizScore.total, lang)}
               </span>
             </div>
 
@@ -2352,27 +2540,35 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                   <Trophy className="w-7 h-7" />
                 </div>
                 <div className="space-y-1">
-                  <h3 className="text-lg font-bold text-[#1B1A17] dark:text-[#F6EFDD]">اكتملت جولة التثبيت!</h3>
+                  <h3 className="text-lg font-bold text-[#1B1A17] dark:text-[#F6EFDD]">
+                    {t('اكتملت جولة التثبيت!', 'Retention Round Complete!')}
+                  </h3>
                   <p className="text-xs text-[#4B4539] dark:text-slate-300 tabular-nums">
-                    أجبت إجابة صحيحة في{' '}
+                    {t('أجبت إجابة صحيحة في', 'You answered')}{' '}
                     <strong className="text-emerald-700 dark:text-emerald-400">
-                      {toArabicIndic(quizScore.correct)}
+                      {formatLocalizedDigits(quizScore.correct, lang)}
                     </strong>{' '}
-                    من أصل{' '}
-                    <strong className="text-[#1B1A17] dark:text-[#F6EFDD]">{toArabicIndic(quizScore.total)}</strong>{' '}
-                    أسئلة (نسبة الدقة:{' '}
-                    {toArabicIndic(
+                    {t('من أصل', 'out of')}{' '}
+                    <strong className="text-[#1B1A17] dark:text-[#F6EFDD]">
+                      {formatLocalizedDigits(quizScore.total, lang)}
+                    </strong>{' '}
+                    {t('أسئلة (نسبة الدقة:', 'questions correctly (Accuracy:')}{' '}
+                    {formatLocalizedDigits(
                       quizScore.total > 0
                         ? Math.round((quizScore.correct / quizScore.total) * 100)
-                        : 100
+                        : 100,
+                      lang
                     )}
-                    ٪)
+                    {t('٪)', '%)')}
                   </p>
                 </div>
 
                 {missedQuizIds.length > 0 && (
                   <p className="text-xs text-amber-900 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 border border-amber-300 dark:border-amber-500/30 rounded-xl px-3 py-2">
-                    تمت جدولة الآيات التي أخطأت فيها ({toArabicIndic(missedQuizIds.length)}) تلقائياً للمراجعة غداً.
+                    {t(
+                      `تمت جدولة الآيات التي أخطأت فيها (${toArabicIndic(missedQuizIds.length)}) تلقائياً للمراجعة غداً.`,
+                      `Missed Ayahs (${missedQuizIds.length}) were automatically scheduled for review tomorrow.`
+                    )}
                   </p>
                 )}
 
@@ -2383,7 +2579,10 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                       onClick={() => handleRestartQuiz(true)}
                       className="min-h-[40px] px-4 py-2 rounded-xl bg-amber-100 dark:bg-amber-500/20 hover:bg-amber-200 dark:hover:bg-amber-500/30 border border-amber-400 dark:border-amber-500/45 text-amber-950 dark:text-amber-200 text-xs font-bold cursor-pointer"
                     >
-                      مراجعة الأخطاء فقط ({toArabicIndic(missedQuizIds.length)})
+                      {t(
+                        `مراجعة الأخطاء فقط (${toArabicIndic(missedQuizIds.length)})`,
+                        `Review Missed Only (${missedQuizIds.length})`
+                      )}
                     </button>
                   )}
                   <button
@@ -2391,7 +2590,7 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                     onClick={() => handleRestartQuiz(false)}
                     className="min-h-[40px] px-5 py-2 rounded-xl bg-[#1F3A6E] hover:bg-[#2E5499] border border-[#648CD4]/50 text-[#F6EFDD] text-xs font-bold cursor-pointer"
                   >
-                    اختبار جديد في النطاق
+                    {t('اختبار جديد في النطاق', 'New Quiz in Range')}
                   </button>
                 </div>
               </div>
@@ -2399,10 +2598,11 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
               <div className="space-y-4">
                 <div className="flex items-center justify-between text-xs text-[#6B6251] dark:text-slate-400 tabular-nums">
                   <span>
-                    السؤال {toArabicIndic(quizIndex + 1)} من {toArabicIndic(activeQuizPrompts.length)} ·{' '}
+                    {t('السؤال', 'Question')} {formatLocalizedDigits(quizIndex + 1, lang)}{' '}
+                    {t('من', 'of')} {formatLocalizedDigits(activeQuizPrompts.length, lang)} ·{' '}
                     {quizMode === 'next-ayah'
-                      ? 'اختر الآية التي تلي الآية المعروضة'
-                      : 'اختر الكلمة الصحيحة لإتمام الآية'}
+                      ? t('اختر الآية التي تلي الآية المعروضة', 'Select the Ayah that follows the shown verse')
+                      : t('اختر الكلمة الصحيحة لإتمام الآية', 'Select the correct missing word')}
                   </span>
                 </div>
 
@@ -2410,18 +2610,22 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                 {'promptAyah' in activeQuizItem ? (
                   <div className="p-5 rounded-2xl bg-white dark:bg-[#0d121a] border border-[#D9B45A]/30 dark:border-slate-800 text-center space-y-2">
                     <span className="text-xs text-[#8A6418] dark:text-[#D9B45A] font-semibold">
-                      الآية {toArabicIndic(activeQuizItem.promptAyah.numberInSurah)}
+                      {t('الآية', 'Ayah')} {formatLocalizedDigits(activeQuizItem.promptAyah.numberInSurah, lang)}
                     </span>
-                    <p className="font-quran text-2xl text-[#1B1A17] dark:text-[#F6EFDD] leading-loose">
+                    <p dir="rtl" lang="ar" className="font-quran text-2xl text-[#1B1A17] dark:text-[#F6EFDD] leading-loose">
                       ﴿ {sanitizeAyahText(activeQuizItem.promptAyah.text, surahNumber, activeQuizItem.promptAyah.numberInSurah)} ﴾
                     </p>
                   </div>
                 ) : (
                   <div className="p-5 rounded-2xl bg-white dark:bg-[#0d121a] border border-[#D9B45A]/30 dark:border-slate-800 text-center space-y-2">
                     <span className="text-xs text-[#8A6418] dark:text-[#D9B45A] font-semibold">
-                      الآية {toArabicIndic(activeQuizItem.ayah.numberInSurah)}
+                      {t('الآية', 'Ayah')} {formatLocalizedDigits(activeQuizItem.ayah.numberInSurah, lang)}
                     </span>
-                    <p className="font-quran text-2xl text-[#1B1A17] dark:text-[#F6EFDD] leading-loose flex flex-wrap items-center justify-center gap-2">
+                    <p
+                      dir="rtl"
+                      lang="ar"
+                      className="font-quran text-2xl text-[#1B1A17] dark:text-[#F6EFDD] leading-loose flex flex-wrap items-center justify-center gap-2"
+                    >
                       {activeQuizItem.maskedWords.map((w, idx) =>
                         idx === activeQuizItem.blankIndex ? (
                           <span
@@ -2457,6 +2661,8 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                         <button
                           key={opt.numberInSurah}
                           type="button"
+                          dir="rtl"
+                          lang="ar"
                           onClick={() =>
                             handlePickQuizOption(
                               opt.numberInSurah,
@@ -2495,6 +2701,8 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                         <button
                           key={`${wordOpt}-${idx}`}
                           type="button"
+                          dir="rtl"
+                          lang="ar"
                           onClick={() =>
                             handlePickQuizOption(
                               wordOpt,
@@ -2518,13 +2726,19 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                     {selectedQuizAnswer !== null &&
                       ('promptAyah' in activeQuizItem
                         ? selectedQuizAnswer === activeQuizItem.answerAyah.numberInSurah
-                          ? 'أحسنت! ربط متقن للآية التالية.'
-                          : `الإجابة الصحيحة هي الآية ${toArabicIndic(
-                              activeQuizItem.answerAyah.numberInSurah
-                            )}، وتمت جدولتها للمراجعة غداً.`
+                          ? t('أحسنت! ربط متقن للآية التالية.', 'Well done! Accurate Ayah linking.')
+                          : t(
+                              `الإجابة الصحيحة هي الآية ${toArabicIndic(
+                                activeQuizItem.answerAyah.numberInSurah
+                              )}، وتمت جدولتها للمراجعة غداً.`,
+                              `Correct answer is Ayah ${activeQuizItem.answerAyah.numberInSurah}; scheduled for review tomorrow.`
+                            )
                         : selectedQuizAnswer === activeQuizItem.correctWord
-                        ? 'أحسنت! إتمام دقيق للآية.'
-                        : `الكلمة الصحيحة هي «${activeQuizItem.correctWord}»، وتمت جدولة الآية للمراجعة غداً.`)}
+                        ? t('أحسنت! إتمام دقيق للآية.', 'Well done! Accurate word completion.')
+                        : t(
+                            `الكلمة الصحيحة هي «${activeQuizItem.correctWord}»، وتمت جدولة الآية للمراجعة غداً.`,
+                            `Correct word is "${activeQuizItem.correctWord}"; Ayah scheduled for tomorrow.`
+                          ))}
                   </span>
                   <button
                     type="button"
@@ -2532,13 +2746,18 @@ export const MemorizationMode: React.FC<MemorizationModeProps> = ({
                     onClick={handleAdvanceQuiz}
                     className="min-h-[40px] py-2 px-5 rounded-xl bg-[#1F3A6E] hover:bg-[#2E5499] border border-[#648CD4]/50 text-[#F6EFDD] text-xs font-bold disabled:opacity-40 cursor-pointer"
                   >
-                    {quizIndex + 1 < activeQuizPrompts.length ? 'السؤال التالي' : 'عرض النتيجة'}
+                    {quizIndex + 1 < activeQuizPrompts.length
+                      ? t('السؤال التالي', 'Next Question')
+                      : t('عرض النتيجة', 'View Result')}
                   </button>
                 </div>
               </div>
             ) : (
               <div className="py-10 text-center text-xs text-[#6B6251] dark:text-slate-400">
-                اختر نطاقاً يحتوي على آيتين على الأقل لتفعيل الاختبار.
+                {t(
+                  'اختر نطاقاً يحتوي على آيتين على الأقل لتفعيل الاختبار.',
+                  'Select a range of at least two Ayahs to start the quiz.'
+                )}
               </div>
             )}
           </div>

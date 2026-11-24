@@ -11,12 +11,13 @@ import {
   AlertCircle,
   Trophy,
 } from 'lucide-react';
-import { KhatmaRing, toArabicIndic } from './KhatmaRing';
+import { KhatmaRing } from './KhatmaRing';
 import {
   buildPersonalRingParts,
   clearPersonalKhatmaPlan,
   computePersonalKhatmaStats,
   formatLocalDateISO,
+  getPrayerDisplayLabel,
   getSurahAtMushafPage,
   KhatmaPlan,
   loadPersonalKhatmaPlan,
@@ -24,6 +25,8 @@ import {
   PRAYER_LABELS,
   savePersonalKhatmaPlan,
 } from '../../utils/personalKhatma';
+import { SURAHS_LIST, getSurahDisplayName } from '../../data/quranMetadata';
+import { formatLocalizedDigits, useLanguage } from '../../utils/i18n';
 
 interface PersonalKhatmaTrackerProps {
   onOpenPlanner: () => void;
@@ -36,6 +39,7 @@ export const PersonalKhatmaTracker: React.FC<PersonalKhatmaTrackerProps> = ({
   onNavigateToJuz,
   onNavigateToAyah,
 }) => {
+  const { lang, isEnglish, t } = useLanguage();
   const [plan, setPlan] = useState<KhatmaPlan | null>(() => loadPersonalKhatmaPlan());
   const [confirmReset, setConfirmReset] = useState<boolean>(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -66,30 +70,39 @@ export const PersonalKhatmaTracker: React.FC<PersonalKhatmaTrackerProps> = ({
 
         <div className="max-w-xl mx-auto space-y-2.5">
           <h3 className="text-lg sm:text-xl font-bold text-[#1B1A17] dark:text-[#F6EFDD]" style={{ textWrap: 'balance' }}>
-            خطط لختمتك الفردية ووزّع وِردك بدقة
+            {t('خطط لختمتك الفردية ووزّع وِردك بدقة', 'Plan Your Personal Khatma & Daily Wird')}
           </h3>
           <p className="text-xs sm:text-sm text-[#5C5549] dark:text-slate-300 leading-relaxed">
-            حدد عدد الختمات أو الأجزاء والمدة التي تناسبك (مثلاً ٣ ختمات في رمضان خلال ٣٠ أو ٢٩ يوماً)، وسيحسب التطبيق وِردك اليومي وتوزيعه بعد كل صلاة مع متابعة مرئية للتقدم.
+            {t(
+              'حدد عدد الختمات أو الأجزاء والمدة التي تناسبك (مثلاً ٣ ختمات في رمضان خلال ٣٠ أو ٢٩ يوماً)، وسيحسب التطبيق وِردك اليومي وتوزيعه بعد كل صلاة مع متابعة مرئية للتقدم.',
+              'Choose your target Khatmas or Juz and preferred timeframe (such as 3 Khatmas in Ramadan over 29 or 30 days), and Bayan will distribute your daily pages across the five prayers with visual progress tracking.'
+            )}
           </p>
         </div>
 
-        <div className="max-w-lg mx-auto grid grid-cols-1 sm:grid-cols-3 gap-3 text-right">
+        <div className={`max-w-lg mx-auto grid grid-cols-1 sm:grid-cols-3 gap-3 ${isEnglish ? 'text-left' : 'text-right'}`}>
           <div className="p-3.5 rounded-xl bg-[#EFE6D1] dark:bg-slate-950/70 border border-[#8A6418]/20 dark:border-slate-800/90">
-            <span className="text-xs font-bold text-[#8A6418] dark:text-[#D9B45A] block">ختمة في شهر</span>
+            <span className="text-xs font-bold text-[#8A6418] dark:text-[#D9B45A] block">
+              {t('ختمة في شهر', '1 Khatma in 1 Month')}
+            </span>
             <span className="text-[11px] text-[#5C5549] dark:text-slate-400 block mt-1 tabular-nums">
-              جزء يومياً · ٢٠ صفحة · ٤ صفحات/صلاة
+              {t('جزء يومياً · ٢٠ صفحة · ٤ صفحات/صلاة', '1 Juz/day · 20 pages · 4 pages/prayer')}
             </span>
           </div>
           <div className="p-3.5 rounded-xl bg-[#EFE6D1] dark:bg-slate-950/70 border border-[#8A6418]/20 dark:border-slate-800/90">
-            <span className="text-xs font-bold text-[#8A6418] dark:text-[#D9B45A] block">ختمتان في شهر</span>
+            <span className="text-xs font-bold text-[#8A6418] dark:text-[#D9B45A] block">
+              {t('ختمتان في شهر', '2 Khatmas in 1 Month')}
+            </span>
             <span className="text-[11px] text-[#5C5549] dark:text-slate-400 block mt-1 tabular-nums">
-              جزآن يومياً · ٤١ صفحة · ~٨ صفحات/صلاة
+              {t('جزآن يومياً · ٤١ صفحة · ~٨ صفحات/صلاة', '2 Juz/day · 41 pages · ~8 pages/prayer')}
             </span>
           </div>
           <div className="p-3.5 rounded-xl bg-[#EFE6D1] dark:bg-slate-950/70 border border-[#8A6418]/20 dark:border-slate-800/90">
-            <span className="text-xs font-bold text-[#8A6418] dark:text-[#D9B45A] block">٣ ختمات في رمضان</span>
+            <span className="text-xs font-bold text-[#8A6418] dark:text-[#D9B45A] block">
+              {t('٣ ختمات في رمضان', '3 Khatmas in Ramadan')}
+            </span>
             <span className="text-[11px] text-[#5C5549] dark:text-slate-400 block mt-1 tabular-nums">
-              ٣ أجزاء يومياً · ٦١ صفحة · ~١٢ صفحة/صلاة
+              {t('٣ أجزاء يومياً · ٦١ صفحة · ~١٢ صفحة/صلاة', '3 Juz/day · 61 pages · ~12 pages/prayer')}
             </span>
           </div>
         </div>
@@ -101,7 +114,7 @@ export const PersonalKhatmaTracker: React.FC<PersonalKhatmaTrackerProps> = ({
             className="min-h-[46px] px-7 py-3 rounded-xl bg-[#D9B45A] hover:bg-[#e5c470] text-[#1B1A17] text-sm font-bold shadow-lg transition-colors inline-flex items-center gap-2 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            <span>إعداد خطة ختمتي الفردية</span>
+            <span>{t('إعداد خطة ختمتي الفردية', 'Setup Personal Khatma Plan')}</span>
           </button>
         </div>
       </section>
@@ -111,6 +124,10 @@ export const PersonalKhatmaTracker: React.FC<PersonalKhatmaTrackerProps> = ({
   const stats = computePersonalKhatmaStats(plan);
   const ringParts = buildPersonalRingParts(stats);
   const resumeSurah = getSurahAtMushafPage(stats.currentPageInCycle);
+  const resumeSurahMeta = SURAHS_LIST.find((s) => s.number === resumeSurah.surahNumber);
+  const resumeSurahDisplay = resumeSurahMeta
+    ? getSurahDisplayName(resumeSurahMeta, lang)
+    : resumeSurah.surahName;
 
   const handleTogglePrayerSlot = (idx: number) => {
     const currentSlots = [...stats.todayPrayers] as [boolean, boolean, boolean, boolean, boolean];
@@ -150,7 +167,12 @@ export const PersonalKhatmaTracker: React.FC<PersonalKhatmaTrackerProps> = ({
       pagesPerPrayer: Math.ceil(nextDaily / 5),
     });
     setPlan(updated);
-    flashFeedback(`تم توزيع الفائت بلطف: وِردك الجديد ${toArabicIndic(nextDaily)} صفحة يومياً`);
+    flashFeedback(
+      t(
+        `تم توزيع الفائت بلطف: وِردك الجديد ${formatLocalizedDigits(nextDaily, lang)} صفحة يومياً`,
+        `Rescheduled gently: your new daily Wird is ${nextDaily} pages/day`
+      )
+    );
   };
 
   const handleExtendDeadline = () => {
@@ -160,7 +182,12 @@ export const PersonalKhatmaTracker: React.FC<PersonalKhatmaTrackerProps> = ({
       targetDays: nextDays,
     });
     setPlan(updated);
-    flashFeedback(`تم تمديد المدة ${toArabicIndic(stats.extraDaysNeeded)} يوم ليظل الوِرد مريحاً`);
+    flashFeedback(
+      t(
+        `تم تمديد المدة ${formatLocalizedDigits(stats.extraDaysNeeded, lang)} يوم ليظل الوِرد مريحاً`,
+        `Extended plan by ${stats.extraDaysNeeded} days to keep your Wird comfortable`
+      )
+    );
   };
 
   const handleResetPlan = () => {
@@ -179,10 +206,19 @@ export const PersonalKhatmaTracker: React.FC<PersonalKhatmaTrackerProps> = ({
 
   const goalSummaryLabel =
     stats.goalMode === 'juz'
-      ? `ختمة ${toArabicIndic(stats.targetJuzCount)} جزءاً خلال ${toArabicIndic(stats.targetDays)} يوماً`
+      ? t(
+          `ختمة ${formatLocalizedDigits(stats.targetJuzCount, lang)} جزءاً خلال ${formatLocalizedDigits(stats.targetDays, lang)} يوماً`,
+          `${stats.targetJuzCount} Juz Goal in ${stats.targetDays} Days`
+        )
       : stats.targetKhatmas === 1
-      ? `ختمة كاملة خلال ${toArabicIndic(stats.targetDays)} يوماً`
-      : `${toArabicIndic(stats.targetKhatmas)} ختمات خلال ${toArabicIndic(stats.targetDays)} يوماً`;
+      ? t(
+          `ختمة كاملة خلال ${formatLocalizedDigits(stats.targetDays, lang)} يوماً`,
+          `1 Full Khatma in ${stats.targetDays} Days`
+        )
+      : t(
+          `${formatLocalizedDigits(stats.targetKhatmas, lang)} ختمات خلال ${formatLocalizedDigits(stats.targetDays, lang)} يوماً`,
+          `${stats.targetKhatmas} Khatmas in ${stats.targetDays} Days`
+        );
 
   return (
     <div className="space-y-5">
@@ -203,16 +239,28 @@ export const PersonalKhatmaTracker: React.FC<PersonalKhatmaTrackerProps> = ({
           <div className="flex flex-wrap items-center gap-2 text-xs text-[#5C5549] dark:text-slate-300 tabular-nums">
             <span>
               {stats.goalMode === 'khatmas'
-                ? `الختمة ${toArabicIndic(stats.currentKhatmaNumber)} من ${toArabicIndic(stats.targetKhatmas)}`
-                : `الهدف: ${toArabicIndic(stats.totalJuz)} جزءاً`}
+                ? t(
+                    `الختمة ${formatLocalizedDigits(stats.currentKhatmaNumber, lang)} من ${formatLocalizedDigits(stats.targetKhatmas, lang)}`,
+                    `Khatma ${stats.currentKhatmaNumber} of ${stats.targetKhatmas}`
+                  )
+                : t(
+                    `الهدف: ${formatLocalizedDigits(stats.totalJuz, lang)} جزءاً`,
+                    `Goal: ${stats.totalJuz} Juz`
+                  )}
             </span>
             <span aria-hidden="true">·</span>
             <span>
-              اليوم {toArabicIndic(stats.currentDayIndex)} من {toArabicIndic(stats.targetDays)}
+              {t(
+                `اليوم ${formatLocalizedDigits(stats.currentDayIndex, lang)} من ${formatLocalizedDigits(stats.targetDays, lang)}`,
+                `Day ${stats.currentDayIndex} of ${stats.targetDays}`
+              )}
             </span>
             <span aria-hidden="true">·</span>
             <span>
-              أنجزت {toArabicIndic(stats.completedPages)} من {toArabicIndic(stats.totalPages)} صفحة ({toArabicIndic(stats.progressPercent)}٪)
+              {t(
+                `أنجزت ${formatLocalizedDigits(stats.completedPages, lang)} من ${formatLocalizedDigits(stats.totalPages, lang)} صفحة (${formatLocalizedDigits(stats.progressPercent, lang)}٪)`,
+                `${stats.completedPages} / ${stats.totalPages} pages read (${stats.progressPercent}%)`
+              )}
             </span>
           </div>
         </div>
@@ -224,7 +272,7 @@ export const PersonalKhatmaTracker: React.FC<PersonalKhatmaTrackerProps> = ({
             className="min-h-[40px] px-3.5 py-2 rounded-xl bg-[#1F3A6E] hover:bg-[#2E5499] text-[#F6EFDD] text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
           >
             <Edit2 className="w-3.5 h-3.5" />
-            <span>تعديل الخطة</span>
+            <span>{t('تعديل الخطة', 'Edit Plan')}</span>
           </button>
 
           {confirmReset ? (
@@ -234,14 +282,14 @@ export const PersonalKhatmaTracker: React.FC<PersonalKhatmaTrackerProps> = ({
                 onClick={handleResetPlan}
                 className="min-h-[40px] px-3 py-2 rounded-xl bg-rose-700 hover:bg-rose-600 text-white text-xs font-semibold transition-colors cursor-pointer"
               >
-                تأكيد الإلغاء
+                {t('تأكيد الإلغاء', 'Confirm Reset')}
               </button>
               <button
                 type="button"
                 onClick={() => setConfirmReset(false)}
                 className="min-h-[40px] px-3 py-2 rounded-xl bg-[#EFE6D1] hover:bg-[#E4D7BA] dark:bg-slate-800 dark:hover:bg-slate-700 text-[#1B1A17] dark:text-slate-200 text-xs transition-colors cursor-pointer"
               >
-                تراجع
+                {t('تراجع', 'Cancel')}
               </button>
             </div>
           ) : (
@@ -251,7 +299,7 @@ export const PersonalKhatmaTracker: React.FC<PersonalKhatmaTrackerProps> = ({
               className="min-h-[40px] px-3 py-2 rounded-xl bg-[#EFE6D1] hover:bg-[#E4D7BA] dark:bg-slate-900 dark:hover:bg-slate-800 border border-[#8A6418]/25 dark:border-slate-700 text-[#5C5549] dark:text-slate-300 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>إنهاء الخطة</span>
+              <span>{t('إنهاء الخطة', 'Reset Plan')}</span>
             </button>
           )}
         </div>
@@ -266,10 +314,13 @@ export const PersonalKhatmaTracker: React.FC<PersonalKhatmaTrackerProps> = ({
             </div>
             <div>
               <h4 className="text-sm sm:text-base font-bold text-[#1B1A17] dark:text-[#F6EFDD]">
-                تقبل الله ختمتك المباركة! أتممت خطتك بالكامل
+                {t('تقبل الله ختمتك المباركة! أتممت خطتك بالكامل', 'May Allah accept your blessed Khatma! Plan Completed')}
               </h4>
               <p className="text-xs text-[#5C5549] dark:text-slate-300 mt-0.5 tabular-nums">
-                قرأت {toArabicIndic(stats.totalPages)} صفحة ({toArabicIndic(stats.totalJuz)} جزءاً). نسأل الله أن يجعل القرآن ربيع قلبك.
+                {t(
+                  `قرأت ${formatLocalizedDigits(stats.totalPages, lang)} صفحة (${formatLocalizedDigits(stats.totalJuz, lang)} جزءاً). نسأل الله أن يجعل القرآن ربيع قلبك.`,
+                  `You read ${stats.totalPages} pages (${stats.totalJuz} Juz). May Allah make the Qur'an the spring of your heart.`
+                )}
               </p>
             </div>
           </div>
@@ -283,11 +334,11 @@ export const PersonalKhatmaTracker: React.FC<PersonalKhatmaTrackerProps> = ({
                 dailyPrayersDone: { date: formatLocalDateISO(), slots: [false, false, false, false, false] },
               });
               setPlan(updated);
-              flashFeedback('تم بدء دورة جديدة للخطة بحمد الله');
+              flashFeedback(t('تم بدء دورة جديدة للخطة بحمد الله', 'Started a new Khatma cycle, Alhamdulillah'));
             }}
             className="min-h-[42px] px-5 py-2 rounded-xl bg-[#D9B45A] hover:bg-[#e5c470] text-[#1B1A17] text-xs font-bold transition-colors cursor-pointer whitespace-nowrap"
           >
-            بدء دورة جديدة
+            {t('بدء دورة جديدة', 'Start New Cycle')}
           </button>
         </div>
       )}
@@ -299,10 +350,16 @@ export const PersonalKhatmaTracker: React.FC<PersonalKhatmaTrackerProps> = ({
             <AlertCircle className="w-5 h-5 text-[#8A6418] dark:text-[#D9B45A] shrink-0 mt-0.5" />
             <div className="space-y-1">
               <p className="text-xs sm:text-sm font-bold text-[#1B1A17] dark:text-[#F6EFDD]">
-                إعادة توازن لطيفة — متبقي عن جدول اليوم {toArabicIndic(stats.lagPages)} صفحة
+                {t(
+                  `إعادة توازن لطيفة — متبقي عن جدول اليوم ${formatLocalizedDigits(stats.lagPages, lang)} صفحة`,
+                  `Gentle Rebalance — ${stats.lagPages} pages behind today's pace`
+                )}
               </p>
               <p className="text-xs text-[#5C5549] dark:text-slate-300 leading-relaxed">
-                لا تجعل الفائت يشقّ عليك؛ يمكنك توزيعه بهدوء على الأيام المتبقية ({toArabicIndic(stats.gentleSpreadPagesPerDay)} صفحة/يوم) أو تمديد موعد الختم {toArabicIndic(stats.extraDaysNeeded)} يوم.
+                {t(
+                  `لا تجعل الفائت يشقّ عليك؛ يمكنك توزيعه بهدوء على الأيام المتبقية (${formatLocalizedDigits(stats.gentleSpreadPagesPerDay, lang)} صفحة/يوم) أو تمديد موعد الختم ${formatLocalizedDigits(stats.extraDaysNeeded, lang)} يوم.`,
+                  `No stress — spread the remaining pages across upcoming days (${stats.gentleSpreadPagesPerDay} pages/day) or extend your completion date by ${stats.extraDaysNeeded} days.`
+                )}
               </p>
             </div>
           </div>
@@ -312,7 +369,7 @@ export const PersonalKhatmaTracker: React.FC<PersonalKhatmaTrackerProps> = ({
               onClick={handleSpreadGentleCatchUp}
               className="min-h-[40px] px-3.5 py-2 rounded-xl bg-[#1F3A6E] hover:bg-[#2E5499] text-[#F6EFDD] text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap"
             >
-              توزيع على الأيام المتبقية
+              {t('توزيع على الأيام المتبقية', 'Spread Across Remaining Days')}
             </button>
             <button
               type="button"
@@ -320,7 +377,12 @@ export const PersonalKhatmaTracker: React.FC<PersonalKhatmaTrackerProps> = ({
               className="min-h-[40px] px-3.5 py-2 rounded-xl bg-[#FBF7EE] hover:bg-white dark:bg-slate-900 dark:hover:bg-slate-800 border border-[#8A6418]/25 dark:border-slate-700 text-[#1B1A17] dark:text-slate-200 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5"
             >
               <Calendar className="w-3.5 h-3.5 text-[#8A6418] dark:text-[#D9B45A]" />
-              <span>تمديد المدة +{toArabicIndic(stats.extraDaysNeeded)} يوم</span>
+              <span>
+                {t(
+                  `تمديد المدة +${formatLocalizedDigits(stats.extraDaysNeeded, lang)} يوم`,
+                  `Extend +${stats.extraDaysNeeded} Days`
+                )}
+              </span>
             </button>
           </div>
         </div>
@@ -331,11 +393,16 @@ export const PersonalKhatmaTracker: React.FC<PersonalKhatmaTrackerProps> = ({
         {/* Ring Column */}
         <div className="lg:col-span-5 p-5 sm:p-6 rounded-2xl bg-[#FBF7EE] dark:bg-[#10161f] border border-[#8A6418]/25 dark:border-slate-800 flex flex-col items-center justify-center space-y-4">
           <div className="text-center space-y-0.5">
-            <h4 className="text-sm font-bold text-[#1B1A17] dark:text-[#F6EFDD]">خاتم التقدم في المصحف</h4>
+            <h4 className="text-sm font-bold text-[#1B1A17] dark:text-[#F6EFDD]">
+              {t('خاتم التقدم في المصحف', "Mus'haf Progress Ring")}
+            </h4>
             <p className="text-xs text-[#5C5549] dark:text-slate-400 tabular-nums">
               {stats.goalMode === 'khatmas'
-                ? `الختمة الحالية (${toArabicIndic(stats.currentKhatmaNumber)} / ${toArabicIndic(stats.targetKhatmas)}) · اضغط أي جزء للقراءة`
-                : 'اضغط على أي قطاع لفتح الجزء في المصحف'}
+                ? t(
+                    `الختمة الحالية (${formatLocalizedDigits(stats.currentKhatmaNumber, lang)} / ${formatLocalizedDigits(stats.targetKhatmas, lang)}) · اضغط أي جزء للقراءة`,
+                    `Current Khatma (${stats.currentKhatmaNumber} / ${stats.targetKhatmas}) · Tap any Juz to read`
+                  )
+                : t('اضغط على أي قطاع لفتح الجزء في المصحف', 'Tap any sector to open that Juz')}
             </p>
           </div>
 
@@ -351,25 +418,33 @@ export const PersonalKhatmaTracker: React.FC<PersonalKhatmaTrackerProps> = ({
           <div className="space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-3 pb-3 border-b border-[#8A6418]/15 dark:border-slate-800/80">
               <div>
-                <span className="text-xs font-semibold text-[#8A6418] dark:text-[#D9B45A] block">وِرد اليوم الموصى به</span>
+                <span className="text-xs font-semibold text-[#8A6418] dark:text-[#D9B45A] block">
+                  {t('وِرد اليوم الموصى به', "Today's Recommended Wird")}
+                </span>
                 <h4 className="text-base sm:text-lg font-bold text-[#1B1A17] dark:text-[#F6EFDD] mt-0.5 tabular-nums">
-                  من الصفحة {toArabicIndic(stats.todayRangeStartPage)} إلى {toArabicIndic(stats.todayRangeEndPage)}
+                  {t(
+                    `من الصفحة ${formatLocalizedDigits(stats.todayRangeStartPage, lang)} إلى ${formatLocalizedDigits(stats.todayRangeEndPage, lang)}`,
+                    `Pages ${stats.todayRangeStartPage} to ${stats.todayRangeEndPage}`
+                  )}
                 </h4>
                 <p className="text-xs text-[#5C5549] dark:text-slate-400 mt-1 tabular-nums">
                   {stats.todayStartJuz === stats.todayEndJuz
-                    ? `ضمن الجزء ${toArabicIndic(stats.todayStartJuz)}`
-                    : `يمتد من الجزء ${toArabicIndic(stats.todayStartJuz)} إلى الجزء ${toArabicIndic(stats.todayEndJuz)}`}
+                    ? t(`ضمن الجزء ${formatLocalizedDigits(stats.todayStartJuz, lang)}`, `Within Juz ${stats.todayStartJuz}`)
+                    : t(
+                        `يمتد من الجزء ${formatLocalizedDigits(stats.todayStartJuz, lang)} إلى الجزء ${formatLocalizedDigits(stats.todayEndJuz, lang)}`,
+                        `Spans Juz ${stats.todayStartJuz} to Juz ${stats.todayEndJuz}`
+                      )}
                   {' · '}
-                  تبدأ الآن من سورة {resumeSurah.surahName}
+                  {t(`تبدأ الآن من سورة ${resumeSurahDisplay}`, `Resume at Surah ${resumeSurahDisplay}`)}
                 </p>
               </div>
 
-              <div className="text-left sm:text-right">
+              <div className={isEnglish ? 'text-right sm:text-left' : 'text-left sm:text-right'}>
                 <span className="text-lg sm:text-xl font-bold text-[#1B1A17] dark:text-[#F6EFDD] tabular-nums block">
-                  {toArabicIndic(stats.pagesPerDay)} صفحة
+                  {formatLocalizedDigits(stats.pagesPerDay, lang)} {t('صفحة', 'pages')}
                 </span>
                 <span className="text-[11px] text-[#5C5549] dark:text-slate-400 tabular-nums">
-                  ≈ {stats.juzPerDay.toLocaleString('ar-EG')} جزء / يوم
+                  ≈ {stats.juzPerDay.toLocaleString(lang === 'en' ? 'en-US' : 'ar-EG')} {t('جزء / يوم', 'Juz / day')}
                 </span>
               </div>
             </div>
@@ -377,9 +452,14 @@ export const PersonalKhatmaTracker: React.FC<PersonalKhatmaTrackerProps> = ({
             {/* 5-Prayer Checklist */}
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-bold text-[#1B1A17] dark:text-slate-300">تقسيم الوِرد على الصلوات الخمس:</span>
+                <span className="font-bold text-[#1B1A17] dark:text-slate-300">
+                  {t('تقسيم الوِرد على الصلوات الخمس:', 'Split Across Five Daily Prayers:')}
+                </span>
                 <span className="text-[#5C5549] dark:text-slate-400 tabular-nums">
-                  {toArabicIndic(stats.todayPrayers.filter(Boolean).length)} من ٥ مكتملة اليوم
+                  {t(
+                    `${formatLocalizedDigits(stats.todayPrayers.filter(Boolean).length, lang)} من ٥ مكتملة اليوم`,
+                    `${stats.todayPrayers.filter(Boolean).length} / 5 completed today`
+                  )}
                 </span>
               </div>
 
@@ -401,10 +481,10 @@ export const PersonalKhatmaTracker: React.FC<PersonalKhatmaTrackerProps> = ({
                     >
                       <span className="text-xs font-bold flex items-center gap-1">
                         {done && <Check className="w-3.5 h-3.5 text-[#D9B45A]" />}
-                        <span>{prayer}</span>
+                        <span>{getPrayerDisplayLabel(idx, lang)}</span>
                       </span>
                       <span className={`text-[11px] tabular-nums ${done ? 'text-[#E9E3D3]' : 'text-[#5C5549] dark:text-slate-400'}`}>
-                        {toArabicIndic(prayerPages)} ص
+                        {formatLocalizedDigits(prayerPages, lang)} {t('ص', 'p.')}
                       </span>
                     </button>
                   );
@@ -415,7 +495,7 @@ export const PersonalKhatmaTracker: React.FC<PersonalKhatmaTrackerProps> = ({
             {/* Flexible Page Progress Steppers */}
             <div className="space-y-2">
               <span className="text-xs font-bold text-[#1B1A17] dark:text-slate-300 block">
-                تسجيل سريع للصفحات المقروءة:
+                {t('تسجيل سريع للصفحات المقروءة:', 'Quick Page Progress Log:')}
               </span>
               <div className="flex flex-wrap items-center gap-2">
                 <button
@@ -423,34 +503,34 @@ export const PersonalKhatmaTracker: React.FC<PersonalKhatmaTrackerProps> = ({
                   onClick={() => handleAdjustPages(1)}
                   className="min-h-[40px] px-3 py-1.5 rounded-xl bg-[#EFE6D1] hover:bg-[#E4D7BA] dark:bg-slate-950 dark:hover:bg-slate-900 border border-[#8A6418]/25 dark:border-slate-800 text-xs font-semibold text-[#1B1A17] dark:text-[#F6EFDD] tabular-nums transition-colors cursor-pointer"
                 >
-                  +١ صفحة
+                  {t('+١ صفحة', '+1 Page')}
                 </button>
                 <button
                   type="button"
                   onClick={() => handleAdjustPages(5)}
                   className="min-h-[40px] px-3 py-1.5 rounded-xl bg-[#EFE6D1] hover:bg-[#E4D7BA] dark:bg-slate-950 dark:hover:bg-slate-900 border border-[#8A6418]/25 dark:border-slate-800 text-xs font-semibold text-[#1B1A17] dark:text-[#F6EFDD] tabular-nums transition-colors cursor-pointer"
                 >
-                  +٥ صفحات
+                  {t('+٥ صفحات', '+5 Pages')}
                 </button>
                 <button
                   type="button"
                   onClick={() => handleAdjustPages(10)}
                   className="min-h-[40px] px-3 py-1.5 rounded-xl bg-[#EFE6D1] hover:bg-[#E4D7BA] dark:bg-slate-950 dark:hover:bg-slate-900 border border-[#8A6418]/25 dark:border-slate-800 text-xs font-semibold text-[#1B1A17] dark:text-[#F6EFDD] tabular-nums transition-colors cursor-pointer"
                 >
-                  +١٠ صفحات
+                  {t('+١٠ صفحات', '+10 Pages')}
                 </button>
                 <button
                   type="button"
                   onClick={() => handleAdjustPages(20)}
                   className="min-h-[40px] px-3 py-1.5 rounded-xl bg-[#EFE6D1] hover:bg-[#E4D7BA] dark:bg-slate-950 dark:hover:bg-slate-900 border border-[#8A6418]/25 dark:border-slate-800 text-xs font-semibold text-[#8A6418] dark:text-[#D9B45A] tabular-nums transition-colors cursor-pointer"
                 >
-                  +جزء (٢٠ ص)
+                  {t('+جزء (٢٠ ص)', '+1 Juz (20p)')}
                 </button>
                 <button
                   type="button"
                   onClick={() => handleAdjustPages(-1)}
                   disabled={stats.completedPages === 0}
-                  aria-label="إنقاص صفحة واحدة"
+                  aria-label={t('إنقاص صفحة واحدة', 'Decrease by 1 page')}
                   className="min-h-[40px] min-w-[40px] px-2.5 py-1.5 rounded-xl bg-[#EFE6D1] hover:bg-[#E4D7BA] dark:bg-slate-950 dark:hover:bg-slate-900 disabled:opacity-40 border border-[#8A6418]/25 dark:border-slate-800 text-xs text-[#5C5549] dark:text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
                 >
                   <Minus className="w-3.5 h-3.5" />
@@ -463,8 +543,8 @@ export const PersonalKhatmaTracker: React.FC<PersonalKhatmaTrackerProps> = ({
           <div className="pt-3 border-t border-[#8A6418]/15 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
             <div className="w-full sm:w-auto flex-1 space-y-1">
               <div className="flex items-center justify-between text-[11px] text-[#5C5549] dark:text-slate-400 tabular-nums">
-                <span>التقدم الكلي</span>
-                <span>{toArabicIndic(stats.progressPercent)}٪</span>
+                <span>{t('التقدم الكلي', 'Overall Progress')}</span>
+                <span>{formatLocalizedDigits(stats.progressPercent, lang)}{isEnglish ? '%' : '٪'}</span>
               </div>
               <div className="h-2 rounded-full bg-[#E5DBBF] dark:bg-slate-950 overflow-hidden border border-[#8A6418]/20 dark:border-slate-800">
                 <div
@@ -480,7 +560,7 @@ export const PersonalKhatmaTracker: React.FC<PersonalKhatmaTrackerProps> = ({
               className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl bg-[#D9B45A] hover:bg-[#e5c470] text-[#1B1A17] text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer whitespace-nowrap"
             >
               <BookOpen className="w-4 h-4" />
-              <span>افتح المصحف لمتابعة وِردك</span>
+              <span>{t('افتح المصحف لمتابعة وِردك', "Open Mus'haf to Continue Wird")}</span>
             </button>
           </div>
         </div>

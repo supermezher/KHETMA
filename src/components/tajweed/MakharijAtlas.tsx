@@ -5,10 +5,21 @@ import {
   MAKHARIJ_REGIONS,
   MakhrajRegionId,
   SIMILAR_LETTER_PAIRS,
+  getLetterMakhrajName,
+  getLetterPracticalTip,
+  getLetterQualities,
+  getLetterSubMakhraj,
+  getMakhrajRegionDescription,
+  getMakhrajRegionName,
+  getMakhrajRegionSubtitle,
+  getSimilarPairSummary,
+  getSimilarPairTitle,
 } from '../../data/tajweedRules';
+import { formatLocalizedDigits, useLanguage } from '../../utils/i18n';
 import { Check, Volume2, ArrowLeftRight } from 'lucide-react';
 
 export const MakharijAtlas: React.FC = () => {
+  const { lang, isEnglish } = useLanguage();
   const [selectedRegion, setSelectedRegion] = useState<MakhrajRegionId | 'all'>('all');
   const [selectedLetterId, setSelectedLetterId] = useState<string>('dad');
   const [activeComparisonId, setActiveComparisonId] = useState<string>(SIMILAR_LETTER_PAIRS[0].id);
@@ -51,11 +62,17 @@ export const MakharijAtlas: React.FC = () => {
         <div className="lg:col-span-5 p-5 rounded-2xl bg-[#FBF7EE] dark:bg-slate-900 border border-[#D9B45A]/30 dark:border-slate-800 flex flex-col justify-between gap-4">
           <div className="flex items-center justify-between gap-2 pb-3 border-b border-[#D9B45A]/20 dark:border-slate-800">
             <div>
-              <h3 className="text-base font-bold text-[#1B1A17] dark:text-white">أطلس مخارج الحروف التشريحي</h3>
-              <p className="text-xs text-[#6B6251] dark:text-slate-400">اضغط على أي مخرج رئيسي أو اختر حرفاً لموضعه الدقيق</p>
+              <h3 className="text-base font-bold text-[#1B1A17] dark:text-white">
+                {isEnglish ? 'Anatomical Makharij Atlas' : 'أطلس مخارج الحروف التشريحي'}
+              </h3>
+              <p className="text-xs text-[#6B6251] dark:text-slate-400">
+                {isEnglish
+                  ? 'Tap any main region or pick a letter to inspect its exact spot'
+                  : 'اضغط على أي مخرج رئيسي أو اختر حرفاً لموضعه الدقيق'}
+              </p>
             </div>
             <span className="text-xs font-bold tabular-nums text-[#8A6418] dark:text-[#D9B45A]">
-              {activeRegionInfo.name}
+              {getMakhrajRegionName(activeRegionInfo, lang)}
             </span>
           </div>
 
@@ -65,7 +82,11 @@ export const MakharijAtlas: React.FC = () => {
               viewBox="0 0 320 320"
               className="w-full h-full select-none"
               role="img"
-              aria-label="خريطة تفاعلية لمخارج الحروف الخمسة"
+              aria-label={
+                isEnglish
+                  ? 'Interactive map of the five Arabic articulation regions'
+                  : 'خريطة تفاعلية لمخارج الحروف الخمسة'
+              }
             >
               {/* Soft Facial Profile Outline */}
               <path
@@ -128,11 +149,11 @@ export const MakharijAtlas: React.FC = () => {
                       textAnchor="middle"
                       dominantBaseline="middle"
                       fill={isActive ? '#ffffff' : '#94a3b8'}
-                      fontSize="11"
+                      fontSize={isEnglish ? '10' : '11'}
                       fontWeight={isActive ? '700' : '500'}
                       style={{ fontFamily: 'Cairo, sans-serif' }}
                     >
-                      {region.name}
+                      {getMakhrajRegionName(region, lang)}
                     </text>
                   </g>
                 );
@@ -162,10 +183,16 @@ export const MakharijAtlas: React.FC = () => {
           {/* Selected Region Overview */}
           <div className="p-3.5 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/25 dark:border-slate-800 space-y-1">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-bold text-[#1B1A17] dark:text-white">{activeRegionInfo.name}</span>
-              <span className="text-[#6B6251] dark:text-slate-400">{activeRegionInfo.subtitle}</span>
+              <span className="font-bold text-[#1B1A17] dark:text-white">
+                {getMakhrajRegionName(activeRegionInfo, lang)}
+              </span>
+              <span className="text-[#6B6251] dark:text-slate-400">
+                {getMakhrajRegionSubtitle(activeRegionInfo, lang)}
+              </span>
             </div>
-            <p className="text-xs text-[#4B4539] dark:text-slate-300 leading-relaxed">{activeRegionInfo.description}</p>
+            <p className="text-xs text-[#4B4539] dark:text-slate-300 leading-relaxed">
+              {getMakhrajRegionDescription(activeRegionInfo, lang)}
+            </p>
           </div>
         </div>
 
@@ -183,7 +210,9 @@ export const MakharijAtlas: React.FC = () => {
                     : 'text-[#6B6251] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white'
                 }`}
               >
-                كل المخارج (٢٩)
+                {isEnglish
+                  ? `All Regions (${formatLocalizedDigits(ARABIC_LETTERS_MAKHARIJ.length, lang)})`
+                  : `كل المخارج (${formatLocalizedDigits(ARABIC_LETTERS_MAKHARIJ.length, lang)})`}
               </button>
               {MAKHARIJ_REGIONS.map((region) => {
                 const isSelected = selectedRegion === region.id;
@@ -198,14 +227,14 @@ export const MakharijAtlas: React.FC = () => {
                         : 'text-[#6B6251] dark:text-slate-400 hover:text-[#1B1A17] dark:hover:text-white'
                     }`}
                   >
-                    {region.name}
+                    {getMakhrajRegionName(region, lang)}
                   </button>
                 );
               })}
             </div>
 
             {/* Interactive Arabic Letters Grid */}
-            <div className="grid grid-cols-5 sm:grid-cols-7 md:grid-cols-8 gap-2">
+            <div dir="rtl" className="grid grid-cols-5 sm:grid-cols-7 md:grid-cols-8 gap-2">
               {filteredLetters.map((item) => {
                 const isSelected = item.id === activeLetter.id;
                 const regionColor =
@@ -222,6 +251,7 @@ export const MakharijAtlas: React.FC = () => {
                     }`}
                   >
                     <span
+                      lang="ar"
                       className="font-quran text-lg leading-tight font-bold"
                       style={{ color: isSelected ? regionColor : undefined }}
                     >
@@ -238,32 +268,44 @@ export const MakharijAtlas: React.FC = () => {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3.5">
                 <div
+                  dir="rtl"
+                  lang="ar"
                   className="w-14 h-14 rounded-2xl bg-[#10161f] dark:bg-slate-950 border border-[#D9B45A]/40 dark:border-slate-700 flex items-center justify-center font-quran text-3xl font-bold shrink-0"
                   style={{ color: activeRegionInfo.colorHex }}
                 >
                   {activeLetter.letter}
                 </div>
                 <div>
-                  <h4 className="text-lg font-bold text-[#1B1A17] dark:text-white">{activeLetter.name}</h4>
+                  <h4 className="text-lg font-bold text-[#1B1A17] dark:text-white">
+                    {getLetterMakhrajName(activeLetter, lang)}
+                  </h4>
                   <div className="text-xs text-[#6B6251] dark:text-slate-400 flex flex-wrap items-center gap-1.5 mt-0.5">
-                    <span>{activeRegionInfo.name}</span>
+                    <span>{getMakhrajRegionName(activeRegionInfo, lang)}</span>
                     <span aria-hidden="true">·</span>
-                    <span className="text-[#1F3A6E] dark:text-slate-200 font-medium">{activeLetter.subMakhraj}</span>
+                    <span className="text-[#1F3A6E] dark:text-slate-200 font-medium">
+                      {getLetterSubMakhraj(activeLetter, lang)}
+                    </span>
                   </div>
                 </div>
               </div>
 
-              <div className="text-left sm:text-right">
-                <span className="text-[11px] text-[#6B6251] dark:text-slate-400 block">مثال قرآني</span>
-                <span className="font-quran text-2xl text-[#8A6418] dark:text-[#D9B45A]">{activeLetter.exampleWord}</span>
+              <div className="text-start sm:text-end">
+                <span className="text-[11px] text-[#6B6251] dark:text-slate-400 block">
+                  {isEnglish ? 'Quranic Example' : 'مثال قرآني'}
+                </span>
+                <span dir="rtl" lang="ar" className="font-quran text-2xl text-[#8A6418] dark:text-[#D9B45A] inline-block">
+                  {activeLetter.exampleWord}
+                </span>
               </div>
             </div>
 
             {/* Qualities List */}
             <div>
-              <span className="text-xs font-bold text-[#6B6251] dark:text-slate-400 block mb-2">الصفات الصوتية للحرف:</span>
+              <span className="text-xs font-bold text-[#6B6251] dark:text-slate-400 block mb-2">
+                {isEnglish ? 'Acoustic Qualities (Sifat):' : 'الصفات الصوتية للحرف:'}
+              </span>
               <div className="flex flex-wrap gap-2">
-                {activeLetter.qualities.map((q) => (
+                {getLetterQualities(activeLetter, lang).map((q) => (
                   <span
                     key={q}
                     className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-950 border border-[#D9B45A]/25 dark:border-slate-800 text-xs text-[#1B1A17] dark:text-slate-200 font-semibold flex items-center gap-1.5"
@@ -279,8 +321,12 @@ export const MakharijAtlas: React.FC = () => {
             <div className="p-3.5 rounded-xl bg-[#1F3A6E]/5 dark:bg-[#1F3A6E]/25 border border-[#1F3A6E]/20 dark:border-[#648CD4]/30 flex items-start gap-2.5">
               <Volume2 className="w-4 h-4 text-[#1F3A6E] dark:text-[#D9B45A] mt-0.5 shrink-0" />
               <div className="space-y-0.5">
-                <span className="text-xs font-bold text-[#1F3A6E] dark:text-[#D9B45A] block">توجيه النطق العملي:</span>
-                <p className="text-xs text-[#4B4539] dark:text-slate-200 leading-relaxed">{activeLetter.practicalTip}</p>
+                <span className="text-xs font-bold text-[#1F3A6E] dark:text-[#D9B45A] block">
+                  {isEnglish ? 'Practical Articulation Tip:' : 'توجيه النطق العملي:'}
+                </span>
+                <p className="text-xs text-[#4B4539] dark:text-slate-200 leading-relaxed">
+                  {getLetterPracticalTip(activeLetter, lang)}
+                </p>
               </div>
             </div>
           </div>
@@ -292,9 +338,13 @@ export const MakharijAtlas: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[#D9B45A]/20 dark:border-slate-800">
           <div className="flex items-center gap-2">
             <ArrowLeftRight className="w-4 h-4 text-[#8A6418] dark:text-[#D9B45A] shrink-0" />
-            <h3 className="text-sm sm:text-base font-bold text-[#1B1A17] dark:text-white">مقارنة الحروف المتقاربة في المخرج</h3>
+            <h3 className="text-sm sm:text-base font-bold text-[#1B1A17] dark:text-white">
+              {isEnglish ? 'Close-Makhraj Letter Comparisons' : 'مقارنة الحروف المتقاربة في المخرج'}
+            </h3>
           </div>
-          <span className="text-xs text-[#6B6251] dark:text-slate-400">أشهر الحروف التي يقع فيها الخلط أثناء التلاوة</span>
+          <span className="text-xs text-[#6B6251] dark:text-slate-400">
+            {isEnglish ? 'Commonly confused letters during recitation' : 'أشهر الحروف التي يقع فيها الخلط أثناء التلاوة'}
+          </span>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -315,7 +365,7 @@ export const MakharijAtlas: React.FC = () => {
                     : 'bg-white dark:bg-slate-950 border-[#D9B45A]/25 dark:border-slate-800 text-[#4B4539] dark:text-slate-300 hover:border-[#D9B45A]/50 dark:hover:border-slate-700 hover:text-[#1B1A17] dark:hover:text-white'
                 }`}
               >
-                {pair.title.split(' (')[0]}
+                {getSimilarPairTitle(pair, lang).split(' (')[0]}
               </button>
             );
           })}
@@ -323,9 +373,11 @@ export const MakharijAtlas: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center p-4 rounded-xl bg-white dark:bg-slate-950 border border-[#D9B45A]/25 dark:border-slate-800">
           <div className="md:col-span-8 space-y-2">
-            <h4 className="text-sm font-bold text-[#8A6418] dark:text-[#D9B45A]">{activeComparison.title}</h4>
+            <h4 className="text-sm font-bold text-[#8A6418] dark:text-[#D9B45A]">
+              {getSimilarPairTitle(activeComparison, lang)}
+            </h4>
             <p className="text-xs sm:text-sm text-[#4B4539] dark:text-slate-200 leading-relaxed">
-              {activeComparison.differenceSummary}
+              {getSimilarPairSummary(activeComparison, lang)}
             </p>
             <div className="flex flex-wrap gap-2 pt-1">
               {activeComparison.letterIds.map((id) => {
@@ -342,7 +394,9 @@ export const MakharijAtlas: React.FC = () => {
                         : 'bg-[#FBF7EE] dark:bg-slate-900 border-[#D9B45A]/25 dark:border-slate-700 text-[#4B4539] dark:text-slate-200 hover:border-[#D9B45A]/60 dark:hover:border-slate-600'
                     }`}
                   >
-                    عرض {l.name} ({l.letter}) على الخريطة
+                    {isEnglish
+                      ? `Locate ${getLetterMakhrajName(l, lang)} (${l.letter})`
+                      : `عرض ${l.name} (${l.letter}) على الخريطة`}
                   </button>
                 );
               })}
@@ -350,8 +404,12 @@ export const MakharijAtlas: React.FC = () => {
           </div>
 
           <div className="md:col-span-4 text-center p-3.5 rounded-xl bg-[#F6EFDD] dark:bg-slate-900 border border-[#D9B45A]/30 dark:border-slate-800">
-            <span className="text-[11px] text-[#6B6251] dark:text-slate-400 block mb-1">أمثلة قرآنية للمقارنة</span>
-            <p className="font-quran text-xl text-[#1F3A6E] dark:text-[#D9B45A] leading-loose">{activeComparison.quranExample}</p>
+            <span className="text-[11px] text-[#6B6251] dark:text-slate-400 block mb-1">
+              {isEnglish ? 'Quranic Comparison Examples' : 'أمثلة قرآنية للمقارنة'}
+            </span>
+            <p dir="rtl" lang="ar" className="font-quran text-xl text-[#1F3A6E] dark:text-[#D9B45A] leading-loose">
+              {activeComparison.quranExample}
+            </p>
           </div>
         </div>
       </div>
