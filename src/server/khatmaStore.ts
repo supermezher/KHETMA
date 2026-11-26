@@ -205,11 +205,20 @@ export class SecretRateLimiter {
     return { allowed: true, retryAfterSec: 0 };
   }
 
-  recordFailure(key: string, now = Date.now()): void {
-    const entry = this.attempts.get(key) || { count: 0, blockedUntil: 0, lastSeen: now };
+  recordAttempt(key: string, now = Date.now()): void {
+    const existing = this.attempts.get(key);
+    const isExpired =
+      !existing ||
+      (existing.blockedUntil > 0 && existing.blockedUntil <= now) ||
+      (existing.blockedUntil === 0 && now - existing.lastSeen > this.windowMs);
+    const entry = isExpired ? { count: 0, blockedUntil: 0, lastSeen: now } : existing;
     const nextCount = entry.count + 1;
     const blockedUntil = nextCount >= this.maxAttempts ? now + this.windowMs : 0;
     this.attempts.set(key, { count: nextCount, blockedUntil, lastSeen: now });
+  }
+
+  recordFailure(key: string, now = Date.now()): void {
+    this.recordAttempt(key, now);
   }
 
   reset(key: string): void {

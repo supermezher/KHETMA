@@ -13,6 +13,7 @@ import { downloadFullQuranOffline, getOfflineCachedSurahsCount } from '../data/q
 import { safeLocalStorage } from '../utils/safeStorage';
 import {
   BayanUserBackup,
+  MAX_BACKUP_FILE_BYTES,
   buildUserBackupPayload,
   validateAndParseUserBackup,
   restoreUserBackupData
@@ -124,6 +125,16 @@ export const FaithAnalytics: React.FC<FaithAnalyticsProps> = ({ onBackupRestored
     const file = e.target.files?.[0];
     if (!file) return;
     try {
+      if (file.size > MAX_BACKUP_FILE_BYTES) {
+        setBackupMessage({
+          type: 'err',
+          text: t(
+            'حجم ملف النسخة الاحتياطية يتجاوز الحد الأقصى المسموح به (5 ميجابايت).',
+            'Backup file exceeds the maximum allowed size (5 MB).'
+          ),
+        });
+        return;
+      }
       const text = await file.text();
       const parsed = validateAndParseUserBackup(text);
       if (!parsed.ok) {
@@ -132,6 +143,8 @@ export const FaithAnalytics: React.FC<FaithAnalyticsProps> = ({ onBackupRestored
           text: isEnglish
             ? parsed.error.includes('JSON')
               ? 'Could not read the file: please choose a valid JSON backup.'
+              : parsed.error.includes('5')
+              ? 'Backup file exceeds the maximum allowed size (5 MB).'
               : 'Invalid backup file format or not a Bayan backup.'
             : parsed.error,
         });

@@ -8,6 +8,7 @@ import {
 import {
   PartClaim,
   KhatmaRoomSummary,
+  sanitizeLocalKhatmaParts,
   fetchKhatmaState,
   fetchKhatmaRooms,
   createKhatmaRoomApi,
@@ -282,25 +283,30 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
       `bayan_collective_khatma_v2_${activeRoomId}`,
       null
     );
+    const fallbackParts: PartClaim[] = Array.from({ length: 30 }, (_, i) => {
+      const num = i + 1;
+      return {
+        juzNumber: num,
+        juzName: `الجزء ${num}`,
+        claimedBy: null,
+        claimedAt: undefined,
+        isCompleted: false,
+        surahsCovered: DEFAULT_JUZ_SURAS[num],
+      };
+    });
     if (cachedRoom?.parts && Array.isArray(cachedRoom.parts)) {
-      setParts(cachedRoom.parts);
-      if (cachedRoom.dedicationTitle) setDedicationTitle(cachedRoom.dedicationTitle);
-      if (cachedRoom.creatorName) setCreatorName(cachedRoom.creatorName);
-      if (cachedRoom.deadlineDays) setDeadlineDays(cachedRoom.deadlineDays);
+      setParts(sanitizeLocalKhatmaParts(cachedRoom.parts, fallbackParts));
+      if (typeof cachedRoom.dedicationTitle === 'string' && cachedRoom.dedicationTitle.trim()) {
+        setDedicationTitle(cachedRoom.dedicationTitle);
+      }
+      if (typeof cachedRoom.creatorName === 'string' && cachedRoom.creatorName.trim()) {
+        setCreatorName(cachedRoom.creatorName);
+      }
+      if (typeof cachedRoom.deadlineDays === 'number' && Number.isFinite(cachedRoom.deadlineDays)) {
+        setDeadlineDays(cachedRoom.deadlineDays);
+      }
     } else {
-      setParts(
-        Array.from({ length: 30 }, (_, i) => {
-          const num = i + 1;
-          return {
-            juzNumber: num,
-            juzName: `الجزء ${num}`,
-            claimedBy: null,
-            claimedAt: undefined,
-            isCompleted: false,
-            surahsCovered: DEFAULT_JUZ_SURAS[num],
-          };
-        })
-      );
+      setParts(fallbackParts);
     }
 
     if (typeof window !== 'undefined') {
@@ -388,16 +394,19 @@ export const CollectiveKhatma: React.FC<CollectiveKhatmaProps> = ({
     });
 
   const [parts, setParts] = useState<PartClaim[]>(() => {
+    const fallback = generateInitialParts();
     const saved = safeLocalStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (parsed.parts && Array.isArray(parsed.parts)) return parsed.parts;
+        if (parsed && typeof parsed === 'object' && Array.isArray(parsed.parts)) {
+          return sanitizeLocalKhatmaParts(parsed.parts, fallback);
+        }
       } catch {
         // fallback
       }
     }
-    return generateInitialParts();
+    return fallback;
   });
 
   const syncWithServer = useCallback(async (silent = true, targetRoom = activeRoomId) => {

@@ -1,6 +1,7 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import {
   createKhatmaDatabase,
   DEFAULT_ROOM_ID,
@@ -17,13 +18,6 @@ import {
   normalizeCircleCode,
   sanitizeMemberForClient,
 } from './src/server/kidsCircleStore';
-
-const khatmaDb = createKhatmaDatabase();
-const kidsCircleDb = createKidsCircleDatabase();
-const adminRateLimiter = new SecretRateLimiter(5, 5 * 60 * 1000);
-const roomCreateRateLimiter = new SecretRateLimiter(6, 60 * 60 * 1000);
-const kidsCircleAdminLimiter = new SecretRateLimiter(6, 5 * 60 * 1000);
-const kidsCircleCreateLimiter = new SecretRateLimiter(8, 60 * 60 * 1000);
 
 function getClientIp(req: express.Request): string {
   return req.ip || req.socket?.remoteAddress || '127.0.0.1';
@@ -46,14 +40,46 @@ function getCliArg(flag: string): string | undefined {
   return undefined;
 }
 
-async function startServer() {
+export const jsonErrorHandler: express.ErrorRequestHandler = (err, _req, res, next) => {
+  if (res.headersSent) return next(err);
+  const status = Number(err?.status || err?.statusCode || 500);
+  const isParseError = err?.type === 'entity.parse.failed' || (err instanceof SyntaxError && status === 400);
+  const isTooLarge = err?.type === 'entity.too.large' || status === 413;
+  const known = isParseError || isTooLarge || status === 400;
+  const httpStatus = isTooLarge ? 413 : isParseError || status === 400 ? 400 : 500;
+  if (!known) {
+    console.error('[server]', err);
+  }
+  res.status(httpStatus).json({
+    success: false,
+    error: isTooLarge
+      ? 'حجم الطلب أكبر من المسموح'
+      : isParseError || httpStatus === 400
+      ? 'صيغة الطلب غير صالحة'
+      : 'حدث خطأ داخلي في الخادم',
+  });
+};
+
+export interface CreateServerAppOptions {
+  khatmaDataDir?: string;
+  kidsCircleFilePath?: string;
+  isProduction?: boolean;
+  mountErrorHandler?: boolean;
+}
+
+export function createServerApp(options: CreateServerAppOptions = {}) {
   const app = express();
-  const cliPort = getCliArg('--port');
-  const cliHost = getCliArg('--host');
-  const parsedPort = cliPort ? parseInt(cliPort, 10) : process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-  const PORT = Number.isFinite(parsedPort) && parsedPort > 0 ? parsedPort : 3000;
-  const HOST = cliHost || process.env.HOST || '0.0.0.0';
-  const isProduction = process.env.NODE_ENV === 'production';
+  const isProduction = options.isProduction ?? process.env.NODE_ENV === 'production';
+
+  const khatmaDb = createKhatmaDatabase(options.khatmaDataDir);
+  const kidsCircleDb = createKidsCircleDatabase(options.kidsCircleFilePath);
+  const adminRateLimiter = new SecretRateLimiter(5, 5 * 60 * 1000);
+  const roomCreateRateLimiter = new SecretRateLimiter(6, 60 * 60 * 1000);
+  const claimLimiter = new SecretRateLimiter(10, 10 * 60 * 1000);
+  const kidsCircleAdminLimiter = new SecretRateLimiter(6, 5 * 60 * 1000);
+  const kidsCircleCreateLimiter = new SecretRateLimiter(8, 60 * 60 * 1000);
+  const kidsJoinLimiter = new SecretRateLimiter(10, 60 * 60 * 1000);
+  const kidsPreviewLimiter = new SecretRateLimiter(30, 60 * 1000);
 
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
@@ -66,23 +92,45 @@ async function startServer() {
     return json64kb(req, res, next);
   });
 
-  // Baseline Security Headers
+  // Baseline Security Headers (+ strict CSP in production)
   app.use((_req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(self), geolocation=()');
+    if (isProduction) {
+      res.setHeader(
+        'Content-Security-Policy',
+        [
+          "default-src 'self'",
+          "script-src 'self'",
+          "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+          "font-src 'self' https://fonts.gstatic.com data:",
+          "img-src 'self' data: blob:",
+          "media-src 'self' blob: data: https://everyayah.com",
+          "connect-src 'self' https://api.alquran.cloud https://api.quran.com https://everyayah.com",
+          "worker-src 'self' blob:",
+          "manifest-src 'self'",
+          "object-src 'none'",
+          "base-uri 'self'",
+          "form-action 'self'",
+          "frame-ancestors 'self'",
+        ].join('; ')
+      );
+    }
     next();
   });
 
   // Never expose server code, .env, or persistent khatma database files
   app.use((req, res, next) => {
-    const lowerPath = req.path.toLowerCase();
+    const normalizedPath = path.posix.normalize('/' + req.path).toLowerCase();
     if (
-      lowerPath.startsWith('/data') ||
-      lowerPath.startsWith('/.env') ||
-      lowerPath === '/server.ts' ||
-      lowerPath.startsWith('/src/server')
+      normalizedPath === '/data' ||
+      normalizedPath.startsWith('/data/') ||
+      normalizedPath.startsWith('/.env') ||
+      normalizedPath === '/server.ts' ||
+      normalizedPath === '/src/server' ||
+      normalizedPath.startsWith('/src/server/')
     ) {
       return res.status(403).json({ success: false, error: 'غير مصرح بالوصول' });
     }
@@ -126,7 +174,7 @@ async function startServer() {
       return res.status(result.status).json({ success: false, error: result.error });
     }
 
-    roomCreateRateLimiter.recordFailure(rateKey);
+    roomCreateRateLimiter.recordAttempt(rateKey);
     const { room, adminKey } = result;
     return res.status(201).json({
       success: true,
@@ -174,6 +222,16 @@ async function startServer() {
     if (!room) {
       return res.status(404).json({ success: false, error: 'الختمة غير موجودة' });
     }
+
+    const claimRateKey = `claim:${getClientIp(req)}:${room.roomId}`;
+    const claimLimit = claimLimiter.check(claimRateKey);
+    if (!claimLimit.allowed) {
+      return res.status(429).json({
+        success: false,
+        error: `تم تجاوز حد محاولات الحجز مؤقتاً. يرجى المحاولة بعد ${claimLimit.retryAfterSec} ثانية`,
+      });
+    }
+    claimLimiter.recordAttempt(claimRateKey);
 
     const { juzNumber, name } = req.body || {};
     if (!isValidJuzNumber(juzNumber)) {
@@ -496,7 +554,7 @@ async function startServer() {
       return res.status(result.status).json({ success: false, error: result.error });
     }
 
-    kidsCircleCreateLimiter.recordFailure(rateKey);
+    kidsCircleCreateLimiter.recordAttempt(rateKey);
     const { circle, adminKey } = result;
     return res.status(201).json({
       success: true,
@@ -516,14 +574,27 @@ async function startServer() {
     if (!code) {
       return res.status(400).json({ success: false, error: 'كود الحلقة يجب أن يتكون من ٦ أرقام' });
     }
-    const circle = kidsCircleDb.getCircle(code);
-    if (!circle) {
-      return res.status(404).json({ success: false, error: 'لم يتم العثور على حلقة بهذا الكود' });
-    }
 
     const adminKey = req.get('x-admin-key');
     const kidToken = req.get('x-kid-token');
     const kidId = typeof req.query.kidId === 'string' ? req.query.kidId : '';
+
+    if (!adminKey && !(kidId && kidToken)) {
+      const previewKey = `kids-preview:${getClientIp(req)}`;
+      const previewLimit = kidsPreviewLimiter.check(previewKey);
+      if (!previewLimit.allowed) {
+        return res.status(429).json({
+          success: false,
+          error: `تم تجاوز حد المعاينة المسموح به. يرجى المحاولة بعد ${previewLimit.retryAfterSec} ثانية`,
+        });
+      }
+      kidsPreviewLimiter.recordAttempt(previewKey);
+    }
+
+    const circle = kidsCircleDb.getCircle(code);
+    if (!circle) {
+      return res.status(404).json({ success: false, error: 'لم يتم العثور على حلقة بهذا الكود' });
+    }
 
     if (adminKey) {
       const rateKey = `kids-get-admin:${getClientIp(req)}:${circle.circleCode}`;
@@ -588,6 +659,17 @@ async function startServer() {
     if (!code) {
       return res.status(400).json({ success: false, error: 'كود الحلقة يجب أن يتكون من ٦ أرقام' });
     }
+
+    const joinRateKey = `join:${getClientIp(req)}:${code}`;
+    const joinLimit = kidsJoinLimiter.check(joinRateKey);
+    if (!joinLimit.allowed) {
+      return res.status(429).json({
+        success: false,
+        error: `تم تجاوز حد محاولات الانضمام للحلقة مؤقتاً. يرجى المحاولة بعد ${joinLimit.retryAfterSec} ثانية`,
+      });
+    }
+    kidsJoinLimiter.recordAttempt(joinRateKey);
+
     const { name, avatarId, initialWird } = req.body || {};
     const result = kidsCircleDb.joinCircle(code, { name, avatarId, initialWird });
     if (!result.ok) {
@@ -776,6 +858,23 @@ async function startServer() {
     res.status(404).json({ success: false, error: 'مسار API غير موجود' });
   });
 
+  if (options.mountErrorHandler !== false) {
+    app.use(jsonErrorHandler);
+  }
+
+  return app;
+}
+
+export async function startServer() {
+  const cliPort = getCliArg('--port');
+  const cliHost = getCliArg('--host');
+  const parsedPort = cliPort ? parseInt(cliPort, 10) : process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  const PORT = Number.isFinite(parsedPort) && parsedPort > 0 ? parsedPort : 3000;
+  const HOST = cliHost || process.env.HOST || '0.0.0.0';
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  const app = createServerApp({ isProduction, mountErrorHandler: false });
+
   // ---------------------------------------------------------------------------
   // VITE DEV MIDDLEWARE / STATIC ASSETS
   // ---------------------------------------------------------------------------
@@ -826,9 +925,31 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, HOST, () => {
+  app.use(jsonErrorHandler);
+
+  const server = app.listen(PORT, HOST, () => {
     console.log(`Bayan Quran server running (${isProduction ? 'production' : 'development'}) on http://${HOST}:${PORT}`);
   });
+
+  server.on('error', (err) => {
+    console.error('[server] listen error:', err);
+    process.exit(1);
+  });
+
+  const shutdown = () => {
+    server.close(() => process.exit(0));
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+
+  return server;
 }
 
-startServer();
+const isEntrypoint =
+  !process.env.VITEST &&
+  Boolean(process.argv[1]) &&
+  path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+
+if (isEntrypoint) {
+  startServer();
+}

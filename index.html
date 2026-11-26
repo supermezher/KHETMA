@@ -3,14 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <script>
-      try {
-        var savedTheme = localStorage.getItem('bayan_app_theme_v1');
-        if (savedTheme === 'light' || (!savedTheme && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches)) {
-          document.documentElement.classList.remove('dark');
-        }
-      } catch (e) {}
-    </script>
+    <script src="/theme-init.js"></script>
     <title>بيان — مصحف وقف بالرسم العثماني</title>
     <meta name="description" content="مصحف رقمي وقفي مجاني بالرسم العثماني وألوان التجويد والتفسير الميسر والحفظ والختمات." />
     <meta property="og:title" content="بيان — مصحف وقف بالرسم العثماني" />

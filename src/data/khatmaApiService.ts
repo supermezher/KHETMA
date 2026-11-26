@@ -7,6 +7,47 @@ export interface PartClaim {
   surahsCovered?: string;
 }
 
+export function sanitizeLocalKhatmaParts(rawParts: unknown, fallbackParts: PartClaim[]): PartClaim[] {
+  if (!Array.isArray(rawParts)) return fallbackParts;
+  const byJuz = new Map<number, PartClaim>();
+
+  for (const item of rawParts) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const rec = item as Record<string, unknown>;
+    const juzNumber = rec.juzNumber;
+    if (typeof juzNumber !== 'number' || !Number.isInteger(juzNumber) || juzNumber < 1 || juzNumber > 30) {
+      continue;
+    }
+    if (rec.claimedBy !== null && typeof rec.claimedBy !== 'string') {
+      continue;
+    }
+    const base = fallbackParts.find((p) => p.juzNumber === juzNumber);
+    const cleanedClaimedBy =
+      rec.claimedBy === null ? null : rec.claimedBy.trim().slice(0, 60) || null;
+
+    byJuz.set(juzNumber, {
+      juzNumber,
+      juzName:
+        typeof rec.juzName === 'string' && rec.juzName.trim()
+          ? rec.juzName.trim().slice(0, 60)
+          : base?.juzName || `الجزء ${juzNumber}`,
+      claimedBy: cleanedClaimedBy,
+      claimedAt:
+        cleanedClaimedBy && typeof rec.claimedAt === 'string' && rec.claimedAt.trim()
+          ? rec.claimedAt.trim().slice(0, 40)
+          : undefined,
+      isCompleted: cleanedClaimedBy !== null && Boolean(rec.isCompleted),
+      surahsCovered:
+        typeof rec.surahsCovered === 'string' && rec.surahsCovered.trim()
+          ? rec.surahsCovered.trim().slice(0, 120)
+          : base?.surahsCovered,
+    });
+  }
+
+  if (byJuz.size === 0) return fallbackParts;
+  return fallbackParts.map((base) => byJuz.get(base.juzNumber) || base);
+}
+
 export interface KhatmaRoomSummary {
   roomId: string;
   isPublic: boolean;
